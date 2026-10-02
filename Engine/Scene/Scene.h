@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -97,6 +98,21 @@ namespace NoJob
         }
 
         template<typename T>
+        void RemoveComponent(std::uint32_t handle)
+        {
+            auto& data = m_Entities.at(handle);
+
+            if constexpr (std::is_same_v<T, MeshComponent>)
+                data.Mesh.reset();
+            else if constexpr (std::is_same_v<T, MeshRendererComponent>)
+                data.MeshRenderer.reset();
+            else
+                static_assert(
+                    !sizeof(T),
+                    "This NoJob component cannot be removed.");
+        }
+
+        template<typename T>
         bool HasComponent(std::uint32_t handle) const
         {
             if (!IsValid(handle))
@@ -125,11 +141,22 @@ namespace NoJob
         friend class Entity;
     };
 
+    inline Entity::operator bool() const
+    {
+        return m_Scene != nullptr && m_Scene->IsValid(m_Handle);
+    }
+
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args)
     {
         return m_Scene->AddComponent<T>(
             m_Handle, std::forward<Args>(args)...);
+    }
+
+    template<typename T>
+    void Entity::RemoveComponent()
+    {
+        m_Scene->RemoveComponent<T>(m_Handle);
     }
 
     template<typename T>

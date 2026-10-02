@@ -6,9 +6,6 @@ namespace NoJob
     {
         const std::uint32_t handle = m_NextHandle++;
 
-        // Construct EntityData directly inside the map.
-        // This avoids creating/moving/destroying a temporary EntityData,
-        // which now contains non-trivial optional/shared_ptr components.
         auto [iterator, inserted] =
             m_Entities.try_emplace(handle);
 

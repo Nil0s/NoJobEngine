@@ -1,5 +1,4 @@
 #pragma once
-
 #include <cstdint>
 #include <type_traits>
 
@@ -20,6 +19,9 @@ namespace NoJob
         T& AddComponent(Args&&... args);
 
         template<typename T>
+        void RemoveComponent();
+
+        template<typename T>
         T& GetComponent();
 
         template<typename T>
@@ -28,10 +30,7 @@ namespace NoJob
         template<typename T>
         bool HasComponent() const;
 
-        explicit operator bool() const
-        {
-            return m_Scene != nullptr && m_Handle != 0;
-        }
+        explicit operator bool() const;
 
         std::uint32_t GetHandle() const { return m_Handle; }
 

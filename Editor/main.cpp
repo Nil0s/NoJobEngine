@@ -87,6 +87,7 @@ int main()
         NoJob::EditorLayer editor;
         editor.Init(window.GetNativeWindow(), &scene);
         editor.SetSelectedEntity(cube);
+        editor.SetDefaultCubeAssets(cubeMesh, cubeMaterial);
         editor.SetViewportTexture(
             framebuffer->GetColorAttachmentRendererID());
 

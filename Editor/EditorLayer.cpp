@@ -1,7 +1,8 @@
 #include "Editor/EditorLayer.h"
 
-#include "Engine/Scene/Components.h"
 #include "Engine/Renderer/Material.h"
+#include "Engine/Renderer/Mesh.h"
+#include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
 
 #include <imgui.h>
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <string>
 
 namespace NoJob
 {
@@ -58,6 +61,17 @@ namespace NoJob
         DrawViewport();
         DrawInspector();
         DrawConsole();
+
+        if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
+            DeleteSelectedEntity();
+
+        const ImGuiIO& io = ImGui::GetIO();
+        if (m_SelectedEntity
+            && io.KeyCtrl
+            && ImGui::IsKeyPressed(ImGuiKey_D))
+        {
+            DuplicateSelectedEntity();
+        }
     }
 
     void EditorLayer::EndFrame()
@@ -76,6 +90,14 @@ namespace NoJob
         m_ViewportTextureID = textureID;
     }
 
+    void EditorLayer::SetDefaultCubeAssets(
+        std::shared_ptr<Mesh> mesh,
+        std::shared_ptr<Material> material)
+    {
+        m_DefaultCubeMesh = std::move(mesh);
+        m_DefaultCubeMaterial = std::move(material);
+    }
+
     std::uint32_t EditorLayer::GetViewportWidth() const
     {
         return static_cast<std::uint32_t>(
@@ -86,6 +108,88 @@ namespace NoJob
     {
         return static_cast<std::uint32_t>(
             std::max(1.0f, m_ViewportHeight));
+    }
+
+    Entity EditorLayer::CreateEmptyEntity()
+    {
+        if (!m_Scene)
+            return {};
+
+        Entity entity = m_Scene->CreateEntity("Empty Entity");
+        m_SelectedEntity = entity;
+        return entity;
+    }
+
+    Entity EditorLayer::CreateCubeEntity()
+    {
+        if (!m_Scene)
+            return {};
+
+        Entity entity = m_Scene->CreateEntity("Cube");
+
+        if (m_DefaultCubeMesh)
+            entity.AddComponent<MeshComponent>(m_DefaultCubeMesh);
+
+        if (m_DefaultCubeMaterial)
+        {
+            // Give every cube its own Material instance so editing one
+            // entity's color does not recolor all cubes.
+            auto material = std::make_shared<Material>(
+                m_DefaultCubeMaterial->GetShader(),
+                m_DefaultCubeMaterial->GetColor());
+
+            entity.AddComponent<MeshRendererComponent>(material);
+        }
+
+        m_SelectedEntity = entity;
+        return entity;
+    }
+
+    void EditorLayer::DeleteSelectedEntity()
+    {
+        if (!m_Scene || !m_SelectedEntity)
+            return;
+
+        m_Scene->DestroyEntity(m_SelectedEntity);
+        m_SelectedEntity = {};
+    }
+
+    void EditorLayer::DuplicateSelectedEntity()
+    {
+        if (!m_Scene || !m_SelectedEntity)
+            return;
+
+        const Entity source = m_SelectedEntity;
+        const auto& sourceTag = source.GetComponent<TagComponent>().Tag;
+
+        Entity copy =
+            m_Scene->CreateEntity(sourceTag + " Copy");
+
+        copy.GetComponent<TransformComponent>() =
+            source.GetComponent<TransformComponent>();
+
+        if (source.HasComponent<MeshComponent>())
+        {
+            copy.AddComponent<MeshComponent>(
+                source.GetComponent<MeshComponent>().MeshAsset);
+        }
+
+        if (source.HasComponent<MeshRendererComponent>())
+        {
+            const auto& sourceRenderer =
+                source.GetComponent<MeshRendererComponent>();
+
+            if (sourceRenderer.MaterialAsset)
+            {
+                auto material = std::make_shared<Material>(
+                    sourceRenderer.MaterialAsset->GetShader(),
+                    sourceRenderer.MaterialAsset->GetColor());
+
+                copy.AddComponent<MeshRendererComponent>(material);
+            }
+        }
+
+        m_SelectedEntity = copy;
     }
 
     void EditorLayer::DrawMainMenu()
@@ -103,8 +207,35 @@ namespace NoJob
 
             if (ImGui::BeginMenu("Edit"))
             {
-                ImGui::MenuItem("Undo", "Ctrl+Z");
-                ImGui::MenuItem("Redo", "Ctrl+Y");
+                if (ImGui::MenuItem(
+                        "Duplicate Entity",
+                        "Ctrl+D",
+                        false,
+                        static_cast<bool>(m_SelectedEntity)))
+                {
+                    DuplicateSelectedEntity();
+                }
+
+                if (ImGui::MenuItem(
+                        "Delete Entity",
+                        "Delete",
+                        false,
+                        static_cast<bool>(m_SelectedEntity)))
+                {
+                    DeleteSelectedEntity();
+                }
+
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("GameObject"))
+            {
+                if (ImGui::MenuItem("Create Empty"))
+                    CreateEmptyEntity();
+
+                if (ImGui::MenuItem("3D Object/Cube"))
+                    CreateCubeEntity();
+
                 ImGui::EndMenu();
             }
 
@@ -124,15 +255,53 @@ namespace NoJob
     {
         ImGui::Begin("Hierarchy");
 
+        if (ImGui::BeginPopupContextWindow(
+                "HierarchyContext",
+                ImGuiPopupFlags_MouseButtonRight
+                | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::MenuItem("Create Empty"))
+                CreateEmptyEntity();
+
+            if (ImGui::BeginMenu("3D Object"))
+            {
+                if (ImGui::MenuItem("Cube"))
+                    CreateCubeEntity();
+
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndPopup();
+        }
+
         if (m_Scene)
         {
             for (Entity entity : m_Scene->GetEntities())
             {
                 auto& tag = entity.GetComponent<TagComponent>().Tag;
 
+                ImGui::PushID(
+                    static_cast<int>(entity.GetHandle()));
+
                 const bool selected = entity == m_SelectedEntity;
+
                 if (ImGui::Selectable(tag.c_str(), selected))
                     m_SelectedEntity = entity;
+
+                if (ImGui::BeginPopupContextItem("EntityContext"))
+                {
+                    m_SelectedEntity = entity;
+
+                    if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+                        DuplicateSelectedEntity();
+
+                    if (ImGui::MenuItem("Delete", "Delete"))
+                        DeleteSelectedEntity();
+
+                    ImGui::EndPopup();
+                }
+
+                ImGui::PopID();
             }
         }
 
@@ -148,7 +317,20 @@ namespace NoJob
             auto& tag =
                 m_SelectedEntity.GetComponent<TagComponent>().Tag;
 
-            ImGui::Text("%s", tag.c_str());
+            char tagBuffer[256]{};
+            std::strncpy(
+                tagBuffer,
+                tag.c_str(),
+                sizeof(tagBuffer) - 1);
+
+            if (ImGui::InputText(
+                    "##EntityName",
+                    tagBuffer,
+                    sizeof(tagBuffer)))
+            {
+                tag = tagBuffer;
+            }
+
             ImGui::Separator();
 
             if (ImGui::CollapsingHeader(
@@ -177,22 +359,36 @@ namespace NoJob
             if (m_SelectedEntity.HasComponent<MeshComponent>())
             {
                 ImGui::Separator();
-                ImGui::Text("Mesh");
-                ImGui::TextDisabled("Primitive: Cube");
+
+                if (ImGui::CollapsingHeader(
+                        "Mesh",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    ImGui::TextDisabled("Primitive Mesh");
+                }
             }
 
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
             {
                 ImGui::Separator();
-                ImGui::Text("Mesh Renderer");
 
-                auto& renderer =
-                    m_SelectedEntity.GetComponent<MeshRendererComponent>();
-
-                if (renderer.MaterialAsset)
+                if (ImGui::CollapsingHeader(
+                        "Mesh Renderer",
+                        ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto& color = renderer.MaterialAsset->GetColor();
-                    ImGui::ColorEdit4("Material Color", &color.x);
+                    auto& renderer =
+                        m_SelectedEntity
+                            .GetComponent<MeshRendererComponent>();
+
+                    if (renderer.MaterialAsset)
+                    {
+                        auto& color =
+                            renderer.MaterialAsset->GetColor();
+
+                        ImGui::ColorEdit4(
+                            "Material Color",
+                            &color.x);
+                    }
                 }
             }
 
@@ -216,29 +412,42 @@ namespace NoJob
 
     void EditorLayer::DrawViewport()
     {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_WindowPadding,
+            ImVec2(0, 0));
+
         ImGui::Begin("Viewport");
 
         m_ViewportHovered = ImGui::IsWindowHovered();
         m_ViewportFocused = ImGui::IsWindowFocused();
 
-        const ImVec2 available = ImGui::GetContentRegionAvail();
+        const ImVec2 available =
+            ImGui::GetContentRegionAvail();
 
-        m_ViewportWidth = std::max(1.0f, available.x);
-        m_ViewportHeight = std::max(1.0f, available.y);
+        m_ViewportWidth =
+            std::max(1.0f, available.x);
+
+        m_ViewportHeight =
+            std::max(1.0f, available.y);
 
         if (m_ViewportTextureID != 0)
         {
             ImGui::Image(
                 static_cast<ImTextureID>(
-                    static_cast<intptr_t>(m_ViewportTextureID)),
-                ImVec2(m_ViewportWidth, m_ViewportHeight),
+                    static_cast<intptr_t>(
+                        m_ViewportTextureID)),
+                ImVec2(
+                    m_ViewportWidth,
+                    m_ViewportHeight),
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
 
-            ImGui::SetCursorPos(ImVec2(12.0f, 32.0f));
+            ImGui::SetCursorPos(
+                ImVec2(12.0f, 32.0f));
+
             ImGui::TextDisabled(
-                "RMB + mouse: look | WASD: move | Q/E: down/up | Shift: faster");
+                "RMB + mouse: look | WASD: move | "
+                "Q/E: down/up | Shift: faster");
         }
 
         ImGui::End();
@@ -249,8 +458,9 @@ namespace NoJob
     {
         ImGui::Begin("Console");
         ImGui::Text("[Info] NoJobEngine editor started.");
-        ImGui::Text("[Info] OpenGL 4.6 renderer active.");
-        ImGui::Text("[Info] Scene rendered to editor framebuffer.");
+        ImGui::Text("[Info] Scene entity management active.");
+        ImGui::Text(
+            "[Info] Right click Hierarchy to create objects.");
         ImGui::End();
     }
 }
