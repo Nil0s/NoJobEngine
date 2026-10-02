@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(NoJobEngine VERSION 0.1.0 LANGUAGES C CXX)
+project(NoJobEngine VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,70 +7,44 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
 
-# ----------------------------
-# GLFW
-# ----------------------------
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    glfw
+FetchContent_Declare(glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
     GIT_TAG 3.4
-    GIT_SHALLOW TRUE
-)
+    GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(glfw)
 
-# ----------------------------
-# GLM
-# ----------------------------
-FetchContent_Declare(
-    glm
+FetchContent_Declare(glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG 1.0.1
-    GIT_SHALLOW TRUE
-)
+    GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(glm)
 
-# ----------------------------
-# GLAD 2 - OpenGL 4.6 Core
-# ----------------------------
-FetchContent_Declare(
-    glad
+FetchContent_Declare(glad
     GIT_REPOSITORY https://github.com/Dav1dde/glad.git
     GIT_TAG v2.0.8
-    GIT_SHALLOW TRUE
-)
+    GIT_SHALLOW TRUE)
 
 FetchContent_GetProperties(glad)
-
 if(NOT glad_POPULATED)
     FetchContent_Populate(glad)
-
-    add_subdirectory(
-        ${glad_SOURCE_DIR}/cmake
-        ${glad_BINARY_DIR}/cmake
-    )
 endif()
 
-glad_add_library(
-    NoJobGLAD
-    STATIC
-    REPRODUCIBLE
-    API gl:core=4.6
+add_subdirectory(
+    "${glad_SOURCE_DIR}/cmake"
+    "${glad_BINARY_DIR}/cmake"
 )
 
-# ----------------------------
-# Dear ImGui
-# ----------------------------
-FetchContent_Declare(
-    imgui
+glad_add_library(NoJobGLAD STATIC REPRODUCIBLE API gl:core=4.6)
+
+FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG v1.92.5
-    GIT_SHALLOW TRUE
-)
+    GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
 
 add_library(NoJobImGui STATIC
@@ -80,65 +54,58 @@ add_library(NoJobImGui STATIC
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-)
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
 
 target_include_directories(NoJobImGui PUBLIC
     ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
+    ${imgui_SOURCE_DIR}/backends)
 
 target_link_libraries(NoJobImGui PUBLIC glfw)
 
-# ----------------------------
-# NoJobEngine
-# ----------------------------
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
+
     Engine/Renderer/Renderer.cpp
+    Engine/Renderer/RendererAPI.cpp
+    Engine/Renderer/RenderCommand.cpp
+    Engine/Renderer/Buffer.cpp
+    Engine/Renderer/VertexArray.cpp
+    Engine/Renderer/Shader.cpp
+
     Engine/Platform/OpenGL/OpenGLContext.cpp
+    Engine/Platform/OpenGL/OpenGLRendererAPI.cpp
+    Engine/Platform/OpenGL/OpenGLBuffer.cpp
+    Engine/Platform/OpenGL/OpenGLVertexArray.cpp
+    Engine/Platform/OpenGL/OpenGLShader.cpp
 )
 
 target_include_directories(NoJobEngine PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(NoJobEngine PUBLIC
-    GLFW_INCLUDE_NONE
-)
+    GLFW_INCLUDE_NONE)
 
 target_link_libraries(NoJobEngine PUBLIC
     glfw
     glm::glm
-    NoJobGLAD
-)
+    NoJobGLAD)
 
-# ----------------------------
-# NoJobEditor
-# ----------------------------
 add_executable(NoJobEditor
     Editor/main.cpp
-    Editor/EditorLayer.cpp
-)
+    Editor/EditorLayer.cpp)
 
 target_link_libraries(NoJobEditor PRIVATE
     NoJobEngine
-    NoJobImGui
-)
+    NoJobImGui)
 
-# ----------------------------
-# Visual Studio / MSVC
-# ----------------------------
 if(MSVC)
     target_compile_options(NoJobEngine PRIVATE /W4 /permissive-)
     target_compile_options(NoJobEditor PRIVATE /W4 /permissive-)
 
     set_property(
         DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        PROPERTY VS_STARTUP_PROJECT NoJobEditor
-    )
+        PROPERTY VS_STARTUP_PROJECT NoJobEditor)
 endif()
 
 set_target_properties(NoJobEditor PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-)
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")

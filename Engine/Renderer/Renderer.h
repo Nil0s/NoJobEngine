@@ -1,16 +1,21 @@
 #pragma once
-namespace NoJob {
-enum class RendererAPI { OpenGL, Vulkan };
+#include <memory>
 
-class Renderer {
-public:
-    static void Init();
-    static void Shutdown();
-    static void BeginFrame();
-    static void EndFrame();
-    static RendererAPI GetAPI() { return s_API; }
+namespace NoJob
+{
+    class VertexArray;
+    class Shader;
 
-private:
-    static RendererAPI s_API;
-};
+    class Renderer
+    {
+    public:
+        static void Init();
+        static void Shutdown();
+        static void BeginFrame();
+        static void EndFrame();
+
+        static void Submit(
+            const std::shared_ptr<VertexArray>& vertexArray,
+            const std::shared_ptr<Shader>& shader);
+    };
 }

@@ -1,16 +1,35 @@
 #include "Engine/Renderer/Renderer.h"
-#include <glad/gl.h>
+#include "Engine/Renderer/RenderCommand.h"
+#include "Engine/Renderer/Shader.h"
+#include "Engine/Renderer/VertexArray.h"
 
-namespace NoJob {
-RendererAPI Renderer::s_API = RendererAPI::OpenGL;
+namespace NoJob
+{
+    void Renderer::Init()
+    {
+        RenderCommand::Init();
+    }
 
-void Renderer::Init() { glEnable(GL_DEPTH_TEST); }
-void Renderer::Shutdown() {}
+    void Renderer::Shutdown()
+    {
+    }
 
-void Renderer::BeginFrame() {
-    glViewport(0, 0, 1600, 900);
-    glClearColor(0.08f, 0.09f, 0.11f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-}
-void Renderer::EndFrame() {}
+    void Renderer::BeginFrame()
+    {
+        RenderCommand::SetViewport(0, 0, 1600, 900);
+        RenderCommand::SetClearColor(0.08f, 0.09f, 0.11f, 1.0f);
+        RenderCommand::Clear();
+    }
+
+    void Renderer::EndFrame()
+    {
+    }
+
+    void Renderer::Submit(
+        const std::shared_ptr<VertexArray>& vertexArray,
+        const std::shared_ptr<Shader>& shader)
+    {
+        shader->Bind();
+        RenderCommand::DrawIndexed(*vertexArray);
+    }
 }
