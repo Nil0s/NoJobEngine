@@ -1,0 +1,142 @@
+# NoJobEngine
+# C++ / Visual Studio / CMake / OpenGL / Vulkan / ImGui
+
+# -------------------------
+# Visual Studio
+# -------------------------
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+ipch/
+
+# Visual Studio build outputs
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+x64/
+x86/
+Win32/
+
+# -------------------------
+# CMake
+# -------------------------
+build/
+Build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+
+# CMake generated Visual Studio files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# -------------------------
+# C / C++
+# -------------------------
+*.obj
+*.o
+*.lo
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+*.app
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.tlog
+*.lastbuildstate
+
+# Precompiled headers
+*.pch
+*.gch
+
+# -------------------------
+# Vulkan / Shaders
+# -------------------------
+# Compiled shader binaries are generated from source shaders.
+*.spv
+
+# Keep shader source files tracked:
+# *.vert
+# *.frag
+# *.geom
+# *.comp
+# *.tesc
+# *.tese
+# *.glsl
+
+# -------------------------
+# Engine runtime/generated
+# -------------------------
+Logs/
+Cache/
+Temp/
+Intermediate/
+Saved/
+DerivedDataCache/
+
+# -------------------------
+# Dependencies / package managers
+# -------------------------
+# Uncomment if dependencies are generated locally rather than tracked.
+# vendor/
+# Vendor/
+# external/
+# External/
+
+# vcpkg local installation/build artifacts
+vcpkg_installed/
+
+# Conan
+.conan/
+conanbuildinfo.*
+conan.lock
+
+# -------------------------
+# OS files
+# -------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# -------------------------
+# Editors
+# -------------------------
+.vscode/
+.idea/
+
+# -------------------------
+# Profiling / debugging
+# -------------------------
+*.dmp
+*.vsp
+*.vspx
+*.diagsession
+
+# -------------------------
+# Misc
+# -------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
