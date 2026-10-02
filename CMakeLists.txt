@@ -96,7 +96,8 @@ target_link_libraries(NoJobEngine PUBLIC
 
 add_executable(NoJobEditor
     Editor/main.cpp
-    Editor/EditorLayer.cpp)
+    Editor/EditorLayer.cpp
+    Editor/EditorCamera.cpp)
 
 target_link_libraries(NoJobEditor PRIVATE
     NoJobEngine

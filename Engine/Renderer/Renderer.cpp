@@ -28,10 +28,14 @@ namespace NoJob
     void Renderer::Submit(
         const std::shared_ptr<VertexArray>& vertexArray,
         const std::shared_ptr<Shader>& shader,
-        const glm::mat4& transform)
+        const glm::mat4& transform,
+        const glm::mat4& viewProjection,
+        const glm::vec4& color)
     {
         shader->Bind();
         shader->SetMat4("u_Transform", transform);
+        shader->SetMat4("u_ViewProjection", viewProjection);
+        shader->SetFloat4("u_Color", color);
         RenderCommand::DrawIndexed(*vertexArray);
     }
 }

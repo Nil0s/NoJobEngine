@@ -196,6 +196,9 @@ namespace NoJob
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("Viewport");
 
+        m_ViewportHovered = ImGui::IsWindowHovered();
+        m_ViewportFocused = ImGui::IsWindowFocused();
+
         const ImVec2 available = ImGui::GetContentRegionAvail();
 
         m_ViewportWidth = std::max(1.0f, available.x);
@@ -209,6 +212,10 @@ namespace NoJob
                 ImVec2(m_ViewportWidth, m_ViewportHeight),
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
+
+            ImGui::SetCursorPos(ImVec2(12.0f, 32.0f));
+            ImGui::TextDisabled(
+                "RMB + mouse: look | WASD: move | Q/E: down/up | Shift: faster");
         }
 
         ImGui::End();

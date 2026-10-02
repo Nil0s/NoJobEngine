@@ -24,6 +24,8 @@ namespace NoJob
 
         std::uint32_t GetViewportWidth() const;
         std::uint32_t GetViewportHeight() const;
+        bool IsViewportHovered() const { return m_ViewportHovered; }
+        bool IsViewportFocused() const { return m_ViewportFocused; }
 
     private:
         void DrawMainMenu();
@@ -38,5 +40,7 @@ namespace NoJob
         std::uint32_t m_ViewportTextureID = 0;
         float m_ViewportWidth = 1280.0f;
         float m_ViewportHeight = 720.0f;
+        bool m_ViewportHovered = false;
+        bool m_ViewportFocused = false;
     };
 }

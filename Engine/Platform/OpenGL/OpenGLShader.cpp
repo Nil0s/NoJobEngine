@@ -72,6 +72,21 @@ namespace NoJob
             location, 1, GL_FALSE, glm::value_ptr(value));
     }
 
+    void OpenGLShader::SetFloat4(
+        const std::string& name,
+        const glm::vec4& value)
+    {
+        const GLint location =
+            glGetUniformLocation(m_RendererID, name.c_str());
+
+        glUniform4f(
+            location,
+            value.x,
+            value.y,
+            value.z,
+            value.w);
+    }
+
     std::uint32_t OpenGLShader::CompileShader(
         std::uint32_t type,
         const std::string& source)
