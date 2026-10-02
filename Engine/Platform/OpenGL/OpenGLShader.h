@@ -14,6 +14,7 @@ namespace NoJob
 
         void Bind() const override;
         void Unbind() const override;
+        void SetMat4(const std::string& name, const glm::mat4& value) override;
 
     private:
         std::uint32_t CompileShader(

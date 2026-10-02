@@ -1,5 +1,8 @@
 #include "Editor/EditorLayer.h"
 
+#include "Engine/Scene/Components.h"
+#include "Engine/Scene/Scene.h"
+
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
@@ -8,13 +11,16 @@
 
 namespace NoJob
 {
-    void EditorLayer::Init(GLFWwindow* window)
+    void EditorLayer::Init(GLFWwindow* window, Scene* scene)
     {
+        m_Scene = scene;
+
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
         ImGui::StyleColorsDark();
 
@@ -34,26 +40,151 @@ namespace NoJob
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        ImGui::DockSpaceOverViewport(
+            0,
+            ImGui::GetMainViewport(),
+            ImGuiDockNodeFlags_PassthruCentralNode);
     }
 
     void EditorLayer::Draw()
     {
-        // Docking will be enabled later using ImGui's docking branch.
-        // For now we keep a normal editor window so the engine compiles
-        // against the official ImGui release used by CMake.
-        ImGui::Begin("NoJobEngine");
-
-        ImGui::Text("NoJobEngine Editor");
-        ImGui::Separator();
-        ImGui::Text("Renderer: OpenGL 4.6");
-        ImGui::Text("First triangle: active");
-
-        ImGui::End();
+        DrawMainMenu();
+        DrawHierarchy();
+        DrawViewport();
+        DrawInspector();
+        DrawConsole();
     }
 
     void EditorLayer::EndFrame()
     {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+
+    void EditorLayer::SetSelectedEntity(Entity entity)
+    {
+        m_SelectedEntity = entity;
+    }
+
+    void EditorLayer::DrawMainMenu()
+    {
+        if (ImGui::BeginMainMenuBar())
+        {
+            if (ImGui::BeginMenu("File"))
+            {
+                ImGui::MenuItem("New Scene");
+                ImGui::MenuItem("Open Scene");
+                ImGui::Separator();
+                ImGui::MenuItem("Exit");
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Edit"))
+            {
+                ImGui::MenuItem("Undo", "Ctrl+Z");
+                ImGui::MenuItem("Redo", "Ctrl+Y");
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("View"))
+            {
+                ImGui::MenuItem("Hierarchy");
+                ImGui::MenuItem("Inspector");
+                ImGui::MenuItem("Console");
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMainMenuBar();
+        }
+    }
+
+    void EditorLayer::DrawHierarchy()
+    {
+        ImGui::Begin("Hierarchy");
+
+        if (m_Scene)
+        {
+            for (Entity entity : m_Scene->GetEntities())
+            {
+                auto& tag = entity.GetComponent<TagComponent>().Tag;
+
+                const bool selected = entity == m_SelectedEntity;
+                if (ImGui::Selectable(tag.c_str(), selected))
+                    m_SelectedEntity = entity;
+            }
+        }
+
+        ImGui::End();
+    }
+
+    void EditorLayer::DrawInspector()
+    {
+        ImGui::Begin("Inspector");
+
+        if (m_SelectedEntity)
+        {
+            auto& tag =
+                m_SelectedEntity.GetComponent<TagComponent>().Tag;
+
+            ImGui::Text("%s", tag.c_str());
+            ImGui::Separator();
+
+            if (ImGui::CollapsingHeader(
+                    "Transform",
+                    ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                auto& transform =
+                    m_SelectedEntity.GetComponent<TransformComponent>();
+
+                ImGui::DragFloat3(
+                    "Position",
+                    &transform.Position.x,
+                    0.01f);
+
+                ImGui::DragFloat3(
+                    "Rotation",
+                    &transform.Rotation.x,
+                    0.01f);
+
+                ImGui::DragFloat3(
+                    "Scale",
+                    &transform.Scale.x,
+                    0.01f);
+            }
+
+            ImGui::Separator();
+
+            const auto id =
+                m_SelectedEntity.GetComponent<IDComponent>().ID;
+
+            ImGui::Text("Entity ID: %llu",
+                static_cast<unsigned long long>(id));
+        }
+        else
+        {
+            ImGui::TextDisabled("Select an entity in Hierarchy.");
+        }
+
+        ImGui::End();
+    }
+
+    void EditorLayer::DrawViewport()
+    {
+        ImGui::Begin("Viewport");
+        ImGui::TextDisabled(
+            "Scene rendering is currently shown behind the editor.");
+        ImGui::TextDisabled(
+            "Framebuffer viewport comes in the next rendering step.");
+        ImGui::End();
+    }
+
+    void EditorLayer::DrawConsole()
+    {
+        ImGui::Begin("Console");
+        ImGui::Text("[Info] NoJobEngine editor started.");
+        ImGui::Text("[Info] OpenGL 4.6 renderer active.");
+        ImGui::Text("[Info] Scene/ECS active.");
+        ImGui::End();
     }
 }

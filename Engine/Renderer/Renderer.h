@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/glm.hpp>
 #include <memory>
 
 namespace NoJob
@@ -16,6 +17,7 @@ namespace NoJob
 
         static void Submit(
             const std::shared_ptr<VertexArray>& vertexArray,
-            const std::shared_ptr<Shader>& shader);
+            const std::shared_ptr<Shader>& shader,
+            const glm::mat4& transform = glm::mat4(1.0f));
     };
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(NoJobEngine VERSION 0.2.0 LANGUAGES C CXX)
+project(NoJobEngine VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,9 +41,10 @@ add_subdirectory(
 
 glad_add_library(NoJobGLAD STATIC REPRODUCIBLE API gl:core=4.6)
 
+# Dear ImGui docking branch.
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.92.5
+    GIT_TAG docking
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
 
@@ -64,6 +65,7 @@ target_link_libraries(NoJobImGui PUBLIC glfw)
 
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
+    Engine/Scene/Scene.cpp
 
     Engine/Renderer/Renderer.cpp
     Engine/Renderer/RendererAPI.cpp

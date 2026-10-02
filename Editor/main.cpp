@@ -3,6 +3,8 @@
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/VertexArray.h"
+#include "Engine/Scene/Components.h"
+#include "Engine/Scene/Scene.h"
 #include "Editor/EditorLayer.h"
 
 #include <cstdint>
@@ -15,13 +17,16 @@ int main()
 {
     try
     {
-        NoJob::Window window({"NoJobEngine", 1600, 900});
+        NoJob::Window window({ "NoJobEngine", 1600, 900 });
         NoJob::Renderer::Init();
 
-        NoJob::EditorLayer editor;
-        editor.Init(window.GetNativeWindow());
+        NoJob::Scene scene;
+        NoJob::Entity triangle = scene.CreateEntity("Triangle");
 
-        // Our first geometry: a triangle centered in clip space.
+        NoJob::EditorLayer editor;
+        editor.Init(window.GetNativeWindow(), &scene);
+        editor.SetSelectedEntity(triangle);
+
         const float vertices[] =
         {
             -0.55f, -0.45f, 0.0f,
@@ -31,11 +36,11 @@ int main()
 
         const std::uint32_t indices[] = { 0, 1, 2 };
 
-        auto vertexBuffer = NoJob::VertexBuffer::Create(
-            vertices, sizeof(vertices));
+        auto vertexBuffer =
+            NoJob::VertexBuffer::Create(vertices, sizeof(vertices));
 
-        auto indexBuffer = NoJob::IndexBuffer::Create(
-            indices, 3);
+        auto indexBuffer =
+            NoJob::IndexBuffer::Create(indices, 3);
 
         auto vertexArray = NoJob::VertexArray::Create();
         vertexArray->SetVertexBuffer(vertexBuffer);
@@ -46,9 +51,12 @@ int main()
 
             layout(location = 0) in vec3 a_Position;
 
+            uniform mat4 u_Transform;
+
             void main()
             {
-                gl_Position = vec4(a_Position, 1.0);
+                gl_Position =
+                    u_Transform * vec4(a_Position, 1.0);
             }
         )";
 
@@ -72,7 +80,14 @@ int main()
             window.PollEvents();
 
             NoJob::Renderer::BeginFrame();
-            NoJob::Renderer::Submit(vertexArray, shader);
+
+            const auto& transform =
+                triangle.GetComponent<NoJob::TransformComponent>();
+
+            NoJob::Renderer::Submit(
+                vertexArray,
+                shader,
+                transform.GetTransform());
 
             editor.BeginFrame();
             editor.Draw();
@@ -84,7 +99,6 @@ int main()
 
         editor.Shutdown();
 
-        // Release GPU resources while the OpenGL context still exists.
         shader.reset();
         vertexArray.reset();
         indexBuffer.reset();

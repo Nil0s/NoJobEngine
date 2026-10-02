@@ -27,9 +27,11 @@ namespace NoJob
 
     void Renderer::Submit(
         const std::shared_ptr<VertexArray>& vertexArray,
-        const std::shared_ptr<Shader>& shader)
+        const std::shared_ptr<Shader>& shader,
+        const glm::mat4& transform)
     {
         shader->Bind();
+        shader->SetMat4("u_Transform", transform);
         RenderCommand::DrawIndexed(*vertexArray);
     }
 }

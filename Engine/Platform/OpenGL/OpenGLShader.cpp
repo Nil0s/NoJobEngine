@@ -1,5 +1,6 @@
 #include "Engine/Platform/OpenGL/OpenGLShader.h"
 #include <glad/gl.h>
+#include <glm/gtc/type_ptr.hpp>
 #include <stdexcept>
 #include <string>
 
@@ -26,17 +27,9 @@ namespace NoJob
         if (linked != GL_TRUE)
         {
             GLint length = 0;
-            glGetProgramiv(
-                m_RendererID, GL_INFO_LOG_LENGTH, &length);
-
-            std::string message(
-                static_cast<std::size_t>(length), '\0');
-
-            glGetProgramInfoLog(
-                m_RendererID,
-                length,
-                nullptr,
-                message.data());
+            glGetProgramiv(m_RendererID, GL_INFO_LOG_LENGTH, &length);
+            std::string message(static_cast<std::size_t>(length), '\0');
+            glGetProgramInfoLog(m_RendererID, length, nullptr, message.data());
 
             glDeleteShader(vertexShader);
             glDeleteShader(fragmentShader);
@@ -68,6 +61,17 @@ namespace NoJob
         glUseProgram(0);
     }
 
+    void OpenGLShader::SetMat4(
+        const std::string& name,
+        const glm::mat4& value)
+    {
+        const GLint location =
+            glGetUniformLocation(m_RendererID, name.c_str());
+
+        glUniformMatrix4fv(
+            location, 1, GL_FALSE, glm::value_ptr(value));
+    }
+
     std::uint32_t OpenGLShader::CompileShader(
         std::uint32_t type,
         const std::string& source)
@@ -85,15 +89,8 @@ namespace NoJob
         {
             GLint length = 0;
             glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
-
-            std::string message(
-                static_cast<std::size_t>(length), '\0');
-
-            glGetShaderInfoLog(
-                shader,
-                length,
-                nullptr,
-                message.data());
+            std::string message(static_cast<std::size_t>(length), '\0');
+            glGetShaderInfoLog(shader, length, nullptr, message.data());
 
             glDeleteShader(shader);
 
