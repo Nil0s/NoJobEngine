@@ -4,6 +4,7 @@
 #include "Engine/Scene/Entity.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -26,6 +27,9 @@ namespace NoJob
             IDComponent ID;
             TagComponent Tag;
             TransformComponent Transform;
+
+            std::optional<MeshComponent> Mesh;
+            std::optional<MeshRendererComponent> MeshRenderer;
         };
 
         template<typename T>
@@ -39,6 +43,10 @@ namespace NoJob
                 return data.Tag;
             else if constexpr (std::is_same_v<T, TransformComponent>)
                 return data.Transform;
+            else if constexpr (std::is_same_v<T, MeshComponent>)
+                return data.Mesh.value();
+            else if constexpr (std::is_same_v<T, MeshRendererComponent>)
+                return data.MeshRenderer.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -54,14 +62,38 @@ namespace NoJob
                 return data.Tag;
             else if constexpr (std::is_same_v<T, TransformComponent>)
                 return data.Transform;
+            else if constexpr (std::is_same_v<T, MeshComponent>)
+                return data.Mesh.value();
+            else if constexpr (std::is_same_v<T, MeshRendererComponent>)
+                return data.MeshRenderer.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
 
         template<typename T, typename... Args>
-        T& AddComponent(std::uint32_t handle, Args&&...)
+        T& AddComponent(std::uint32_t handle, Args&&... args)
         {
-            return GetComponent<T>(handle);
+            auto& data = m_Entities.at(handle);
+
+            if constexpr (std::is_same_v<T, IDComponent>)
+                return data.ID;
+            else if constexpr (std::is_same_v<T, TagComponent>)
+                return data.Tag;
+            else if constexpr (std::is_same_v<T, TransformComponent>)
+                return data.Transform;
+            else if constexpr (std::is_same_v<T, MeshComponent>)
+            {
+                data.Mesh.emplace(T{ std::forward<Args>(args)... });
+                return data.Mesh.value();
+            }
+            else if constexpr (std::is_same_v<T, MeshRendererComponent>)
+            {
+                data.MeshRenderer.emplace(
+                    T{ std::forward<Args>(args)... });
+                return data.MeshRenderer.value();
+            }
+            else
+                static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
 
         template<typename T>
@@ -70,9 +102,20 @@ namespace NoJob
             if (!IsValid(handle))
                 return false;
 
-            return std::is_same_v<T, IDComponent>
+            const auto& data = m_Entities.at(handle);
+
+            if constexpr (std::is_same_v<T, IDComponent>
                 || std::is_same_v<T, TagComponent>
-                || std::is_same_v<T, TransformComponent>;
+                || std::is_same_v<T, TransformComponent>)
+            {
+                return true;
+            }
+            else if constexpr (std::is_same_v<T, MeshComponent>)
+                return data.Mesh.has_value();
+            else if constexpr (std::is_same_v<T, MeshRendererComponent>)
+                return data.MeshRenderer.has_value();
+            else
+                return false;
         }
 
         std::unordered_map<std::uint32_t, EntityData> m_Entities;

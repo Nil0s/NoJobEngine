@@ -4,10 +4,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace NoJob
 {
+    class Mesh;
+    class Material;
+
     struct IDComponent
     {
         std::uint64_t ID = 0;
@@ -27,13 +31,34 @@ namespace NoJob
         glm::mat4 GetTransform() const
         {
             const glm::mat4 rotation =
-                glm::rotate(glm::mat4(1.0f), Rotation.z, { 0.0f, 0.0f, 1.0f }) *
-                glm::rotate(glm::mat4(1.0f), Rotation.y, { 0.0f, 1.0f, 0.0f }) *
-                glm::rotate(glm::mat4(1.0f), Rotation.x, { 1.0f, 0.0f, 0.0f });
+                glm::rotate(
+                    glm::mat4(1.0f),
+                    Rotation.z,
+                    { 0.0f, 0.0f, 1.0f }) *
+                glm::rotate(
+                    glm::mat4(1.0f),
+                    Rotation.y,
+                    { 0.0f, 1.0f, 0.0f }) *
+                glm::rotate(
+                    glm::mat4(1.0f),
+                    Rotation.x,
+                    { 1.0f, 0.0f, 0.0f });
 
-            return glm::translate(glm::mat4(1.0f), Position)
+            return glm::translate(
+                       glm::mat4(1.0f), Position)
                 * rotation
-                * glm::scale(glm::mat4(1.0f), Scale);
+                * glm::scale(
+                    glm::mat4(1.0f), Scale);
         }
+    };
+
+    struct MeshComponent
+    {
+        std::shared_ptr<Mesh> MeshAsset;
+    };
+
+    struct MeshRendererComponent
+    {
+        std::shared_ptr<Material> MaterialAsset;
     };
 }

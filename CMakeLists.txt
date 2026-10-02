@@ -66,6 +66,7 @@ target_link_libraries(NoJobImGui PUBLIC glfw)
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
     Engine/Scene/Scene.cpp
+    Engine/Scene/SceneRenderer.cpp
 
     Engine/Renderer/Renderer.cpp
     Engine/Renderer/RendererAPI.cpp
@@ -74,6 +75,8 @@ add_library(NoJobEngine STATIC
     Engine/Renderer/VertexArray.cpp
     Engine/Renderer/Shader.cpp
     Engine/Renderer/Framebuffer.cpp
+    Engine/Renderer/Mesh.cpp
+    Engine/Renderer/Material.cpp
 
     Engine/Platform/OpenGL/OpenGLContext.cpp
     Engine/Platform/OpenGL/OpenGLRendererAPI.cpp

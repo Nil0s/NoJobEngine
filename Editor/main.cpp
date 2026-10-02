@@ -1,24 +1,26 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Framebuffer.h"
+#include "Engine/Renderer/Material.h"
+#include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/RenderCommand.h"
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/VertexArray.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/SceneRenderer.h"
 
 #include "Editor/EditorCamera.h"
 #include "Editor/EditorLayer.h"
 
 #include <GLFW/glfw3.h>
-#include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
 #include <cstdint>
-#include <iterator>
 #include <exception>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,8 +32,50 @@ int main()
         NoJob::Window window({ "NoJobEngine", 1600, 900 });
         NoJob::Renderer::Init();
 
+        const std::string vertexShaderSource = R"(
+            #version 460 core
+
+            layout(location = 0) in vec3 a_Position;
+
+            uniform mat4 u_Transform;
+            uniform mat4 u_ViewProjection;
+
+            void main()
+            {
+                gl_Position =
+                    u_ViewProjection *
+                    u_Transform *
+                    vec4(a_Position, 1.0);
+            }
+        )";
+
+        const std::string fragmentShaderSource = R"(
+            #version 460 core
+
+            layout(location = 0) out vec4 o_Color;
+            uniform vec4 u_Color;
+
+            void main()
+            {
+                o_Color = u_Color;
+            }
+        )";
+
+        auto shader = NoJob::Shader::Create(
+            vertexShaderSource,
+            fragmentShaderSource);
+
+        auto cubeMesh = NoJob::Mesh::CreateCube();
+
+        auto cubeMaterial = std::make_shared<NoJob::Material>(
+            shader,
+            glm::vec4(0.95f, 0.35f, 0.15f, 1.0f));
+
         NoJob::Scene scene;
-        NoJob::Entity triangle = scene.CreateEntity("Triangle");
+
+        NoJob::Entity cube = scene.CreateEntity("Cube");
+        cube.AddComponent<NoJob::MeshComponent>(cubeMesh);
+        cube.AddComponent<NoJob::MeshRendererComponent>(cubeMaterial);
 
         NoJob::FramebufferSpecification framebufferSpecification;
         framebufferSpecification.Width = 1280;
@@ -42,34 +86,13 @@ int main()
 
         NoJob::EditorLayer editor;
         editor.Init(window.GetNativeWindow(), &scene);
-        editor.SetSelectedEntity(triangle);
+        editor.SetSelectedEntity(cube);
         editor.SetViewportTexture(
             framebuffer->GetColorAttachmentRendererID());
 
         NoJob::EditorCamera editorCamera;
 
-        // Triangle geometry now sits in the X/Y plane at world origin.
-        const float triangleVertices[] =
-        {
-            -0.75f, -0.55f, 0.0f,
-             0.75f, -0.55f, 0.0f,
-             0.00f,  0.75f, 0.0f
-        };
-
-        const std::uint32_t triangleIndices[] = { 0, 1, 2 };
-
-        auto triangleVB =
-            NoJob::VertexBuffer::Create(
-                triangleVertices, sizeof(triangleVertices));
-
-        auto triangleIB =
-            NoJob::IndexBuffer::Create(triangleIndices, 3);
-
-        auto triangleVA = NoJob::VertexArray::Create();
-        triangleVA->SetVertexBuffer(triangleVB);
-        triangleVA->SetIndexBuffer(triangleIB);
-
-        // Simple 3D grid made from many thin indexed quads on the X/Z plane.
+        // Editor-only grid. It is not a Scene entity.
         std::vector<float> gridVertices;
         std::vector<std::uint32_t> gridIndices;
 
@@ -84,7 +107,7 @@ int main()
             const float length = std::sqrt(dx * dx + dz * dz);
 
             const float px = -dz / length * lineHalfWidth;
-            const float pz =  dx / length * lineHalfWidth;
+            const float pz = dx / length * lineHalfWidth;
 
             const float y = -1.0f;
 
@@ -121,12 +144,12 @@ int main()
                 static_cast<float>(i),
                 -static_cast<float>(gridHalfSize),
                 static_cast<float>(i),
-                 static_cast<float>(gridHalfSize));
+                static_cast<float>(gridHalfSize));
 
             addGridLine(
                 -static_cast<float>(gridHalfSize),
                 static_cast<float>(i),
-                 static_cast<float>(gridHalfSize),
+                static_cast<float>(gridHalfSize),
                 static_cast<float>(i));
         }
 
@@ -144,39 +167,6 @@ int main()
         auto gridVA = NoJob::VertexArray::Create();
         gridVA->SetVertexBuffer(gridVB);
         gridVA->SetIndexBuffer(gridIB);
-
-        const std::string vertexShaderSource = R"(
-            #version 460 core
-
-            layout(location = 0) in vec3 a_Position;
-
-            uniform mat4 u_Transform;
-            uniform mat4 u_ViewProjection;
-
-            void main()
-            {
-                gl_Position =
-                    u_ViewProjection *
-                    u_Transform *
-                    vec4(a_Position, 1.0);
-            }
-        )";
-
-        const std::string fragmentShaderSource = R"(
-            #version 460 core
-
-            layout(location = 0) out vec4 o_Color;
-            uniform vec4 u_Color;
-
-            void main()
-            {
-                o_Color = u_Color;
-            }
-        )";
-
-        auto shader = NoJob::Shader::Create(
-            vertexShaderSource,
-            fragmentShaderSource);
 
         double lastTime = glfwGetTime();
 
@@ -227,7 +217,6 @@ int main()
             const glm::mat4 viewProjection =
                 editorCamera.GetViewProjection();
 
-            // Ground grid.
             NoJob::Renderer::Submit(
                 gridVA,
                 shader,
@@ -235,16 +224,8 @@ int main()
                 viewProjection,
                 glm::vec4(0.28f, 0.30f, 0.34f, 1.0f));
 
-            // Scene entity.
-            const auto& transform =
-                triangle.GetComponent<NoJob::TransformComponent>();
-
-            NoJob::Renderer::Submit(
-                triangleVA,
-                shader,
-                transform.GetTransform(),
-                viewProjection,
-                glm::vec4(0.95f, 0.35f, 0.15f, 1.0f));
+            // SceneRenderer now discovers and draws renderable entities.
+            NoJob::SceneRenderer::Render(scene, viewProjection);
 
             framebuffer->Unbind();
 
@@ -263,15 +244,14 @@ int main()
         editor.Shutdown();
 
         framebuffer.reset();
-        shader.reset();
 
         gridVA.reset();
         gridIB.reset();
         gridVB.reset();
 
-        triangleVA.reset();
-        triangleIB.reset();
-        triangleVB.reset();
+        cubeMaterial.reset();
+        cubeMesh.reset();
+        shader.reset();
 
         NoJob::Renderer::Shutdown();
         return 0;

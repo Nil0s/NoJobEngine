@@ -1,6 +1,7 @@
 #include "Editor/EditorLayer.h"
 
 #include "Engine/Scene/Components.h"
+#include "Engine/Renderer/Material.h"
 #include "Engine/Scene/Scene.h"
 
 #include <imgui.h>
@@ -171,6 +172,28 @@ namespace NoJob
                     "Scale",
                     &transform.Scale.x,
                     0.01f);
+            }
+
+            if (m_SelectedEntity.HasComponent<MeshComponent>())
+            {
+                ImGui::Separator();
+                ImGui::Text("Mesh");
+                ImGui::TextDisabled("Primitive: Cube");
+            }
+
+            if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
+            {
+                ImGui::Separator();
+                ImGui::Text("Mesh Renderer");
+
+                auto& renderer =
+                    m_SelectedEntity.GetComponent<MeshRendererComponent>();
+
+                if (renderer.MaterialAsset)
+                {
+                    auto& color = renderer.MaterialAsset->GetColor();
+                    ImGui::ColorEdit4("Material Color", &color.x);
+                }
             }
 
             ImGui::Separator();
