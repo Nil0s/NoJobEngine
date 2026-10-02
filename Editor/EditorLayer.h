@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <glm/glm.hpp>
 
 struct GLFWwindow;
 
@@ -24,6 +25,10 @@ namespace NoJob
 
         void SetSelectedEntity(Entity entity);
         void SetViewportTexture(std::uint32_t textureID);
+
+        void SetEditorCameraMatrices(
+            const glm::mat4& view,
+            const glm::mat4& projection);
 
         void SetDefaultCubeAssets(
             std::shared_ptr<Mesh> mesh,
@@ -58,5 +63,9 @@ namespace NoJob
         float m_ViewportHeight = 720.0f;
         bool m_ViewportHovered = false;
         bool m_ViewportFocused = false;
+
+        glm::mat4 m_EditorView{ 1.0f };
+        glm::mat4 m_EditorProjection{ 1.0f };
+        int m_GizmoOperation = 0;
     };
 }

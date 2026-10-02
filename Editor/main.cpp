@@ -235,6 +235,10 @@ int main()
                 0.035f, 0.038f, 0.045f, 1.0f);
             NoJob::RenderCommand::Clear();
 
+            editor.SetEditorCameraMatrices(
+                editorCamera.GetViewMatrix(),
+                editorCamera.GetProjectionMatrix());
+
             editor.BeginFrame();
             editor.Draw();
             editor.EndFrame();

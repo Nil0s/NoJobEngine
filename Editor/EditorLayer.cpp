@@ -10,6 +10,8 @@
 #include <backends/imgui_impl_opengl3.h>
 
 #include <GLFW/glfw3.h>
+#include <ImGuizmo.h>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -47,6 +49,7 @@ namespace NoJob
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
 
         ImGui::DockSpaceOverViewport(
             0,
@@ -88,6 +91,14 @@ namespace NoJob
     void EditorLayer::SetViewportTexture(std::uint32_t textureID)
     {
         m_ViewportTextureID = textureID;
+    }
+
+    void EditorLayer::SetEditorCameraMatrices(
+        const glm::mat4& view,
+        const glm::mat4& projection)
+    {
+        m_EditorView = view;
+        m_EditorProjection = projection;
     }
 
     void EditorLayer::SetDefaultCubeAssets(
@@ -421,6 +432,9 @@ namespace NoJob
         m_ViewportHovered = ImGui::IsWindowHovered();
         m_ViewportFocused = ImGui::IsWindowFocused();
 
+        const ImVec2 viewportMin =
+            ImGui::GetCursorScreenPos();
+
         const ImVec2 available =
             ImGui::GetContentRegionAvail();
 
@@ -441,14 +455,122 @@ namespace NoJob
                     m_ViewportHeight),
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
-
-            ImGui::SetCursorPos(
-                ImVec2(12.0f, 32.0f));
-
-            ImGui::TextDisabled(
-                "RMB + mouse: look | WASD: move | "
-                "Q/E: down/up | Shift: faster");
         }
+
+        // W = Translate, E = Rotate, R = Scale.
+        // Only change tools while the viewport is active and the user
+        // isn't currently dragging the gizmo.
+        if (m_ViewportHovered && !ImGuizmo::IsUsing())
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_W))
+                m_GizmoOperation = 0;
+
+            if (ImGui::IsKeyPressed(ImGuiKey_E))
+                m_GizmoOperation = 1;
+
+            if (ImGui::IsKeyPressed(ImGuiKey_R))
+                m_GizmoOperation = 2;
+        }
+
+        if (m_SelectedEntity
+            && m_ViewportWidth > 1.0f
+            && m_ViewportHeight > 1.0f)
+        {
+            auto& transform =
+                m_SelectedEntity.GetComponent<TransformComponent>();
+
+            glm::mat4 transformMatrix =
+                transform.GetTransform();
+
+            ImGuizmo::SetOrthographic(false);
+            ImGuizmo::SetDrawlist();
+            ImGuizmo::SetRect(
+                viewportMin.x,
+                viewportMin.y,
+                m_ViewportWidth,
+                m_ViewportHeight);
+
+            ImGuizmo::OPERATION operation =
+                ImGuizmo::TRANSLATE;
+
+            if (m_GizmoOperation == 1)
+                operation = ImGuizmo::ROTATE;
+            else if (m_GizmoOperation == 2)
+                operation = ImGuizmo::SCALE;
+
+            const ImGuizmo::MODE mode =
+                operation == ImGuizmo::SCALE
+                    ? ImGuizmo::LOCAL
+                    : ImGuizmo::WORLD;
+
+            ImGuizmo::Manipulate(
+                glm::value_ptr(m_EditorView),
+                glm::value_ptr(m_EditorProjection),
+                operation,
+                mode,
+                glm::value_ptr(transformMatrix));
+
+            if (ImGuizmo::IsUsing())
+            {
+                float translation[3]{};
+                float rotationDegrees[3]{};
+                float scale[3]{};
+
+                ImGuizmo::DecomposeMatrixToComponents(
+                    glm::value_ptr(transformMatrix),
+                    translation,
+                    rotationDegrees,
+                    scale);
+
+                transform.Position =
+                {
+                    translation[0],
+                    translation[1],
+                    translation[2]
+                };
+
+                transform.Rotation =
+                    glm::radians(glm::vec3(
+                        rotationDegrees[0],
+                        rotationDegrees[1],
+                        rotationDegrees[2]));
+
+                transform.Scale =
+                {
+                    scale[0],
+                    scale[1],
+                    scale[2]
+                };
+            }
+        }
+
+        // Small toolbar over the scene.
+        ImGui::SetCursorScreenPos(
+            ImVec2(viewportMin.x + 10.0f, viewportMin.y + 10.0f));
+
+        ImGui::BeginGroup();
+
+        if (ImGui::Button("W Move"))
+            m_GizmoOperation = 0;
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("E Rotate"))
+            m_GizmoOperation = 1;
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("R Scale"))
+            m_GizmoOperation = 2;
+
+        ImGui::EndGroup();
+
+        ImGui::SetCursorScreenPos(
+            ImVec2(viewportMin.x + 10.0f, viewportMin.y + 42.0f));
+
+        ImGui::TextDisabled(
+            "RMB + mouse: camera | WASD: move | "
+            "Q/E: down/up | Shift: faster");
 
         ImGui::End();
         ImGui::PopStyleVar();

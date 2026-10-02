@@ -44,9 +44,18 @@ glad_add_library(NoJobGLAD STATIC REPRODUCIBLE API gl:core=4.6)
 # Dear ImGui docking branch.
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG docking
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
+
+FetchContent_Declare(imguizmo
+    GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE)
+
+FetchContent_GetProperties(imguizmo)
+if(NOT imguizmo_POPULATED)
+    FetchContent_Populate(imguizmo)
+endif()
 
 add_library(NoJobImGui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -55,11 +64,17 @@ add_library(NoJobImGui STATIC
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    ${imguizmo_SOURCE_DIR}/src/ImGuizmo.cpp)
 
-target_include_directories(NoJobImGui PUBLIC
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends)
+target_include_directories(NoJobImGui
+    PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+        ${imguizmo_SOURCE_DIR}/src
+)
+
+target_compile_definitions(NoJobImGui PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
 target_link_libraries(NoJobImGui PUBLIC glfw)
 
