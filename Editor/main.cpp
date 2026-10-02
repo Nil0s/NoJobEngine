@@ -1,5 +1,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Renderer/Buffer.h"
+#include "Engine/Renderer/Framebuffer.h"
+#include "Engine/Renderer/RenderCommand.h"
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/VertexArray.h"
@@ -23,9 +25,18 @@ int main()
         NoJob::Scene scene;
         NoJob::Entity triangle = scene.CreateEntity("Triangle");
 
+        NoJob::FramebufferSpecification framebufferSpecification;
+        framebufferSpecification.Width = 1280;
+        framebufferSpecification.Height = 720;
+
+        auto framebuffer =
+            NoJob::Framebuffer::Create(framebufferSpecification);
+
         NoJob::EditorLayer editor;
         editor.Init(window.GetNativeWindow(), &scene);
         editor.SetSelectedEntity(triangle);
+        editor.SetViewportTexture(
+            framebuffer->GetColorAttachmentRendererID());
 
         const float vertices[] =
         {
@@ -79,7 +90,32 @@ int main()
         {
             window.PollEvents();
 
-            NoJob::Renderer::BeginFrame();
+            const std::uint32_t viewportWidth =
+                editor.GetViewportWidth();
+
+            const std::uint32_t viewportHeight =
+                editor.GetViewportHeight();
+
+            const auto& currentSpec =
+                framebuffer->GetSpecification();
+
+            if (viewportWidth != currentSpec.Width
+                || viewportHeight != currentSpec.Height)
+            {
+                framebuffer->Resize(
+                    viewportWidth,
+                    viewportHeight);
+
+                editor.SetViewportTexture(
+                    framebuffer->GetColorAttachmentRendererID());
+            }
+
+            // Render the scene into the offscreen framebuffer.
+            framebuffer->Bind();
+
+            NoJob::RenderCommand::SetClearColor(
+                0.08f, 0.09f, 0.11f, 1.0f);
+            NoJob::RenderCommand::Clear();
 
             const auto& transform =
                 triangle.GetComponent<NoJob::TransformComponent>();
@@ -89,16 +125,24 @@ int main()
                 shader,
                 transform.GetTransform());
 
+            framebuffer->Unbind();
+
+            // Clear the main application window, then draw ImGui.
+            NoJob::RenderCommand::SetViewport(0, 0, 1600, 900);
+            NoJob::RenderCommand::SetClearColor(
+                0.035f, 0.038f, 0.045f, 1.0f);
+            NoJob::RenderCommand::Clear();
+
             editor.BeginFrame();
             editor.Draw();
             editor.EndFrame();
 
-            NoJob::Renderer::EndFrame();
             window.SwapBuffers();
         }
 
         editor.Shutdown();
 
+        framebuffer.reset();
         shader.reset();
         vertexArray.reset();
         indexBuffer.reset();

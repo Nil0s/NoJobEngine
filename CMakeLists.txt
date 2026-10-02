@@ -73,12 +73,14 @@ add_library(NoJobEngine STATIC
     Engine/Renderer/Buffer.cpp
     Engine/Renderer/VertexArray.cpp
     Engine/Renderer/Shader.cpp
+    Engine/Renderer/Framebuffer.cpp
 
     Engine/Platform/OpenGL/OpenGLContext.cpp
     Engine/Platform/OpenGL/OpenGLRendererAPI.cpp
     Engine/Platform/OpenGL/OpenGLBuffer.cpp
     Engine/Platform/OpenGL/OpenGLVertexArray.cpp
     Engine/Platform/OpenGL/OpenGLShader.cpp
+    Engine/Platform/OpenGL/OpenGLFramebuffer.cpp
 )
 
 target_include_directories(NoJobEngine PUBLIC

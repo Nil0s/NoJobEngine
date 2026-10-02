@@ -9,6 +9,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
+#include <cstdint>
+
 namespace NoJob
 {
     void EditorLayer::Init(GLFWwindow* window, Scene* scene)
@@ -65,6 +68,23 @@ namespace NoJob
     void EditorLayer::SetSelectedEntity(Entity entity)
     {
         m_SelectedEntity = entity;
+    }
+
+    void EditorLayer::SetViewportTexture(std::uint32_t textureID)
+    {
+        m_ViewportTextureID = textureID;
+    }
+
+    std::uint32_t EditorLayer::GetViewportWidth() const
+    {
+        return static_cast<std::uint32_t>(
+            std::max(1.0f, m_ViewportWidth));
+    }
+
+    std::uint32_t EditorLayer::GetViewportHeight() const
+    {
+        return static_cast<std::uint32_t>(
+            std::max(1.0f, m_ViewportHeight));
     }
 
     void EditorLayer::DrawMainMenu()
@@ -158,12 +178,14 @@ namespace NoJob
             const auto id =
                 m_SelectedEntity.GetComponent<IDComponent>().ID;
 
-            ImGui::Text("Entity ID: %llu",
+            ImGui::Text(
+                "Entity ID: %llu",
                 static_cast<unsigned long long>(id));
         }
         else
         {
-            ImGui::TextDisabled("Select an entity in Hierarchy.");
+            ImGui::TextDisabled(
+                "Select an entity in Hierarchy.");
         }
 
         ImGui::End();
@@ -171,12 +193,26 @@ namespace NoJob
 
     void EditorLayer::DrawViewport()
     {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("Viewport");
-        ImGui::TextDisabled(
-            "Scene rendering is currently shown behind the editor.");
-        ImGui::TextDisabled(
-            "Framebuffer viewport comes in the next rendering step.");
+
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+
+        m_ViewportWidth = std::max(1.0f, available.x);
+        m_ViewportHeight = std::max(1.0f, available.y);
+
+        if (m_ViewportTextureID != 0)
+        {
+            ImGui::Image(
+                static_cast<ImTextureID>(
+                    static_cast<intptr_t>(m_ViewportTextureID)),
+                ImVec2(m_ViewportWidth, m_ViewportHeight),
+                ImVec2(0.0f, 1.0f),
+                ImVec2(1.0f, 0.0f));
+        }
+
         ImGui::End();
+        ImGui::PopStyleVar();
     }
 
     void EditorLayer::DrawConsole()
@@ -184,7 +220,7 @@ namespace NoJob
         ImGui::Begin("Console");
         ImGui::Text("[Info] NoJobEngine editor started.");
         ImGui::Text("[Info] OpenGL 4.6 renderer active.");
-        ImGui::Text("[Info] Scene/ECS active.");
+        ImGui::Text("[Info] Scene rendered to editor framebuffer.");
         ImGui::End();
     }
 }

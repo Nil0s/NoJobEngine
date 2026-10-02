@@ -1,6 +1,8 @@
 #pragma once
 #include "Engine/Scene/Entity.h"
 
+#include <cstdint>
+
 struct GLFWwindow;
 
 namespace NoJob
@@ -18,6 +20,10 @@ namespace NoJob
         void EndFrame();
 
         void SetSelectedEntity(Entity entity);
+        void SetViewportTexture(std::uint32_t textureID);
+
+        std::uint32_t GetViewportWidth() const;
+        std::uint32_t GetViewportHeight() const;
 
     private:
         void DrawMainMenu();
@@ -28,5 +34,9 @@ namespace NoJob
 
         Scene* m_Scene = nullptr;
         Entity m_SelectedEntity;
+
+        std::uint32_t m_ViewportTextureID = 0;
+        float m_ViewportWidth = 1280.0f;
+        float m_ViewportHeight = 720.0f;
     };
 }
