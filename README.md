@@ -1,20 +1,23 @@
 # NoJobEngine
 
-A C++20 game engine project built incrementally with OpenGL, Vulkan and Dear ImGui.
+Base limpia para Visual Studio 2026.
 
-## Current milestone: v0.1
-- C++20 / CMake
-- GLFW window
-- OpenGL 4.6 context through GLAD
-- Basic renderer layer
-- Dear ImGui editor window
-- Vulkan directory reserved for the future backend
+## Stack
+- C++20
+- CMake
+- GLFW
+- GLAD 2
+- OpenGL 4.6 Core
+- GLM
+- Dear ImGui
+- Vulkan: preparado para una fase posterior
 
-## Visual Studio
-1. Install Visual Studio 2022 with **Desktop development with C++**.
-2. Ensure **CMake tools for Windows** and Git are installed.
-3. Open Visual Studio -> **Open a local folder** -> select `NoJobEngine`.
-4. Let CMake configure and FetchContent download the dependencies.
-5. Select `NoJobEditor.exe` as the startup target and run it.
+## Abrir
+1. Comprueba `git --version`.
+2. Visual Studio 2026 > File > Open > Folder.
+3. Abre la carpeta que contiene `CMakeLists.txt`.
+4. Espera a que CMake descargue y configure las dependencias.
+5. Selecciona `NoJobEditor.exe`.
+6. Ejecuta con F5.
 
-The first launch requires internet access so CMake can fetch the dependencies.
+Si vienes de la versión anterior, NO copies su carpeta `out`.
