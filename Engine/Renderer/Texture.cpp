@@ -8,4 +8,10 @@ namespace NoJob
     {
         return std::make_shared<OpenGLTexture2D>(width, height);
     }
+
+    std::shared_ptr<Texture2D> Texture2D::Create(
+        const std::string& path)
+    {
+        return std::make_shared<OpenGLTexture2D>(path);
+    }
 }

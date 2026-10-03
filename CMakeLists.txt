@@ -42,6 +42,13 @@ add_subdirectory(
 glad_add_library(NoJobGLAD STATIC REPRODUCIBLE API gl:core=4.6)
 
 # Dear ImGui docking branch.
+
+FetchContent_Declare(stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(stb)
+
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG v1.92.5-docking
@@ -94,6 +101,7 @@ add_library(NoJobEngine STATIC
     Engine/Renderer/Mesh.cpp
     Engine/Renderer/Material.cpp
     Engine/Renderer/Texture.cpp
+    Engine/Renderer/StbImage.cpp
 
     Engine/Platform/OpenGL/OpenGLContext.cpp
     Engine/Platform/OpenGL/OpenGLRendererAPI.cpp
@@ -104,8 +112,11 @@ add_library(NoJobEngine STATIC
     Engine/Platform/OpenGL/OpenGLTexture.cpp
 )
 
-target_include_directories(NoJobEngine PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(NoJobEngine
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE
+        ${stb_SOURCE_DIR})
 
 target_compile_definitions(NoJobEngine PUBLIC
     GLFW_INCLUDE_NONE)

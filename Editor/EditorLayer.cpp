@@ -18,9 +18,45 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <filesystem>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#include <commdlg.h>
+#endif
 
 namespace NoJob
 {
+    namespace
+    {
+        std::string OpenTextureFileDialog()
+        {
+#ifdef _WIN32
+            char fileName[MAX_PATH]{};
+
+            OPENFILENAMEA dialog{};
+            dialog.lStructSize = sizeof(dialog);
+            dialog.lpstrFile = fileName;
+            dialog.nMaxFile = MAX_PATH;
+            dialog.lpstrFilter =
+                "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0"
+                "PNG Files\0*.png\0"
+                "JPEG Files\0*.jpg;*.jpeg\0"
+                "All Files\0*.*\0";
+            dialog.nFilterIndex = 1;
+            dialog.Flags =
+                OFN_PATHMUSTEXIST |
+                OFN_FILEMUSTEXIST |
+                OFN_NOCHANGEDIR;
+
+            if (GetOpenFileNameA(&dialog) == TRUE)
+                return fileName;
+#endif
+            return {};
+        }
+    }
+
     void EditorLayer::Init(GLFWwindow* window, Scene* scene)
     {
         m_Scene = scene;
@@ -415,17 +451,58 @@ namespace NoJob
                             "Use Texture",
                             &renderer.MaterialAsset->UseTexture());
 
+                        if (ImGui::Button("Select Texture..."))
+                        {
+                            const std::string path =
+                                OpenTextureFileDialog();
+
+                            if (!path.empty())
+                            {
+                                try
+                                {
+                                    renderer.MaterialAsset->SetTexture(
+                                        Texture2D::Create(path));
+                                    renderer.MaterialAsset->UseTexture() = true;
+                                }
+                                catch (const std::exception& exception)
+                                {
+                                    // Keep the previous texture if loading fails.
+                                    // A proper editor notification system comes later.
+                                    (void)exception;
+                                }
+                            }
+                        }
+
+                        ImGui::SameLine();
+
+                        if (ImGui::Button("Checkerboard"))
+                        {
+                            renderer.MaterialAsset->SetTexture(
+                                Texture2D::CreateCheckerboard());
+                            renderer.MaterialAsset->UseTexture() = true;
+                        }
+
                         if (renderer.MaterialAsset->GetTexture())
                         {
+                            const auto& texture =
+                                renderer.MaterialAsset->GetTexture();
+
+                            const std::filesystem::path texturePath(
+                                texture->GetPath());
+
+                            const std::string displayName =
+                                texture->GetPath() == "Checkerboard"
+                                    ? std::string("Checkerboard")
+                                    : texturePath.filename().string();
+
                             ImGui::TextDisabled(
-                                "Texture: Checkerboard");
+                                "Texture: %s",
+                                displayName.c_str());
 
                             ImGui::Image(
                                 static_cast<ImTextureID>(
                                     static_cast<intptr_t>(
-                                        renderer.MaterialAsset
-                                            ->GetTexture()
-                                            ->GetRendererID())),
+                                        texture->GetRendererID())),
                                 ImVec2(96.0f, 96.0f));
                         }
                     }
