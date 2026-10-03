@@ -21,5 +21,13 @@ namespace NoJob
             const glm::mat4& transform = glm::mat4(1.0f),
             const glm::mat4& viewProjection = glm::mat4(1.0f),
             const glm::vec4& color = glm::vec4(1.0f));
+
+    static void Submit(
+        const std::shared_ptr<VertexArray>& vertexArray,
+        const std::shared_ptr<Shader>& shader,
+        const glm::mat4& transform,
+        const glm::mat4& viewProjection,
+        const glm::vec4& color,
+        int useTexture);
     };
 }

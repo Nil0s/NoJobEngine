@@ -2,6 +2,7 @@
 #include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Framebuffer.h"
 #include "Engine/Renderer/Material.h"
+#include "Engine/Renderer/Texture.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/RenderCommand.h"
 #include "Engine/Renderer/Renderer.h"
@@ -36,9 +37,14 @@ int main()
             #version 460 core
 
             layout(location = 0) in vec3 a_Position;
+            layout(location = 1) in vec3 a_Normal;
+            layout(location = 2) in vec2 a_TexCoord;
 
             uniform mat4 u_Transform;
             uniform mat4 u_ViewProjection;
+
+            out vec3 v_Normal;
+            out vec2 v_TexCoord;
 
             void main()
             {
@@ -46,6 +52,10 @@ int main()
                     u_ViewProjection *
                     u_Transform *
                     vec4(a_Position, 1.0);
+
+                v_Normal =
+                    mat3(transpose(inverse(u_Transform))) * a_Normal;
+                v_TexCoord = a_TexCoord;
             }
         )";
 
@@ -53,11 +63,32 @@ int main()
             #version 460 core
 
             layout(location = 0) out vec4 o_Color;
+
+            in vec3 v_Normal;
+            in vec2 v_TexCoord;
+
             uniform vec4 u_Color;
+            uniform sampler2D u_Texture;
+            uniform int u_UseTexture;
 
             void main()
             {
-                o_Color = u_Color;
+                vec4 baseColor = u_Color;
+
+                if (u_UseTexture == 1)
+                    baseColor *= texture(u_Texture, v_TexCoord);
+
+                vec3 normal = normalize(v_Normal);
+                vec3 lightDirection =
+                    normalize(vec3(0.45, 0.80, 0.35));
+
+                float diffuse =
+                    max(dot(normal, lightDirection), 0.0);
+
+                float lighting = 0.25 + diffuse * 0.75;
+
+                o_Color =
+                    vec4(baseColor.rgb * lighting, baseColor.a);
             }
         )";
 
@@ -70,6 +101,9 @@ int main()
         auto cubeMaterial = std::make_shared<NoJob::Material>(
             shader,
             glm::vec4(0.95f, 0.35f, 0.15f, 1.0f));
+        auto checkerTexture =
+            NoJob::Texture2D::CreateCheckerboard();
+        cubeMaterial->SetTexture(checkerTexture);
 
         NoJob::Scene scene;
 

@@ -29,7 +29,9 @@ namespace NoJob
             float r, float g, float b, float a) = 0;
 
         virtual void Clear() = 0;
-        virtual void DrawIndexed(const VertexArray& vertexArray) = 0;
+
+        virtual void DrawIndexed(
+            const VertexArray& vertexArray) = 0;
 
         static GraphicsAPI GetAPI() { return s_API; }
 

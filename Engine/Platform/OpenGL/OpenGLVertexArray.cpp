@@ -1,6 +1,9 @@
 #include "Engine/Platform/OpenGL/OpenGLVertexArray.h"
+
 #include "Engine/Renderer/Buffer.h"
+
 #include <glad/gl.h>
+#include <cstdint>
 
 namespace NoJob
 {
@@ -27,28 +30,47 @@ namespace NoJob
     void OpenGLVertexArray::SetVertexBuffer(
         const std::shared_ptr<VertexBuffer>& vertexBuffer)
     {
+        // Position-only layout retained for the editor grid.
+        SetVertexBuffer(
+            vertexBuffer,
+            BufferLayout{
+                { ShaderDataType::Float3, "a_Position" }
+            });
+    }
+
+    void OpenGLVertexArray::SetVertexBuffer(
+        const std::shared_ptr<VertexBuffer>& vertexBuffer,
+        const BufferLayout& layout)
+    {
         m_VertexBuffer = vertexBuffer;
 
         Bind();
-        m_VertexBuffer->Bind();
+        vertexBuffer->Bind();
 
-        // Step 2 layout: location 0 = vec3 position.
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(
-            0,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            3 * sizeof(float),
-            nullptr);
+        std::uint32_t index = 0;
+
+        for (const BufferElement& element : layout.GetElements())
+        {
+            glEnableVertexAttribArray(index);
+
+            glVertexAttribPointer(
+                index,
+                static_cast<GLint>(element.GetComponentCount()),
+                GL_FLOAT,
+                element.Normalized ? GL_TRUE : GL_FALSE,
+                static_cast<GLsizei>(layout.GetStride()),
+                reinterpret_cast<const void*>(
+                    static_cast<std::uintptr_t>(element.Offset)));
+
+            ++index;
+        }
     }
 
     void OpenGLVertexArray::SetIndexBuffer(
         const std::shared_ptr<IndexBuffer>& indexBuffer)
     {
-        m_IndexBuffer = indexBuffer;
-
         Bind();
-        m_IndexBuffer->Bind();
+        indexBuffer->Bind();
+        m_IndexBuffer = indexBuffer;
     }
 }

@@ -2,6 +2,7 @@
 
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/Texture.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
 
@@ -149,6 +150,11 @@ namespace NoJob
                 m_DefaultCubeMaterial->GetShader(),
                 m_DefaultCubeMaterial->GetColor());
 
+            material->SetTexture(
+                m_DefaultCubeMaterial->GetTexture());
+            material->UseTexture() =
+                m_DefaultCubeMaterial->UseTexture();
+
             entity.AddComponent<MeshRendererComponent>(material);
         }
 
@@ -195,6 +201,11 @@ namespace NoJob
                 auto material = std::make_shared<Material>(
                     sourceRenderer.MaterialAsset->GetShader(),
                     sourceRenderer.MaterialAsset->GetColor());
+
+                material->SetTexture(
+                    sourceRenderer.MaterialAsset->GetTexture());
+                material->UseTexture() =
+                    sourceRenderer.MaterialAsset->UseTexture();
 
                 copy.AddComponent<MeshRendererComponent>(material);
             }
@@ -399,6 +410,24 @@ namespace NoJob
                         ImGui::ColorEdit4(
                             "Material Color",
                             &color.x);
+
+                        ImGui::Checkbox(
+                            "Use Texture",
+                            &renderer.MaterialAsset->UseTexture());
+
+                        if (renderer.MaterialAsset->GetTexture())
+                        {
+                            ImGui::TextDisabled(
+                                "Texture: Checkerboard");
+
+                            ImGui::Image(
+                                static_cast<ImTextureID>(
+                                    static_cast<intptr_t>(
+                                        renderer.MaterialAsset
+                                            ->GetTexture()
+                                            ->GetRendererID())),
+                                ImVec2(96.0f, 96.0f));
+                        }
                     }
                 }
             }

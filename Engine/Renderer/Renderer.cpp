@@ -32,10 +32,29 @@ namespace NoJob
         const glm::mat4& viewProjection,
         const glm::vec4& color)
     {
+        Submit(
+            vertexArray,
+            shader,
+            transform,
+            viewProjection,
+            color,
+            0);
+    }
+
+    void Renderer::Submit(
+        const std::shared_ptr<VertexArray>& vertexArray,
+        const std::shared_ptr<Shader>& shader,
+        const glm::mat4& transform,
+        const glm::mat4& viewProjection,
+        const glm::vec4& color,
+        int useTexture)
+    {
         shader->Bind();
         shader->SetMat4("u_Transform", transform);
         shader->SetMat4("u_ViewProjection", viewProjection);
         shader->SetFloat4("u_Color", color);
+        shader->SetInt("u_Texture", 0);
+        shader->SetInt("u_UseTexture", useTexture);
         RenderCommand::DrawIndexed(*vertexArray);
     }
 }

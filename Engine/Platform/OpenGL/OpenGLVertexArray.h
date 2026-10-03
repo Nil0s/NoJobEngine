@@ -1,9 +1,15 @@
 #pragma once
+
 #include "Engine/Renderer/VertexArray.h"
+
 #include <cstdint>
+#include <memory>
 
 namespace NoJob
 {
+    class VertexBuffer;
+    class IndexBuffer;
+
     class OpenGLVertexArray final : public VertexArray
     {
     public:
@@ -16,10 +22,15 @@ namespace NoJob
         void SetVertexBuffer(
             const std::shared_ptr<VertexBuffer>& vertexBuffer) override;
 
+        void SetVertexBuffer(
+            const std::shared_ptr<VertexBuffer>& vertexBuffer,
+            const BufferLayout& layout) override;
+
         void SetIndexBuffer(
             const std::shared_ptr<IndexBuffer>& indexBuffer) override;
 
-        const std::shared_ptr<IndexBuffer>& GetIndexBuffer() const override
+        const std::shared_ptr<IndexBuffer>&
+            GetIndexBuffer() const override
         {
             return m_IndexBuffer;
         }

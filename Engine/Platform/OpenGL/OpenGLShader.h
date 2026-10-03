@@ -19,6 +19,10 @@ namespace NoJob
             const std::string& name,
             const glm::mat4& value) override;
 
+        void SetInt(
+            const std::string& name,
+            int value) override;
+
         void SetFloat4(
             const std::string& name,
             const glm::vec4& value) override;

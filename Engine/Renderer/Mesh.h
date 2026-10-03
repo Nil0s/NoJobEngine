@@ -1,8 +1,8 @@
 #pragma once
-
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace NoJob
 {
@@ -12,15 +12,16 @@ namespace NoJob
 
     struct MeshVertex
     {
-        float Position[3];
+        glm::vec3 Position{ 0.0f };
+        glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
+        glm::vec2 TexCoord{ 0.0f };
     };
 
     class Mesh
     {
     public:
-        Mesh(
-            const std::vector<MeshVertex>& vertices,
-            const std::vector<std::uint32_t>& indices);
+        Mesh(const std::vector<MeshVertex>& vertices,
+             const std::vector<std::uint32_t>& indices);
 
         const std::shared_ptr<VertexArray>& GetVertexArray() const
         {
