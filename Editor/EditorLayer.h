@@ -1,6 +1,7 @@
 #pragma once
 #include "Engine/Scene/Entity.h"
 
+#include <filesystem>
 #include <cstdint>
 #include <memory>
 #include <glm/glm.hpp>
@@ -46,6 +47,7 @@ namespace NoJob
         void DrawInspector();
         void DrawViewport();
         void DrawConsole();
+        void DrawProjectPanel();
 
         Entity CreateEmptyEntity();
         Entity CreateCubeEntity();
@@ -67,5 +69,7 @@ namespace NoJob
         glm::mat4 m_EditorView{ 1.0f };
         glm::mat4 m_EditorProjection{ 1.0f };
         int m_GizmoOperation = 0;
+
+        std::filesystem::path m_ProjectDirectory;
     };
 }

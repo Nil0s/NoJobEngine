@@ -1,5 +1,6 @@
 #include "Editor/EditorLayer.h"
 
+#include "Engine/Asset/AssetManager.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/Texture.h"
@@ -61,6 +62,9 @@ namespace NoJob
     {
         m_Scene = scene;
 
+        AssetManager::Init(std::filesystem::current_path());
+        m_ProjectDirectory = AssetManager::GetAssetsDirectory();
+
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
@@ -101,6 +105,7 @@ namespace NoJob
         DrawViewport();
         DrawInspector();
         DrawConsole();
+        DrawProjectPanel();
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
             DeleteSelectedEntity();
@@ -460,8 +465,12 @@ namespace NoJob
                             {
                                 try
                                 {
+                                    const auto importedPath =
+                                        AssetManager::ImportTexture(path);
+
                                     renderer.MaterialAsset->SetTexture(
-                                        Texture2D::Create(path));
+                                        AssetManager::LoadTexture(importedPath));
+
                                     renderer.MaterialAsset->UseTexture() = true;
                                 }
                                 catch (const std::exception& exception)
@@ -480,6 +489,31 @@ namespace NoJob
                             renderer.MaterialAsset->SetTexture(
                                 Texture2D::CreateCheckerboard());
                             renderer.MaterialAsset->UseTexture() = true;
+                        }
+
+                        if (ImGui::BeginDragDropTarget())
+                        {
+                            if (const ImGuiPayload* payload =
+                                    ImGui::AcceptDragDropPayload(
+                                        "NOJOB_TEXTURE_ASSET"))
+                            {
+                                const char* relativePath =
+                                    static_cast<const char*>(payload->Data);
+
+                                try
+                                {
+                                    renderer.MaterialAsset->SetTexture(
+                                        AssetManager::LoadTexture(
+                                            relativePath));
+
+                                    renderer.MaterialAsset->UseTexture() = true;
+                                }
+                                catch (const std::exception&)
+                                {
+                                }
+                            }
+
+                            ImGui::EndDragDropTarget();
                         }
 
                         if (renderer.MaterialAsset->GetTexture())
@@ -691,4 +725,103 @@ namespace NoJob
             "[Info] Right click Hierarchy to create objects.");
         ImGui::End();
     }
+    void EditorLayer::DrawProjectPanel()
+    {
+        ImGui::Begin("Project");
+
+        if (m_ProjectDirectory.empty())
+            m_ProjectDirectory = AssetManager::GetAssetsDirectory();
+
+        const auto assetsRoot =
+            AssetManager::GetAssetsDirectory();
+
+        if (m_ProjectDirectory != assetsRoot)
+        {
+            if (ImGui::Button("< Back"))
+                m_ProjectDirectory =
+                    m_ProjectDirectory.parent_path();
+
+            ImGui::SameLine();
+        }
+
+        ImGui::TextDisabled(
+            "%s",
+            m_ProjectDirectory.lexically_relative(
+                AssetManager::GetProjectRoot()).generic_string().c_str());
+
+        ImGui::Separator();
+
+        std::error_code error;
+        if (std::filesystem::exists(m_ProjectDirectory, error))
+        {
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(
+                     m_ProjectDirectory,
+                     std::filesystem::directory_options::skip_permission_denied,
+                     error))
+            {
+                const auto path = entry.path();
+                const std::string name =
+                    path.filename().string();
+
+                ImGui::PushID(path.string().c_str());
+
+                if (entry.is_directory())
+                {
+                    if (ImGui::Selectable(
+                            ("[Folder] " + name).c_str(),
+                            false,
+                            ImGuiSelectableFlags_AllowDoubleClick))
+                    {
+                        if (ImGui::IsMouseDoubleClicked(
+                                ImGuiMouseButton_Left))
+                        {
+                            m_ProjectDirectory = path;
+                        }
+                    }
+                }
+                else
+                {
+                    const std::string extension =
+                        path.extension().string();
+
+                    const bool isTexture =
+                        extension == ".png"
+                        || extension == ".jpg"
+                        || extension == ".jpeg"
+                        || extension == ".bmp"
+                        || extension == ".tga";
+
+                    if (isTexture)
+                    {
+                        ImGui::Selectable(name.c_str());
+
+                        if (ImGui::BeginDragDropSource())
+                        {
+                            const std::string relative =
+                                AssetManager::ToProjectRelative(path)
+                                    .generic_string();
+
+                            ImGui::SetDragDropPayload(
+                                "NOJOB_TEXTURE_ASSET",
+                                relative.c_str(),
+                                relative.size() + 1);
+
+                            ImGui::Text("Texture: %s", name.c_str());
+                            ImGui::EndDragDropSource();
+                        }
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("%s", name.c_str());
+                    }
+                }
+
+                ImGui::PopID();
+            }
+        }
+
+        ImGui::End();
+    }
+
 }

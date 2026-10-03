@@ -88,6 +88,7 @@ target_link_libraries(NoJobImGui PUBLIC glfw)
 
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
+    Engine/Asset/AssetManager.cpp
     Engine/Scene/Scene.cpp
     Engine/Scene/SceneRenderer.cpp
 
