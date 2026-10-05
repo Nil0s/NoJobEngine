@@ -34,6 +34,7 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <commdlg.h>
+#include <cctype>
 #endif
 
 namespace NoJob
@@ -1432,8 +1433,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<NativeScriptComponent>();
                 }
             }
-            else if (ImGui::Button("Add Rotator Script"))
-                m_SelectedEntity.AddComponent<NativeScriptComponent>();
+
 
             ImGui::Separator();
             if (m_SelectedEntity.HasComponent<RigidbodyComponent>())
@@ -1479,10 +1479,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<RigidbodyComponent>();
                 }
             }
-            else if (ImGui::Button("Add Rigidbody"))
-            {
-                m_SelectedEntity.AddComponent<RigidbodyComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<BoxColliderComponent>())
             {
@@ -1500,12 +1497,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<BoxColliderComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
-                     !m_SelectedEntity.HasComponent<CapsuleColliderComponent>() &&
-                     ImGui::Button("Add Box Collider"))
-            {
-                m_SelectedEntity.AddComponent<BoxColliderComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<SphereColliderComponent>())
             {
@@ -1523,12 +1515,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<SphereColliderComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
-                     !m_SelectedEntity.HasComponent<CapsuleColliderComponent>() &&
-                     ImGui::Button("Add Sphere Collider"))
-            {
-                m_SelectedEntity.AddComponent<SphereColliderComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<CapsuleColliderComponent>())
             {
@@ -1548,12 +1535,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<CapsuleColliderComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
-                     !m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
-                     ImGui::Button("Add Capsule Collider"))
-            {
-                m_SelectedEntity.AddComponent<CapsuleColliderComponent>();
-            }
+
 
             ImGui::Separator();
 
@@ -1622,13 +1604,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<CameraComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
-                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
-                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
-                     ImGui::Button("Add Camera"))
-            {
-                m_SelectedEntity.AddComponent<CameraComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<DirectionalLightComponent>())
             {
@@ -1648,13 +1624,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
-                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
-                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
-                     ImGui::Button("Add Directional Light"))
-            {
-                m_SelectedEntity.AddComponent<DirectionalLightComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<PointLightComponent>())
             {
@@ -1677,13 +1647,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<PointLightComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
-                     !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
-                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
-                     ImGui::Button("Add Point Light"))
-            {
-                m_SelectedEntity.AddComponent<PointLightComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<SpotLightComponent>())
             {
@@ -1714,13 +1678,7 @@ return{};}
                         m_SelectedEntity.RemoveComponent<SpotLightComponent>();
                 }
             }
-            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
-                     !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
-                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
-                     ImGui::Button("Add Spot Light"))
-            {
-                m_SelectedEntity.AddComponent<SpotLightComponent>();
-            }
+
 
             if (m_SelectedEntity.HasComponent<AnimatorComponent>())
             {
@@ -1748,6 +1706,87 @@ return{};}
                     }
                     else ImGui::TextDisabled("No animation asset loaded.");
                 }
+            }
+
+            ImGui::Separator();
+            ImGui::Spacing();
+            const float addWidth = std::min(260.0f, ImGui::GetContentRegionAvail().x);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
+                std::max(0.0f, (ImGui::GetContentRegionAvail().x - addWidth) * 0.5f));
+            if (ImGui::Button("Add Component", ImVec2(addWidth, 0.0f)))
+                ImGui::OpenPopup("AddComponentPopup");
+
+            if (ImGui::BeginPopup("AddComponentPopup"))
+            {
+                static char componentSearch[96]{};
+                ImGui::SetNextItemWidth(300.0f);
+                ImGui::InputTextWithHint("##ComponentSearch", "Search components...",
+                    componentSearch, sizeof(componentSearch));
+                ImGui::Separator();
+
+                std::string filter = componentSearch;
+                std::transform(filter.begin(), filter.end(), filter.begin(),
+                    [](unsigned char c){ return (char)std::tolower(c); });
+                auto visible = [&](const char* name)
+                {
+                    if(filter.empty()) return true;
+                    std::string n=name;
+                    std::transform(n.begin(), n.end(), n.begin(),
+                        [](unsigned char c){ return (char)std::tolower(c); });
+                    return n.find(filter) != std::string::npos;
+                };
+                auto addItem = [&](const char* category, const char* name, bool enabled, auto add)
+                {
+                    if(!visible(name)) return;
+                    ImGui::TextDisabled("%s", category);
+                    ImGui::SameLine(95.0f);
+                    if(!enabled) ImGui::BeginDisabled();
+                    if(ImGui::Selectable(name, false, enabled ? 0 : ImGuiSelectableFlags_Disabled))
+                    {
+                        CaptureUndoSnapshot();
+                        add();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if(!enabled) ImGui::EndDisabled();
+                };
+
+                addItem("Physics", "Rigidbody",
+                    !m_SelectedEntity.HasComponent<RigidbodyComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<RigidbodyComponent>(); });
+
+                const bool noCollider =
+                    !m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
+                    !m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
+                    !m_SelectedEntity.HasComponent<CapsuleColliderComponent>();
+                addItem("Physics", "Box Collider", noCollider,
+                    [&]{ m_SelectedEntity.AddComponent<BoxColliderComponent>(); });
+                addItem("Physics", "Sphere Collider", noCollider,
+                    [&]{ m_SelectedEntity.AddComponent<SphereColliderComponent>(); });
+                addItem("Physics", "Capsule Collider", noCollider,
+                    [&]{ m_SelectedEntity.AddComponent<CapsuleColliderComponent>(); });
+
+                const bool noViewLight =
+                    !m_SelectedEntity.HasComponent<CameraComponent>() &&
+                    !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
+                    !m_SelectedEntity.HasComponent<PointLightComponent>() &&
+                    !m_SelectedEntity.HasComponent<SpotLightComponent>();
+                addItem("Rendering", "Camera", noViewLight,
+                    [&]{ m_SelectedEntity.AddComponent<CameraComponent>(); });
+                addItem("Rendering", "Directional Light", noViewLight,
+                    [&]{ m_SelectedEntity.AddComponent<DirectionalLightComponent>(); });
+                addItem("Rendering", "Point Light", noViewLight,
+                    [&]{ m_SelectedEntity.AddComponent<PointLightComponent>(); });
+                addItem("Rendering", "Spot Light", noViewLight,
+                    [&]{ m_SelectedEntity.AddComponent<SpotLightComponent>(); });
+
+                addItem("Animation", "Animator",
+                    !m_SelectedEntity.HasComponent<AnimatorComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<AnimatorComponent>(); });
+                addItem("Scripting", "Rotator Script",
+                    !m_SelectedEntity.HasComponent<NativeScriptComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<NativeScriptComponent>(); });
+
+                ImGui::EndPopup();
             }
 
             if (m_SelectedEntity.HasComponent<PrefabInstanceComponent>())
