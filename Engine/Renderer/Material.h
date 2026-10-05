@@ -34,10 +34,20 @@ namespace NoJob
             return m_UseTexture && m_Texture != nullptr;
         }
 
+        float& Metallic() { return m_Metallic; }
+        float& Roughness() { return m_Roughness; }
+        float& AmbientOcclusion() { return m_AmbientOcclusion; }
+        const float& Metallic() const { return m_Metallic; }
+        const float& Roughness() const { return m_Roughness; }
+        const float& AmbientOcclusion() const { return m_AmbientOcclusion; }
+
     private:
         std::shared_ptr<Shader> m_Shader;
         glm::vec4 m_Color{ 1.0f };
         std::shared_ptr<Texture2D> m_Texture;
         bool m_UseTexture = true;
+        float m_Metallic = 0.0f;
+        float m_Roughness = 0.5f;
+        float m_AmbientOcclusion = 1.0f;
     };
 }

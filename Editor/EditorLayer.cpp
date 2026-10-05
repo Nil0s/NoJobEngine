@@ -1365,6 +1365,8 @@ namespace NoJob
                     ImGui::DragFloat(
                         "Intensity##Directional",
                         &light.Intensity, 0.05f, 0.0f, 100.0f);
+                    ImGui::Checkbox("Cast Shadows##Directional", &light.CastShadows);
+                    ImGui::DragFloat("Shadow Bias##Directional", &light.ShadowBias, 0.0001f, 0.00001f, 0.05f, "%.5f");
                     if (ImGui::Button("Remove Directional Light"))
                         m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();
                 }
@@ -1392,6 +1394,8 @@ namespace NoJob
                     ImGui::DragFloat(
                         "Range##Point",
                         &light.Range, 0.1f, 0.01f, 10000.0f);
+                    ImGui::Checkbox("Cast Shadows##Point", &light.CastShadows);
+                    ImGui::DragFloat("Shadow Bias##Point", &light.ShadowBias, 0.001f, 0.001f, 0.25f, "%.4f");
                     if (ImGui::Button("Remove Point Light"))
                         m_SelectedEntity.RemoveComponent<PointLightComponent>();
                 }
@@ -1427,6 +1431,8 @@ namespace NoJob
                         &light.OuterAngle, 0.1f, 89.0f);
                     light.OuterAngle =
                         std::max(light.OuterAngle, light.InnerAngle);
+                    ImGui::Checkbox("Cast Shadows##Spot", &light.CastShadows);
+                    ImGui::DragFloat("Shadow Bias##Spot", &light.ShadowBias, 0.0001f, 0.00001f, 0.05f, "%.5f");
                     if (ImGui::Button("Remove Spot Light"))
                         m_SelectedEntity.RemoveComponent<SpotLightComponent>();
                 }
@@ -1459,6 +1465,11 @@ namespace NoJob
                         ImGui::ColorEdit4(
                             "Material Color",
                             &color.x);
+
+                        ImGui::SeparatorText("PBR Surface");
+                        ImGui::SliderFloat("Metallic", &renderer.MaterialAsset->Metallic(), 0.0f, 1.0f);
+                        ImGui::SliderFloat("Roughness", &renderer.MaterialAsset->Roughness(), 0.04f, 1.0f);
+                        ImGui::SliderFloat("Ambient Occlusion", &renderer.MaterialAsset->AmbientOcclusion(), 0.0f, 1.0f);
 
                         ImGui::Checkbox(
                             "Use Texture",

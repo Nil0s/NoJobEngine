@@ -100,6 +100,8 @@ namespace NoJob
     {
         glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
         float Intensity = 1.0f;
+        bool CastShadows = true;
+        float ShadowBias = 0.002f;
     };
 
     struct PointLightComponent
@@ -107,6 +109,8 @@ namespace NoJob
         glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
         float Intensity = 1.0f;
         float Range = 10.0f;
+        bool CastShadows = true;
+        float ShadowBias = 0.02f;
     };
 
     struct SpotLightComponent
@@ -116,6 +120,8 @@ namespace NoJob
         float Range = 10.0f;
         float InnerAngle = 20.0f;
         float OuterAngle = 30.0f;
+        bool CastShadows = true;
+        float ShadowBias = 0.002f;
     };
 
 
