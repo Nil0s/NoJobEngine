@@ -22,12 +22,34 @@ namespace NoJob
         bool IsValid(std::uint32_t handle) const;
         std::vector<Entity> GetEntities();
 
+        void OnUpdate(float deltaTime);
+        float GetDeltaTime() const { return m_DeltaTime; }
+
+        Entity GetParent(Entity entity);
+        std::vector<Entity> GetChildren(Entity entity);
+        bool IsDescendant(Entity possibleDescendant, Entity ancestor) const;
+
+        // keepWorldTransform=true makes editor reparenting behave naturally:
+        // the object does not jump when its parent changes.
+        bool SetParent(
+            Entity child,
+            Entity parent,
+            bool keepWorldTransform = true);
+
+        void Unparent(
+            Entity child,
+            bool keepWorldTransform = true);
+
+        glm::mat4 GetWorldTransform(Entity entity) const;
+        void SetWorldTransform(Entity entity, const glm::mat4& worldTransform);
+
     private:
         struct EntityData
         {
             IDComponent ID;
             TagComponent Tag;
             TransformComponent Transform;
+            RelationshipComponent Relationship;
 
             std::optional<MeshComponent> Mesh;
             std::optional<MeshRendererComponent> MeshRenderer;
@@ -44,6 +66,8 @@ namespace NoJob
                 return data.Tag;
             else if constexpr (std::is_same_v<T, TransformComponent>)
                 return data.Transform;
+            else if constexpr (std::is_same_v<T, RelationshipComponent>)
+                return data.Relationship;
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
@@ -63,6 +87,8 @@ namespace NoJob
                 return data.Tag;
             else if constexpr (std::is_same_v<T, TransformComponent>)
                 return data.Transform;
+            else if constexpr (std::is_same_v<T, RelationshipComponent>)
+                return data.Relationship;
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
@@ -82,6 +108,8 @@ namespace NoJob
                 return data.Tag;
             else if constexpr (std::is_same_v<T, TransformComponent>)
                 return data.Transform;
+            else if constexpr (std::is_same_v<T, RelationshipComponent>)
+                return data.Relationship;
             else if constexpr (std::is_same_v<T, MeshComponent>)
             {
                 data.Mesh.emplace(T{ std::forward<Args>(args)... });
@@ -89,8 +117,7 @@ namespace NoJob
             }
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
             {
-                data.MeshRenderer.emplace(
-                    T{ std::forward<Args>(args)... });
+                data.MeshRenderer.emplace(T{ std::forward<Args>(args)... });
                 return data.MeshRenderer.value();
             }
             else
@@ -107,9 +134,7 @@ namespace NoJob
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 data.MeshRenderer.reset();
             else
-                static_assert(
-                    !sizeof(T),
-                    "This NoJob component cannot be removed.");
+                static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }
 
         template<typename T>
@@ -122,10 +147,9 @@ namespace NoJob
 
             if constexpr (std::is_same_v<T, IDComponent>
                 || std::is_same_v<T, TagComponent>
-                || std::is_same_v<T, TransformComponent>)
-            {
+                || std::is_same_v<T, TransformComponent>
+                || std::is_same_v<T, RelationshipComponent>)
                 return true;
-            }
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.has_value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
@@ -137,6 +161,7 @@ namespace NoJob
         std::unordered_map<std::uint32_t, EntityData> m_Entities;
         std::uint32_t m_NextHandle = 1;
         std::uint64_t m_NextID = 1;
+        float m_DeltaTime = 0.0f;
 
         friend class Entity;
     };

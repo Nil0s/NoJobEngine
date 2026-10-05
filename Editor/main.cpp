@@ -214,6 +214,8 @@ int main()
 
             window.PollEvents();
 
+            scene.OnUpdate(deltaTime);
+
             const std::uint32_t viewportWidth =
                 editor.GetViewportWidth();
 

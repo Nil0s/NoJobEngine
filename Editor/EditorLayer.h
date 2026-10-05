@@ -44,6 +44,7 @@ namespace NoJob
     private:
         void DrawMainMenu();
         void DrawHierarchy();
+        void DrawEntityNode(Entity entity);
         void DrawInspector();
         void DrawViewport();
         void DrawConsole();

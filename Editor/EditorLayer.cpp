@@ -330,45 +330,124 @@ namespace NoJob
             {
                 if (ImGui::MenuItem("Cube"))
                     CreateCubeEntity();
-
                 ImGui::EndMenu();
             }
 
             ImGui::EndPopup();
         }
 
+        // Dropping an entity onto empty Hierarchy space makes it a root.
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+            {
+                const auto handle =
+                    *static_cast<const std::uint32_t*>(payload->Data);
+
+                if (m_Scene->IsValid(handle))
+                    m_Scene->Unparent(Entity(handle, m_Scene), true);
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         if (m_Scene)
         {
             for (Entity entity : m_Scene->GetEntities())
             {
-                auto& tag = entity.GetComponent<TagComponent>().Tag;
-
-                ImGui::PushID(
-                    static_cast<int>(entity.GetHandle()));
-
-                const bool selected = entity == m_SelectedEntity;
-
-                if (ImGui::Selectable(tag.c_str(), selected))
-                    m_SelectedEntity = entity;
-
-                if (ImGui::BeginPopupContextItem("EntityContext"))
-                {
-                    m_SelectedEntity = entity;
-
-                    if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
-                        DuplicateSelectedEntity();
-
-                    if (ImGui::MenuItem("Delete", "Delete"))
-                        DeleteSelectedEntity();
-
-                    ImGui::EndPopup();
-                }
-
-                ImGui::PopID();
+                if (entity.GetComponent<RelationshipComponent>().Parent == 0)
+                    DrawEntityNode(entity);
             }
         }
 
         ImGui::End();
+    }
+
+    void EditorLayer::DrawEntityNode(Entity entity)
+    {
+        if (!entity)
+            return;
+
+        auto& tag = entity.GetComponent<TagComponent>().Tag;
+        const auto& relationship =
+            entity.GetComponent<RelationshipComponent>();
+
+        ImGuiTreeNodeFlags flags =
+            ImGuiTreeNodeFlags_OpenOnArrow
+            | ImGuiTreeNodeFlags_OpenOnDoubleClick
+            | ImGuiTreeNodeFlags_SpanAvailWidth;
+
+        if (relationship.Children.empty())
+            flags |= ImGuiTreeNodeFlags_Leaf;
+
+        if (entity == m_SelectedEntity)
+            flags |= ImGuiTreeNodeFlags_Selected;
+
+        ImGui::PushID(static_cast<int>(entity.GetHandle()));
+
+        const bool open =
+            ImGui::TreeNodeEx("EntityNode", flags, "%s", tag.c_str());
+
+        if (ImGui::IsItemClicked())
+            m_SelectedEntity = entity;
+
+        if (ImGui::BeginDragDropSource())
+        {
+            const std::uint32_t handle = entity.GetHandle();
+            ImGui::SetDragDropPayload(
+                "NOJOB_ENTITY",
+                &handle,
+                sizeof(handle));
+            ImGui::Text("%s", tag.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+            {
+                const auto childHandle =
+                    *static_cast<const std::uint32_t*>(payload->Data);
+
+                if (m_Scene->IsValid(childHandle))
+                {
+                    Entity child(childHandle, m_Scene);
+                    m_Scene->SetParent(child, entity, true);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("EntityContext"))
+        {
+            m_SelectedEntity = entity;
+
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+                DuplicateSelectedEntity();
+
+            if (relationship.Parent != 0
+                && ImGui::MenuItem("Unparent"))
+            {
+                m_Scene->Unparent(entity, true);
+            }
+
+            if (ImGui::MenuItem("Delete", "Delete"))
+                DeleteSelectedEntity();
+
+            ImGui::EndPopup();
+        }
+
+        if (open)
+        {
+            const auto children = m_Scene->GetChildren(entity);
+            for (Entity child : children)
+                DrawEntityNode(child);
+
+            ImGui::TreePop();
+        }
+
+        ImGui::PopID();
     }
 
     void EditorLayer::DrawInspector()
@@ -417,6 +496,24 @@ namespace NoJob
                     "Scale",
                     &transform.Scale.x,
                     0.01f);
+            }
+
+            {
+                Entity parent = m_Scene->GetParent(m_SelectedEntity);
+                if (parent)
+                {
+                    ImGui::TextDisabled(
+                        "Parent: %s",
+                        parent.GetComponent<TagComponent>().Tag.c_str());
+
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Unparent"))
+                        m_Scene->Unparent(m_SelectedEntity, true);
+                }
+                else
+                {
+                    ImGui::TextDisabled("Parent: None");
+                }
             }
 
             if (m_SelectedEntity.HasComponent<MeshComponent>())
@@ -616,11 +713,10 @@ namespace NoJob
             && m_ViewportWidth > 1.0f
             && m_ViewportHeight > 1.0f)
         {
-            auto& transform =
-                m_SelectedEntity.GetComponent<TransformComponent>();
+            
 
             glm::mat4 transformMatrix =
-                transform.GetTransform();
+                m_Scene->GetWorldTransform(m_SelectedEntity);
 
             ImGuizmo::SetOrthographic(false);
             ImGuizmo::SetDrawlist();
@@ -662,25 +758,11 @@ namespace NoJob
                     rotationDegrees,
                     scale);
 
-                transform.Position =
-                {
-                    translation[0],
-                    translation[1],
-                    translation[2]
-                };
-
-                transform.Rotation =
-                    glm::radians(glm::vec3(
-                        rotationDegrees[0],
-                        rotationDegrees[1],
-                        rotationDegrees[2]));
-
-                transform.Scale =
-                {
-                    scale[0],
-                    scale[1],
-                    scale[2]
-                };
+                // Gizmo operates in world space. Scene converts it back
+                // into the selected entity's local transform if it has a parent.
+                m_Scene->SetWorldTransform(
+                    m_SelectedEntity,
+                    transformMatrix);
             }
         }
 

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace NoJob
 {
@@ -50,6 +51,12 @@ namespace NoJob
                 * glm::scale(
                     glm::mat4(1.0f), Scale);
         }
+    };
+
+    struct RelationshipComponent
+    {
+        std::uint32_t Parent = 0;
+        std::vector<std::uint32_t> Children;
     };
 
     struct MeshComponent

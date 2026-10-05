@@ -17,9 +17,6 @@ namespace NoJob
             if (!entity.HasComponent<MeshComponent>()
                 || !entity.HasComponent<MeshRendererComponent>())
                 continue;
-
-            const auto& transform =
-                entity.GetComponent<TransformComponent>();
             const auto& mesh =
                 entity.GetComponent<MeshComponent>();
             const auto& renderer =
@@ -39,7 +36,7 @@ namespace NoJob
             Renderer::Submit(
                 mesh.MeshAsset->GetVertexArray(),
                 shader,
-                transform.GetTransform(),
+                scene.GetWorldTransform(entity),
                 viewProjection,
                 material->GetColor(),
                 material->IsUsingTexture() ? 1 : 0);
