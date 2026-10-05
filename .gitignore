@@ -49,3 +49,13 @@ Desktop.ini
 *.bak
 *.swp
 *~
+# Build / IDE
+CMakeUserPresets.json
+# Visual Studio
+*.suo
+*.user
+*.VC.db
+*.VC.VC.opendb
+# CMake generated
+Makefile
+# OS
