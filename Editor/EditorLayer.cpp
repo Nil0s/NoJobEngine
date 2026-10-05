@@ -675,6 +675,17 @@ namespace NoJob
                 m_DefaultCubeMaterial->GetTexture());
             material->UseTexture() =
                 m_DefaultCubeMaterial->UseTexture();
+            material->Metallic() = m_DefaultCubeMaterial->Metallic();
+            material->Roughness() = m_DefaultCubeMaterial->Roughness();
+            material->AmbientOcclusion() = m_DefaultCubeMaterial->AmbientOcclusion();
+            material->NormalStrength() = m_DefaultCubeMaterial->NormalStrength();
+            material->EmissiveColor() = m_DefaultCubeMaterial->EmissiveColor();
+            material->EmissiveStrength() = m_DefaultCubeMaterial->EmissiveStrength();
+            material->SetNormalTexture(m_DefaultCubeMaterial->GetNormalTexture());
+            material->SetMetallicTexture(m_DefaultCubeMaterial->GetMetallicTexture());
+            material->SetRoughnessTexture(m_DefaultCubeMaterial->GetRoughnessTexture());
+            material->SetAOTexture(m_DefaultCubeMaterial->GetAOTexture());
+            material->SetEmissiveTexture(m_DefaultCubeMaterial->GetEmissiveTexture());
 
             entity.AddComponent<MeshRendererComponent>(material);
         }
@@ -727,6 +738,17 @@ namespace NoJob
                     sourceRenderer.MaterialAsset->GetTexture());
                 material->UseTexture() =
                     sourceRenderer.MaterialAsset->UseTexture();
+                material->Metallic() = sourceRenderer.MaterialAsset->Metallic();
+                material->Roughness() = sourceRenderer.MaterialAsset->Roughness();
+                material->AmbientOcclusion() = sourceRenderer.MaterialAsset->AmbientOcclusion();
+                material->NormalStrength() = sourceRenderer.MaterialAsset->NormalStrength();
+                material->EmissiveColor() = sourceRenderer.MaterialAsset->EmissiveColor();
+                material->EmissiveStrength() = sourceRenderer.MaterialAsset->EmissiveStrength();
+                material->SetNormalTexture(sourceRenderer.MaterialAsset->GetNormalTexture());
+                material->SetMetallicTexture(sourceRenderer.MaterialAsset->GetMetallicTexture());
+                material->SetRoughnessTexture(sourceRenderer.MaterialAsset->GetRoughnessTexture());
+                material->SetAOTexture(sourceRenderer.MaterialAsset->GetAOTexture());
+                material->SetEmissiveTexture(sourceRenderer.MaterialAsset->GetEmissiveTexture());
 
                 copy.AddComponent<MeshRendererComponent>(material);
             }
@@ -1470,6 +1492,34 @@ namespace NoJob
                         ImGui::SliderFloat("Metallic", &renderer.MaterialAsset->Metallic(), 0.0f, 1.0f);
                         ImGui::SliderFloat("Roughness", &renderer.MaterialAsset->Roughness(), 0.04f, 1.0f);
                         ImGui::SliderFloat("Ambient Occlusion", &renderer.MaterialAsset->AmbientOcclusion(), 0.0f, 1.0f);
+                        ImGui::SliderFloat("Normal Strength", &renderer.MaterialAsset->NormalStrength(), 0.0f, 2.0f);
+                        ImGui::ColorEdit3("Emissive Color", &renderer.MaterialAsset->EmissiveColor().x);
+                        ImGui::SliderFloat("Emissive Strength", &renderer.MaterialAsset->EmissiveStrength(), 0.0f, 20.0f);
+
+                        ImGui::SeparatorText("PBR Texture Maps");
+                        auto selectPBRMap = [&](const char* label, auto setter)
+                        {
+                            if (ImGui::Button(label))
+                            {
+                                const std::string path = OpenTextureFileDialog();
+                                if (!path.empty())
+                                {
+                                    try
+                                    {
+                                        const auto importedPath = AssetManager::ImportTexture(path);
+                                        setter(AssetManager::LoadTexture(importedPath));
+                                    }
+                                    catch (const std::exception&) {}
+                                }
+                            }
+                        };
+                        selectPBRMap("Normal Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetNormalTexture(std::move(v)); });
+                        ImGui::SameLine();
+                        selectPBRMap("Metallic Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetMetallicTexture(std::move(v)); });
+                        selectPBRMap("Roughness Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetRoughnessTexture(std::move(v)); });
+                        ImGui::SameLine();
+                        selectPBRMap("AO Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetAOTexture(std::move(v)); });
+                        selectPBRMap("Emissive Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetEmissiveTexture(std::move(v)); });
 
                         ImGui::Checkbox(
                             "Use Texture",

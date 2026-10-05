@@ -67,7 +67,16 @@ int main()
             #version 460 core
             layout(location=0) out vec4 o_Color;
             in vec3 v_WorldPosition; in vec3 v_Normal; in vec2 v_TexCoord;
-            uniform vec4 u_Color; uniform sampler2D u_Texture; uniform int u_UseTexture;
+
+            uniform vec4 u_Color;
+            uniform sampler2D u_Texture;
+            uniform int u_UseTexture;
+            uniform sampler2D u_NormalMap; uniform int u_UseNormalMap; uniform float u_NormalStrength;
+            uniform sampler2D u_MetallicMap; uniform int u_UseMetallicMap;
+            uniform sampler2D u_RoughnessMap; uniform int u_UseRoughnessMap;
+            uniform sampler2D u_AOMap; uniform int u_UseAOMap;
+            uniform sampler2D u_EmissiveMap; uniform int u_UseEmissiveMap;
+            uniform vec3 u_EmissiveColor; uniform float u_EmissiveStrength;
             uniform vec3 u_ViewPosition; uniform vec3 u_AmbientColor;
             uniform float u_Metallic; uniform float u_Roughness; uniform float u_AO;
 
@@ -90,36 +99,82 @@ int main()
             float DistributionGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,NH=max(dot(N,H),0.0),NH2=NH*NH;float d=(NH2*(a2-1.0)+1.0);return a2/max(PI*d*d,0.000001);}
             float GeometrySchlickGGX(float NV,float r){float k=((r+1.0)*(r+1.0))/8.0;return NV/(NV*(1.0-k)+k);}
             float GeometrySmith(vec3 N,vec3 V,vec3 L,float r){return GeometrySchlickGGX(max(dot(N,V),0.0),r)*GeometrySchlickGGX(max(dot(N,L),0.0),r);}
-            vec3 FresnelSchlick(float cosTheta,vec3 F0){return F0+(1.0-F0)*pow(clamp(1.0-cosTheta,0.0,1.0),5.0);}
+            vec3 FresnelSchlick(float c,vec3 F0){return F0+(1.0-F0)*pow(clamp(1.0-c,0.0,1.0),5.0);}
+            vec3 FresnelSchlickRoughness(float c,vec3 F0,float r){return F0+(max(vec3(1.0-r),F0)-F0)*pow(clamp(1.0-c,0.0,1.0),5.0);}
 
+            vec3 SurfaceNormal(){
+                vec3 N=normalize(v_Normal);
+                if(u_UseNormalMap==0) return N;
+                vec3 mapN=texture(u_NormalMap,v_TexCoord).xyz*2.0-1.0;
+                mapN.xy*=u_NormalStrength;
+                vec3 Q1=dFdx(v_WorldPosition), Q2=dFdy(v_WorldPosition);
+                vec2 st1=dFdx(v_TexCoord), st2=dFdy(v_TexCoord);
+                vec3 T=normalize(Q1*st2.t-Q2*st1.t);
+                vec3 B=normalize(-cross(N,T));
+                return normalize(mat3(T,B,N)*mapN);
+            }
             float Shadow2D(sampler2D map,mat4 lightSpace,float bias){
-                vec4 lp=lightSpace*vec4(v_WorldPosition,1); vec3 p=lp.xyz/lp.w; p=p*0.5+0.5;
-                if(p.z>1.0||p.x<0||p.x>1||p.y<0||p.y>1) return 0.0;
-                float shadow=0.0; vec2 texel=1.0/textureSize(map,0);
+                vec4 lp=lightSpace*vec4(v_WorldPosition,1.0); vec3 p=lp.xyz/lp.w; p=p*0.5+0.5;
+                if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0) return 0.0;
+                float shadow=0.0; vec2 texel=1.0/vec2(textureSize(map,0));
                 for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++) shadow += p.z-bias>texture(map,p.xy+vec2(x,y)*texel).r?1.0:0.0;
                 return shadow/9.0;
             }
             float PointShadow(float bias){
-                vec3 d=v_WorldPosition-u_PointShadowPosition; float current=length(d); float closest=texture(u_PointShadowMap,d).r*u_PointShadowFar;
+                vec3 d=v_WorldPosition-u_PointShadowPosition; float current=length(d);
+                float closest=texture(u_PointShadowMap,d).r*u_PointShadowFar;
                 return current-bias>closest?1.0:0.0;
             }
             vec3 BRDF(vec3 albedo,vec3 N,vec3 V,vec3 L,vec3 radiance,float metallic,float roughness){
-                vec3 H=normalize(V+L); vec3 F0=mix(vec3(0.04),albedo,metallic); vec3 F=FresnelSchlick(max(dot(H,V),0.0),F0);
+                vec3 H=normalize(V+L); vec3 F0=mix(vec3(0.04),albedo,metallic);
+                vec3 F=FresnelSchlick(max(dot(H,V),0.0),F0);
                 float NDF=DistributionGGX(N,H,roughness),G=GeometrySmith(N,V,L,roughness);
                 vec3 spec=(NDF*G*F)/max(4.0*max(dot(N,V),0.0)*max(dot(N,L),0.0),0.001);
                 vec3 kD=(vec3(1.0)-F)*(1.0-metallic); float NL=max(dot(N,L),0.0);
                 return (kD*albedo/PI+spec)*radiance*NL;
             }
+            vec3 ProceduralEnvironment(vec3 d){
+                float h=clamp(d.y*0.5+0.5,0.0,1.0);
+                vec3 horizon=vec3(0.62,0.72,0.86), zenith=vec3(0.08,0.22,0.48);
+                vec3 sky=mix(horizon,zenith,pow(h,0.7));
+                if(d.y<0.0) sky=mix(vec3(0.025,0.03,0.035),horizon,clamp(d.y+1.0,0.0,1.0)*0.18);
+                return sky;
+            }
+            vec3 ACES(vec3 x){
+                const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
+                return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+            }
             void main(){
                 vec4 base=u_Color; if(u_UseTexture==1) base*=texture(u_Texture,v_TexCoord);
-                vec3 albedo=max(base.rgb,vec3(0.0)); vec3 N=normalize(v_Normal),V=normalize(u_ViewPosition-v_WorldPosition);
-                float metallic=clamp(u_Metallic,0.0,1.0), roughness=clamp(u_Roughness,0.04,1.0);
+                vec3 albedo=max(base.rgb,vec3(0.0));
+                float metallic=clamp(u_Metallic*(u_UseMetallicMap==1?texture(u_MetallicMap,v_TexCoord).r:1.0),0.0,1.0);
+                float roughness=clamp(u_Roughness*(u_UseRoughnessMap==1?texture(u_RoughnessMap,v_TexCoord).r:1.0),0.04,1.0);
+                float ao=clamp(u_AO*(u_UseAOMap==1?texture(u_AOMap,v_TexCoord).r:1.0),0.0,1.0);
+                vec3 N=SurfaceNormal(), V=normalize(u_ViewPosition-v_WorldPosition);
                 vec3 Lo=vec3(0.0);
-                if(u_HasDirectionalLight==1){vec3 L=normalize(-u_DirectionalLight.direction);float sh=u_HasDirectionalShadow==1?Shadow2D(u_DirectionalShadowMap,u_DirectionalLightSpace,u_DirectionalShadowBias):0;Lo+=BRDF(albedo,N,V,L,u_DirectionalLight.color*u_DirectionalLight.intensity*(1.0-sh),metallic,roughness);}
-                for(int i=0;i<u_PointLightCount;i++){vec3 delta=u_PointLights[i].position-v_WorldPosition;float dist=length(delta);vec3 L=delta/max(dist,0.0001);float a=clamp(1.0-dist/max(u_PointLights[i].range,0.001),0.0,1.0);a*=a;float sh=(i==0&&u_HasPointShadow==1)?PointShadow(u_PointShadowBias):0;Lo+=BRDF(albedo,N,V,L,u_PointLights[i].color*u_PointLights[i].intensity*a*(1.0-sh),metallic,roughness);}
-                for(int i=0;i<u_SpotLightCount;i++){vec3 delta=u_SpotLights[i].position-v_WorldPosition;float dist=length(delta);vec3 L=delta/max(dist,0.0001);float theta=dot(normalize(-L),normalize(u_SpotLights[i].direction));float cone=smoothstep(u_SpotLights[i].outerCos,u_SpotLights[i].innerCos,theta);float a=clamp(1.0-dist/max(u_SpotLights[i].range,0.001),0.0,1.0);a*=a;float sh=(i==0&&u_HasSpotShadow==1)?Shadow2D(u_SpotShadowMap,u_SpotLightSpace,u_SpotShadowBias):0;Lo+=BRDF(albedo,N,V,L,u_SpotLights[i].color*u_SpotLights[i].intensity*a*cone*(1.0-sh),metallic,roughness);}
-                vec3 ambient=u_AmbientColor*albedo*u_AO*(1.0-metallic*0.65); vec3 color=ambient+Lo;
-                color=color/(color+vec3(1.0)); color=pow(color,vec3(1.0/2.2)); o_Color=vec4(color,base.a);
+
+                if(u_HasDirectionalLight==1){vec3 L=normalize(-u_DirectionalLight.direction);float sh=u_HasDirectionalShadow==1?Shadow2D(u_DirectionalShadowMap,u_DirectionalLightSpace,u_DirectionalShadowBias):0.0;Lo+=BRDF(albedo,N,V,L,u_DirectionalLight.color*u_DirectionalLight.intensity*(1.0-sh),metallic,roughness);}
+                for(int i=0;i<u_PointLightCount;i++){vec3 delta=u_PointLights[i].position-v_WorldPosition;float dist=length(delta);vec3 L=delta/max(dist,0.0001);float a=clamp(1.0-dist/max(u_PointLights[i].range,0.001),0.0,1.0);a*=a;float sh=(i==0&&u_HasPointShadow==1)?PointShadow(u_PointShadowBias):0.0;Lo+=BRDF(albedo,N,V,L,u_PointLights[i].color*u_PointLights[i].intensity*a*(1.0-sh),metallic,roughness);}
+                for(int i=0;i<u_SpotLightCount;i++){vec3 delta=u_SpotLights[i].position-v_WorldPosition;float dist=length(delta);vec3 L=delta/max(dist,0.0001);float theta=dot(normalize(-L),normalize(u_SpotLights[i].direction));float cone=smoothstep(u_SpotLights[i].outerCos,u_SpotLights[i].innerCos,theta);float a=clamp(1.0-dist/max(u_SpotLights[i].range,0.001),0.0,1.0);a*=a;float sh=(i==0&&u_HasSpotShadow==1)?Shadow2D(u_SpotShadowMap,u_SpotLightSpace,u_SpotShadowBias):0.0;Lo+=BRDF(albedo,N,V,L,u_SpotLights[i].color*u_SpotLights[i].intensity*a*cone*(1.0-sh),metallic,roughness);}
+
+                // Procedural image-based lighting: diffuse sky irradiance + roughness-aware specular environment.
+                vec3 F0=mix(vec3(0.04),albedo,metallic);
+                float NV=max(dot(N,V),0.0);
+                vec3 F=FresnelSchlickRoughness(NV,F0,roughness);
+                vec3 kD=(vec3(1.0)-F)*(1.0-metallic);
+                vec3 diffuseIBL=ProceduralEnvironment(N)*albedo;
+                vec3 R=reflect(-V,N);
+                vec3 specEnv=ProceduralEnvironment(normalize(mix(R,N,roughness*roughness)));
+                vec3 specIBL=specEnv*F*(1.0-roughness*0.45);
+                vec3 ambient=(kD*diffuseIBL*0.18+specIBL*0.32+u_AmbientColor*albedo*0.25)*ao;
+
+                vec3 emissive=u_EmissiveColor*u_EmissiveStrength;
+                if(u_UseEmissiveMap==1) emissive*=texture(u_EmissiveMap,v_TexCoord).rgb;
+
+                vec3 color=ambient+Lo+emissive;
+                color=ACES(color);
+                color=pow(color,vec3(1.0/2.2));
+                o_Color=vec4(color,base.a);
             }
         )";
 

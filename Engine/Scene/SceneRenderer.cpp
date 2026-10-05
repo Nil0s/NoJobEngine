@@ -352,7 +352,29 @@ namespace NoJob
             shader->SetFloat("u_Metallic",glm::clamp(material->Metallic(),0.f,1.f));
             shader->SetFloat("u_Roughness",glm::clamp(material->Roughness(),0.04f,1.f));
             shader->SetFloat("u_AO",glm::clamp(material->AmbientOcclusion(),0.f,1.f));
+            shader->SetFloat("u_NormalStrength",glm::max(material->NormalStrength(),0.f));
+            shader->SetFloat3("u_EmissiveColor",material->EmissiveColor());
+            shader->SetFloat("u_EmissiveStrength",glm::max(material->EmissiveStrength(),0.f));
+
             if(material->IsUsingTexture()) material->GetTexture()->Bind(0);
+            shader->SetInt("u_Texture",0);
+
+            // Optional PBR maps. IMPORTANT: material instances that existed before
+            // this milestone can come from stale object files after Material's layout
+            // changed. A clean rebuild is required once for ABI safety.
+            const auto bindMap=[&](const std::shared_ptr<Texture2D>& tex,const char* sampler,const char* enabled,int slot)
+            {
+                shader->SetInt(enabled, tex != nullptr ? 1 : 0);
+                shader->SetInt(sampler, slot);
+                if (tex != nullptr)
+                    tex->Bind(static_cast<std::uint32_t>(slot));
+            };
+            bindMap(material->GetNormalTexture(),"u_NormalMap","u_UseNormalMap",1);
+            bindMap(material->GetMetallicTexture(),"u_MetallicMap","u_UseMetallicMap",2);
+            bindMap(material->GetRoughnessTexture(),"u_RoughnessMap","u_UseRoughnessMap",3);
+            bindMap(material->GetAOTexture(),"u_AOMap","u_UseAOMap",4);
+            bindMap(material->GetEmissiveTexture(),"u_EmissiveMap","u_UseEmissiveMap",8);
+
             Renderer::Submit(mesh.MeshAsset->GetVertexArray(),shader,scene.GetWorldTransform(entity),viewProjection,material->GetColor(),material->IsUsingTexture()?1:0);
         }
     }
