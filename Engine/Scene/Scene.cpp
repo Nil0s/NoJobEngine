@@ -37,6 +37,11 @@ namespace NoJob
         }
     }
 
+    std::unique_ptr<Scene> Scene::Copy() const
+    {
+        return std::make_unique<Scene>(*this);
+    }
+
     Entity Scene::CreateEntity(const std::string& name)
     {
         const std::uint32_t handle = m_NextHandle++;

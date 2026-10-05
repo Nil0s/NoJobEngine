@@ -100,6 +100,7 @@ namespace NoJob
 
     void EditorLayer::Draw()
     {
+        DrawPlayToolbar();
         DrawMainMenu();
         DrawHierarchy();
         DrawViewport();
@@ -312,6 +313,75 @@ namespace NoJob
 
             ImGui::EndMainMenuBar();
         }
+    }
+
+    void EditorLayer::SetScene(Scene* scene)
+    {
+        m_Scene = scene;
+        m_SelectedEntity = {};
+    }
+
+    bool EditorLayer::ConsumePlayRequest()
+    {
+        const bool value = m_PlayRequested;
+        m_PlayRequested = false;
+        return value;
+    }
+
+    bool EditorLayer::ConsumePauseRequest()
+    {
+        const bool value = m_PauseRequested;
+        m_PauseRequested = false;
+        return value;
+    }
+
+    bool EditorLayer::ConsumeStopRequest()
+    {
+        const bool value = m_StopRequested;
+        m_StopRequested = false;
+        return value;
+    }
+
+    void EditorLayer::SetRuntimeState(bool playing, bool paused)
+    {
+        m_IsPlaying = playing;
+        m_IsPaused = paused;
+    }
+
+    void EditorLayer::DrawPlayToolbar()
+    {
+        ImGui::Begin("Toolbar", nullptr,
+            ImGuiWindowFlags_NoScrollbar
+            | ImGuiWindowFlags_NoScrollWithMouse);
+
+        const float width = ImGui::GetContentRegionAvail().x;
+        ImGui::SetCursorPosX(
+            ImGui::GetCursorPosX() + (width - 170.0f) * 0.5f);
+
+        ImGui::BeginDisabled(m_IsPlaying);
+        if (ImGui::Button("Play", ImVec2(50.0f, 0.0f)))
+            m_PlayRequested = true;
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(!m_IsPlaying);
+        if (ImGui::Button(
+                m_IsPaused ? "Resume" : "Pause",
+                ImVec2(60.0f, 0.0f)))
+        {
+            m_PauseRequested = true;
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(!m_IsPlaying);
+        if (ImGui::Button("Stop", ImVec2(50.0f, 0.0f)))
+            m_StopRequested = true;
+        ImGui::EndDisabled();
+
+        ImGui::End();
     }
 
     void EditorLayer::DrawHierarchy()

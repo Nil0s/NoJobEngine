@@ -4,6 +4,7 @@
 #include "Engine/Scene/Entity.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -16,6 +17,12 @@ namespace NoJob
     class Scene
     {
     public:
+        Scene() = default;
+        Scene(const Scene&) = default;
+        Scene& operator=(const Scene&) = default;
+
+        std::unique_ptr<Scene> Copy() const;
+
         Entity CreateEntity(const std::string& name = "Entity");
         void DestroyEntity(Entity entity);
 

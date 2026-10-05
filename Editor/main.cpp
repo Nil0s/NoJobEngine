@@ -105,9 +105,13 @@ int main()
             NoJob::Texture2D::CreateCheckerboard();
         cubeMaterial->SetTexture(checkerTexture);
 
-        NoJob::Scene scene;
+        NoJob::Scene editorScene;
+        std::unique_ptr<NoJob::Scene> runtimeScene;
+        NoJob::Scene* activeScene = &editorScene;
+        bool isPlaying = false;
+        bool isPaused = false;
 
-        NoJob::Entity cube = scene.CreateEntity("Cube");
+        NoJob::Entity cube = editorScene.CreateEntity("Cube");
         cube.AddComponent<NoJob::MeshComponent>(cubeMesh);
         cube.AddComponent<NoJob::MeshRendererComponent>(cubeMaterial);
 
@@ -119,7 +123,7 @@ int main()
             NoJob::Framebuffer::Create(framebufferSpecification);
 
         NoJob::EditorLayer editor;
-        editor.Init(window.GetNativeWindow(), &scene);
+        editor.Init(window.GetNativeWindow(), &editorScene);
         editor.SetSelectedEntity(cube);
         editor.SetDefaultCubeAssets(cubeMesh, cubeMaterial);
         editor.SetViewportTexture(
@@ -214,7 +218,8 @@ int main()
 
             window.PollEvents();
 
-            scene.OnUpdate(deltaTime);
+            if (isPlaying && !isPaused && runtimeScene)
+                runtimeScene->OnUpdate(deltaTime);
 
             const std::uint32_t viewportWidth =
                 editor.GetViewportWidth();
@@ -262,7 +267,7 @@ int main()
                 glm::vec4(0.28f, 0.30f, 0.34f, 1.0f));
 
             // SceneRenderer now discovers and draws renderable entities.
-            NoJob::SceneRenderer::Render(scene, viewProjection);
+            NoJob::SceneRenderer::Render(*activeScene, viewProjection);
 
             framebuffer->Unbind();
 
@@ -277,6 +282,35 @@ int main()
 
             editor.BeginFrame();
             editor.Draw();
+
+            if (editor.ConsumePlayRequest() && !isPlaying)
+            {
+                runtimeScene = editorScene.Copy();
+                activeScene = runtimeScene.get();
+                isPlaying = true;
+                isPaused = false;
+
+                editor.SetScene(activeScene);
+                editor.SetRuntimeState(true, false);
+            }
+
+            if (editor.ConsumePauseRequest() && isPlaying)
+            {
+                isPaused = !isPaused;
+                editor.SetRuntimeState(true, isPaused);
+            }
+
+            if (editor.ConsumeStopRequest() && isPlaying)
+            {
+                runtimeScene.reset();
+                activeScene = &editorScene;
+                isPlaying = false;
+                isPaused = false;
+
+                editor.SetScene(activeScene);
+                editor.SetRuntimeState(false, false);
+            }
+
             editor.EndFrame();
 
             window.SwapBuffers();

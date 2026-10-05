@@ -25,7 +25,13 @@ namespace NoJob
         void EndFrame();
 
         void SetSelectedEntity(Entity entity);
+        void SetScene(Scene* scene);
         void SetViewportTexture(std::uint32_t textureID);
+
+        bool ConsumePlayRequest();
+        bool ConsumePauseRequest();
+        bool ConsumeStopRequest();
+        void SetRuntimeState(bool playing, bool paused);
 
         void SetEditorCameraMatrices(
             const glm::mat4& view,
@@ -43,6 +49,7 @@ namespace NoJob
 
     private:
         void DrawMainMenu();
+        void DrawPlayToolbar();
         void DrawHierarchy();
         void DrawEntityNode(Entity entity);
         void DrawInspector();
@@ -72,5 +79,10 @@ namespace NoJob
         int m_GizmoOperation = 0;
 
         std::filesystem::path m_ProjectDirectory;
+        bool m_IsPlaying = false;
+        bool m_IsPaused = false;
+        bool m_PlayRequested = false;
+        bool m_PauseRequested = false;
+        bool m_StopRequested = false;
     };
 }
