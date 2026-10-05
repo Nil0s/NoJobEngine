@@ -70,6 +70,10 @@ namespace NoJob
             std::optional<BoxColliderComponent> BoxCollider;
             std::optional<SphereColliderComponent> SphereCollider;
             std::optional<CapsuleColliderComponent> CapsuleCollider;
+            std::optional<CameraComponent> Camera;
+            std::optional<DirectionalLightComponent> DirectionalLight;
+            std::optional<PointLightComponent> PointLight;
+            std::optional<SpotLightComponent> SpotLight;
         };
 
         template<typename T>
@@ -99,6 +103,14 @@ namespace NoJob
                 return data.SphereCollider.value();
             else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
                 return data.CapsuleCollider.value();
+            else if constexpr (std::is_same_v<T, CameraComponent>)
+                return data.Camera.value();
+            else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
+                return data.DirectionalLight.value();
+            else if constexpr (std::is_same_v<T, PointLightComponent>)
+                return data.PointLight.value();
+            else if constexpr (std::is_same_v<T, SpotLightComponent>)
+                return data.SpotLight.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -130,6 +142,14 @@ namespace NoJob
                 return data.SphereCollider.value();
             else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
                 return data.CapsuleCollider.value();
+            else if constexpr (std::is_same_v<T, CameraComponent>)
+                return data.Camera.value();
+            else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
+                return data.DirectionalLight.value();
+            else if constexpr (std::is_same_v<T, PointLightComponent>)
+                return data.PointLight.value();
+            else if constexpr (std::is_same_v<T, SpotLightComponent>)
+                return data.SpotLight.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -182,6 +202,26 @@ namespace NoJob
                 data.CapsuleCollider.emplace(T{ std::forward<Args>(args)... });
                 return data.CapsuleCollider.value();
             }
+            else if constexpr (std::is_same_v<T, CameraComponent>)
+            {
+                data.Camera.emplace(T{ std::forward<Args>(args)... });
+                return data.Camera.value();
+            }
+            else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
+            {
+                data.DirectionalLight.emplace(T{ std::forward<Args>(args)... });
+                return data.DirectionalLight.value();
+            }
+            else if constexpr (std::is_same_v<T, PointLightComponent>)
+            {
+                data.PointLight.emplace(T{ std::forward<Args>(args)... });
+                return data.PointLight.value();
+            }
+            else if constexpr (std::is_same_v<T, SpotLightComponent>)
+            {
+                data.SpotLight.emplace(T{ std::forward<Args>(args)... });
+                return data.SpotLight.value();
+            }
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -205,6 +245,14 @@ namespace NoJob
                 data.SphereCollider.reset();
             else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
                 data.CapsuleCollider.reset();
+            else if constexpr (std::is_same_v<T, CameraComponent>)
+                data.Camera.reset();
+            else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
+                data.DirectionalLight.reset();
+            else if constexpr (std::is_same_v<T, PointLightComponent>)
+                data.PointLight.reset();
+            else if constexpr (std::is_same_v<T, SpotLightComponent>)
+                data.SpotLight.reset();
             else
                 static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }
@@ -236,6 +284,14 @@ namespace NoJob
                 return data.SphereCollider.has_value();
             else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
                 return data.CapsuleCollider.has_value();
+            else if constexpr (std::is_same_v<T, CameraComponent>)
+                return data.Camera.has_value();
+            else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
+                return data.DirectionalLight.has_value();
+            else if constexpr (std::is_same_v<T, PointLightComponent>)
+                return data.PointLight.has_value();
+            else if constexpr (std::is_same_v<T, SpotLightComponent>)
+                return data.SpotLight.has_value();
             else
                 return false;
         }

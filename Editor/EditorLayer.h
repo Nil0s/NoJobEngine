@@ -25,8 +25,13 @@ namespace NoJob
         void EndFrame();
 
         void SetSelectedEntity(Entity entity);
+        Entity GetSelectedEntity() const { return m_SelectedEntity; }
         void SetScene(Scene* scene);
         void SetViewportTexture(std::uint32_t textureID);
+        void SetCameraPreviewTexture(std::uint32_t textureID)
+        {
+            m_CameraPreviewTextureID = textureID;
+        }
 
         bool ConsumePlayRequest();
         bool ConsumePauseRequest();
@@ -69,6 +74,7 @@ namespace NoJob
         std::shared_ptr<Material> m_DefaultCubeMaterial;
 
         std::uint32_t m_ViewportTextureID = 0;
+        std::uint32_t m_CameraPreviewTextureID = 0;
         float m_ViewportWidth = 1280.0f;
         float m_ViewportHeight = 720.0f;
         bool m_ViewportHovered = false;

@@ -60,6 +60,65 @@ namespace NoJob
     };
 
 
+    enum class CameraProjectionType
+    {
+        Perspective = 0,
+        Orthographic
+    };
+
+    struct CameraComponent
+    {
+        CameraProjectionType ProjectionType = CameraProjectionType::Perspective;
+        bool Primary = true;
+        float PerspectiveFOV = 45.0f;
+        float PerspectiveNear = 0.1f;
+        float PerspectiveFar = 1000.0f;
+        float OrthographicSize = 10.0f;
+        float OrthographicNear = -1.0f;
+        float OrthographicFar = 1000.0f;
+
+        glm::mat4 GetProjection(float aspectRatio) const
+        {
+            aspectRatio = aspectRatio > 0.0001f ? aspectRatio : 1.0f;
+            if (ProjectionType == CameraProjectionType::Perspective)
+                return glm::perspective(
+                    glm::radians(PerspectiveFOV),
+                    aspectRatio,
+                    PerspectiveNear,
+                    PerspectiveFar);
+
+            const float halfHeight = OrthographicSize * 0.5f;
+            const float halfWidth = halfHeight * aspectRatio;
+            return glm::ortho(
+                -halfWidth, halfWidth,
+                -halfHeight, halfHeight,
+                OrthographicNear, OrthographicFar);
+        }
+    };
+
+    struct DirectionalLightComponent
+    {
+        glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
+        float Intensity = 1.0f;
+    };
+
+    struct PointLightComponent
+    {
+        glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
+        float Intensity = 1.0f;
+        float Range = 10.0f;
+    };
+
+    struct SpotLightComponent
+    {
+        glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
+        float Intensity = 1.0f;
+        float Range = 10.0f;
+        float InnerAngle = 20.0f;
+        float OuterAngle = 30.0f;
+    };
+
+
     enum class RigidbodyType
     {
         Static = 0,

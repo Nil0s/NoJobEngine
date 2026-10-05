@@ -44,19 +44,22 @@ int main()
             uniform mat4 u_Transform;
             uniform mat4 u_ViewProjection;
 
+            out vec3 v_WorldPosition;
             out vec3 v_Normal;
             out vec2 v_TexCoord;
 
             void main()
             {
-                gl_Position =
-                    u_ViewProjection *
-                    u_Transform *
-                    vec4(a_Position, 1.0);
+                vec4 worldPosition =
+                    u_Transform * vec4(a_Position, 1.0);
 
+                v_WorldPosition = worldPosition.xyz;
                 v_Normal =
                     mat3(transpose(inverse(u_Transform))) * a_Normal;
                 v_TexCoord = a_TexCoord;
+
+                gl_Position =
+                    u_ViewProjection * worldPosition;
             }
         )";
 
@@ -65,31 +68,153 @@ int main()
 
             layout(location = 0) out vec4 o_Color;
 
+            in vec3 v_WorldPosition;
             in vec3 v_Normal;
             in vec2 v_TexCoord;
 
             uniform vec4 u_Color;
             uniform sampler2D u_Texture;
             uniform int u_UseTexture;
+            uniform vec3 u_ViewPosition;
+            uniform vec3 u_AmbientColor;
+
+            struct DirectionalLight
+            {
+                vec3 direction;
+                vec3 color;
+                float intensity;
+            };
+
+            struct PointLight
+            {
+                vec3 position;
+                vec3 color;
+                float intensity;
+                float range;
+            };
+
+            struct SpotLight
+            {
+                vec3 position;
+                vec3 direction;
+                vec3 color;
+                float intensity;
+                float range;
+                float innerCos;
+                float outerCos;
+            };
+
+            uniform int u_HasDirectionalLight;
+            uniform DirectionalLight u_DirectionalLight;
+
+            uniform int u_PointLightCount;
+            uniform PointLight u_PointLights[4];
+
+            uniform int u_SpotLightCount;
+            uniform SpotLight u_SpotLights[4];
+
+            vec3 EvaluateLight(
+                vec3 normal,
+                vec3 viewDirection,
+                vec3 lightDirection,
+                vec3 lightColor,
+                float intensity)
+            {
+                float diffuse =
+                    max(dot(normal, lightDirection), 0.0);
+                diffuse = diffuse * 0.92 + 0.08;
+
+                vec3 halfDirection =
+                    normalize(lightDirection + viewDirection);
+                float specular =
+                    pow(max(dot(normal, halfDirection), 0.0), 32.0);
+
+                return lightColor * intensity *
+                    (diffuse + specular * 0.18);
+            }
 
             void main()
             {
                 vec4 baseColor = u_Color;
-
                 if (u_UseTexture == 1)
                     baseColor *= texture(u_Texture, v_TexCoord);
 
                 vec3 normal = normalize(v_Normal);
-                vec3 lightDirection =
-                    normalize(vec3(0.45, 0.80, 0.35));
+                vec3 viewDirection =
+                    normalize(u_ViewPosition - v_WorldPosition);
 
-                float diffuse =
-                    max(dot(normal, lightDirection), 0.0);
+                vec3 lighting = u_AmbientColor;
 
-                float lighting = 0.25 + diffuse * 0.75;
+                if (u_HasDirectionalLight == 1)
+                {
+                    lighting += EvaluateLight(
+                        normal,
+                        viewDirection,
+                        normalize(-u_DirectionalLight.direction),
+                        u_DirectionalLight.color,
+                        u_DirectionalLight.intensity);
+                }
 
-                o_Color =
-                    vec4(baseColor.rgb * lighting, baseColor.a);
+                for (int i = 0; i < u_PointLightCount; ++i)
+                {
+                    vec3 delta =
+                        u_PointLights[i].position - v_WorldPosition;
+                    float distanceToLight = length(delta);
+                    vec3 lightDirection =
+                        delta / max(distanceToLight, 0.0001);
+
+                    float normalizedDistance =
+                        distanceToLight /
+                        max(u_PointLights[i].range, 0.0001);
+                    float attenuation =
+                        clamp(1.0 - normalizedDistance, 0.0, 1.0);
+                    attenuation *= attenuation;
+
+                    lighting += EvaluateLight(
+                        normal,
+                        viewDirection,
+                        lightDirection,
+                        u_PointLights[i].color,
+                        u_PointLights[i].intensity * attenuation);
+                }
+
+                for (int i = 0; i < u_SpotLightCount; ++i)
+                {
+                    vec3 delta =
+                        u_SpotLights[i].position - v_WorldPosition;
+                    float distanceToLight = length(delta);
+                    vec3 lightDirection =
+                        delta / max(distanceToLight, 0.0001);
+
+                    float theta = dot(
+                        normalize(-lightDirection),
+                        normalize(u_SpotLights[i].direction));
+
+                    float cone =
+                        smoothstep(
+                            u_SpotLights[i].outerCos,
+                            u_SpotLights[i].innerCos,
+                            theta);
+
+                    float normalizedDistance =
+                        distanceToLight /
+                        max(u_SpotLights[i].range, 0.0001);
+                    float attenuation =
+                        clamp(1.0 - normalizedDistance, 0.0, 1.0);
+                    attenuation *= attenuation;
+
+                    lighting += EvaluateLight(
+                        normal,
+                        viewDirection,
+                        lightDirection,
+                        u_SpotLights[i].color,
+                        u_SpotLights[i].intensity *
+                        attenuation * cone);
+                }
+
+                o_Color = vec4(
+                    baseColor.rgb * lighting,
+                    baseColor.a);
             }
         )";
 
@@ -139,6 +264,33 @@ int main()
         ground.AddComponent<NoJob::RigidbodyComponent>(groundBody);
         ground.AddComponent<NoJob::BoxColliderComponent>();
 
+        NoJob::Entity mainCamera =
+            editorScene.CreateEntity("Main Camera");
+        auto& cameraTransform =
+            mainCamera.GetComponent<NoJob::TransformComponent>();
+        cameraTransform.Position = { 0.0f, 2.5f, 7.0f };
+        cameraTransform.Rotation =
+            { glm::radians(-10.0f), 0.0f, 0.0f };
+        mainCamera.AddComponent<NoJob::CameraComponent>();
+
+        NoJob::Entity sun = editorScene.CreateEntity("Sun");
+        auto& sunTransform =
+            sun.GetComponent<NoJob::TransformComponent>();
+        sunTransform.Rotation =
+            { glm::radians(-50.0f), glm::radians(-30.0f), 0.0f };
+        NoJob::DirectionalLightComponent sunLight;
+        sunLight.Intensity = 1.1f;
+        sun.AddComponent<NoJob::DirectionalLightComponent>(sunLight);
+
+        NoJob::Entity fillLight =
+            editorScene.CreateEntity("Point Light");
+        fillLight.GetComponent<NoJob::TransformComponent>().Position =
+            { 2.5f, 2.5f, 2.0f };
+        NoJob::PointLightComponent pointLight;
+        pointLight.Intensity = 2.0f;
+        pointLight.Range = 8.0f;
+        fillLight.AddComponent<NoJob::PointLightComponent>(pointLight);
+
         NoJob::PhysicsSystem physics;
 
         NoJob::FramebufferSpecification framebufferSpecification;
@@ -148,12 +300,20 @@ int main()
         auto framebuffer =
             NoJob::Framebuffer::Create(framebufferSpecification);
 
+        NoJob::FramebufferSpecification cameraPreviewSpecification;
+        cameraPreviewSpecification.Width = 320;
+        cameraPreviewSpecification.Height = 180;
+        auto cameraPreviewFramebuffer =
+            NoJob::Framebuffer::Create(cameraPreviewSpecification);
+
         NoJob::EditorLayer editor;
         editor.Init(window.GetNativeWindow(), &editorScene);
         editor.SetSelectedEntity(cube);
         editor.SetDefaultCubeAssets(cubeMesh, cubeMaterial);
         editor.SetViewportTexture(
             framebuffer->GetColorAttachmentRendererID());
+        editor.SetCameraPreviewTexture(
+            cameraPreviewFramebuffer->GetColorAttachmentRendererID());
 
         NoJob::EditorCamera editorCamera;
 
@@ -274,10 +434,13 @@ int main()
                 static_cast<float>(viewportWidth),
                 static_cast<float>(viewportHeight));
 
-            editorCamera.OnUpdate(
-                window.GetNativeWindow(),
-                deltaTime,
-                editor.IsViewportHovered());
+            if (!isPlaying)
+            {
+                editorCamera.OnUpdate(
+                    window.GetNativeWindow(),
+                    deltaTime,
+                    editor.IsViewportHovered());
+            }
 
             framebuffer->Bind();
 
@@ -285,20 +448,103 @@ int main()
                 0.055f, 0.065f, 0.085f, 1.0f);
             NoJob::RenderCommand::Clear();
 
-            const glm::mat4 viewProjection =
-                editorCamera.GetViewProjection();
+            glm::mat4 renderView =
+                editorCamera.GetViewMatrix();
+            glm::mat4 renderProjection =
+                editorCamera.GetProjectionMatrix();
+            glm::mat4 viewProjection =
+                renderProjection * renderView;
+            glm::vec3 renderCameraPosition =
+                editorCamera.GetPosition();
 
-            NoJob::Renderer::Submit(
-                gridVA,
-                shader,
-                glm::mat4(1.0f),
+            // During Play the primary Scene camera owns the game view.
+            if (isPlaying && activeScene)
+            {
+                for (NoJob::Entity entity : activeScene->GetEntities())
+                {
+                    if (!entity.HasComponent<NoJob::CameraComponent>())
+                        continue;
+
+                    const auto& camera =
+                        entity.GetComponent<NoJob::CameraComponent>();
+                    if (!camera.Primary)
+                        continue;
+
+                    const glm::mat4 cameraWorld =
+                        activeScene->GetWorldTransform(entity);
+                    renderView =
+                        glm::inverse(cameraWorld);
+                    const float aspect =
+                        viewportHeight > 0
+                            ? static_cast<float>(viewportWidth) /
+                              static_cast<float>(viewportHeight)
+                            : 1.0f;
+
+                    renderProjection =
+                        camera.GetProjection(aspect);
+                    viewProjection =
+                        renderProjection * renderView;
+                    renderCameraPosition =
+                        glm::vec3(cameraWorld[3]);
+                    break;
+                }
+            }
+
+            if (!isPlaying)
+            {
+                shader->Bind();
+                shader->SetFloat3(
+                    "u_AmbientColor", { 1.0f, 1.0f, 1.0f });
+                shader->SetInt("u_HasDirectionalLight", 0);
+                shader->SetInt("u_PointLightCount", 0);
+                shader->SetInt("u_SpotLightCount", 0);
+                shader->SetFloat3(
+                    "u_ViewPosition", renderCameraPosition);
+
+                NoJob::Renderer::Submit(
+                    gridVA,
+                    shader,
+                    glm::mat4(1.0f),
+                    viewProjection,
+                    glm::vec4(0.28f, 0.30f, 0.34f, 1.0f));
+            }
+
+            NoJob::SceneRenderer::Render(
+                *activeScene,
                 viewProjection,
-                glm::vec4(0.28f, 0.30f, 0.34f, 1.0f));
-
-            // SceneRenderer now discovers and draws renderable entities.
-            NoJob::SceneRenderer::Render(*activeScene, viewProjection);
+                renderCameraPosition);
 
             framebuffer->Unbind();
+
+            // Unity-style preview for the currently selected Camera entity.
+            if (!isPlaying)
+            {
+                const NoJob::Entity selected = editor.GetSelectedEntity();
+                if (selected &&
+                    selected.HasComponent<NoJob::CameraComponent>())
+                {
+                    const auto& previewCamera =
+                        selected.GetComponent<NoJob::CameraComponent>();
+                    const glm::mat4 cameraWorld =
+                        editorScene.GetWorldTransform(selected);
+                    const glm::mat4 previewView =
+                        glm::inverse(cameraWorld);
+                    const glm::mat4 previewProjection =
+                        previewCamera.GetProjection(320.0f / 180.0f);
+
+                    cameraPreviewFramebuffer->Bind();
+                    NoJob::RenderCommand::SetClearColor(
+                        0.055f, 0.065f, 0.085f, 1.0f);
+                    NoJob::RenderCommand::Clear();
+
+                    NoJob::SceneRenderer::Render(
+                        editorScene,
+                        previewProjection * previewView,
+                        glm::vec3(cameraWorld[3]));
+
+                    cameraPreviewFramebuffer->Unbind();
+                }
+            }
 
             NoJob::RenderCommand::SetViewport(0, 0, 1600, 900);
             NoJob::RenderCommand::SetClearColor(
@@ -306,8 +552,8 @@ int main()
             NoJob::RenderCommand::Clear();
 
             editor.SetEditorCameraMatrices(
-                editorCamera.GetViewMatrix(),
-                editorCamera.GetProjectionMatrix());
+                renderView,
+                renderProjection);
 
             editor.BeginFrame();
             editor.Draw();
@@ -351,6 +597,7 @@ int main()
 
         editor.Shutdown();
 
+        cameraPreviewFramebuffer.reset();
         framebuffer.reset();
 
         gridVA.reset();

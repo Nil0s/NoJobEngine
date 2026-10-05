@@ -11,6 +11,7 @@ namespace NoJob
     public:
         static void Render(
             Scene& scene,
-            const glm::mat4& viewProjection);
+            const glm::mat4& viewProjection,
+            const glm::vec3& cameraPosition = glm::vec3(0.0f));
     };
 }

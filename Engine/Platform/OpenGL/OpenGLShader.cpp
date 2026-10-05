@@ -81,6 +81,24 @@ namespace NoJob
         glUniform1i(location, value);
     }
 
+    void OpenGLShader::SetFloat(
+        const std::string& name,
+        float value)
+    {
+        const GLint location =
+            glGetUniformLocation(m_RendererID, name.c_str());
+        glUniform1f(location, value);
+    }
+
+    void OpenGLShader::SetFloat3(
+        const std::string& name,
+        const glm::vec3& value)
+    {
+        const GLint location =
+            glGetUniformLocation(m_RendererID, name.c_str());
+        glUniform3f(location, value.x, value.y, value.z);
+    }
+
     void OpenGLShader::SetFloat4(
         const std::string& name,
         const glm::vec4& value)

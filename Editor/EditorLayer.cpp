@@ -8,6 +8,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 
@@ -22,6 +23,8 @@
 #include <cstring>
 #include <string>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -31,6 +34,10 @@
 
 namespace NoJob
 {
+    // Set during Init when there is no valid saved docking tree.
+    // DockSpaceOverViewport itself creates a root node, so checking for a node
+    // after that call cannot tell us whether a saved layout existed.
+    static bool s_BuildDefaultDockLayout = false;
     namespace
     {
         ImVec2 ProjectColliderPoint(
@@ -317,6 +324,124 @@ namespace NoJob
                         c.IsTrigger ? triggerColor : normalColor,
                         thickness);
                 }
+
+                const glm::vec3 origin =
+                    ColliderTransformPoint(world, {0.0f, 0.0f, 0.0f});
+                glm::vec3 forward =
+                    ColliderTransformPoint(world, {0.0f, 0.0f, -1.0f}) -
+                    origin;
+                if (glm::length(forward) > 0.0001f)
+                    forward = glm::normalize(forward);
+                else
+                    forward = {0.0f, 0.0f, -1.0f};
+
+                const ImU32 cameraColor =
+                    selected ? IM_COL32(100, 220, 255, 255)
+                             : IM_COL32(70, 170, 220, 180);
+                const ImU32 lightColor =
+                    selected ? IM_COL32(255, 235, 90, 255)
+                             : IM_COL32(235, 205, 70, 190);
+
+                if (entity.HasComponent<CameraComponent>())
+                {
+                    const auto& camera =
+                        entity.GetComponent<CameraComponent>();
+                    const float distance = 1.5f;
+                    float halfHeight = 0.7f;
+                    float halfWidth = halfHeight *
+                        (viewportSize.x / std::max(viewportSize.y, 1.0f));
+
+                    if (camera.ProjectionType ==
+                        CameraProjectionType::Perspective)
+                    {
+                        halfHeight =
+                            std::tan(glm::radians(camera.PerspectiveFOV * 0.5f))
+                            * distance;
+                        halfWidth = halfHeight *
+                            (viewportSize.x / std::max(viewportSize.y, 1.0f));
+                    }
+                    else
+                    {
+                        halfHeight = camera.OrthographicSize * 0.25f;
+                        halfWidth = halfHeight *
+                            (viewportSize.x / std::max(viewportSize.y, 1.0f));
+                    }
+
+                    const glm::vec3 localCorners[4] = {
+                        {-halfWidth,-halfHeight,-distance},
+                        { halfWidth,-halfHeight,-distance},
+                        { halfWidth, halfHeight,-distance},
+                        {-halfWidth, halfHeight,-distance}
+                    };
+                    glm::vec3 corners[4];
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        corners[i] =
+                            ColliderTransformPoint(world, localCorners[i]);
+                        DrawColliderLine(
+                            drawList, origin, corners[i],
+                            viewProjection, viewportMin, viewportSize,
+                            cameraColor, thickness);
+                    }
+                    for (int i = 0; i < 4; ++i)
+                        DrawColliderLine(
+                            drawList, corners[i], corners[(i + 1) % 4],
+                            viewProjection, viewportMin, viewportSize,
+                            cameraColor, thickness);
+                }
+
+                if (entity.HasComponent<DirectionalLightComponent>())
+                {
+                    DrawColliderLine(
+                        drawList,
+                        origin,
+                        origin + forward * 1.0f,
+                        viewProjection, viewportMin, viewportSize,
+                        lightColor, thickness);
+                }
+
+                if (entity.HasComponent<PointLightComponent>())
+                {
+                    const auto& light =
+                        entity.GetComponent<PointLightComponent>();
+                    const float radius =
+                        std::min(std::max(light.Range * 0.04f, 0.12f), 0.55f);
+                    DrawSphereColliderWire(
+                        drawList,
+                        glm::translate(glm::mat4(1.0f), origin),
+                        radius,
+                        viewProjection, viewportMin, viewportSize,
+                        lightColor, thickness);
+                }
+
+                if (entity.HasComponent<SpotLightComponent>())
+                {
+                    const auto& light =
+                        entity.GetComponent<SpotLightComponent>();
+                    const float length =
+                        std::min(std::max(light.Range * 0.1f, 0.35f), 1.5f);
+                    const float radius =
+                        std::tan(glm::radians(light.OuterAngle)) * length;
+                    const glm::vec3 tipLocal{0.0f, 0.0f, 0.0f};
+                    const glm::vec3 ringLocal[4] = {
+                        { radius, 0.0f,-length},
+                        {-radius, 0.0f,-length},
+                        {0.0f, radius,-length},
+                        {0.0f,-radius,-length}
+                    };
+                    for (const auto& local : ringLocal)
+                        DrawColliderLine(
+                            drawList,
+                            ColliderTransformPoint(world, tipLocal),
+                            ColliderTransformPoint(world, local),
+                            viewProjection, viewportMin, viewportSize,
+                            lightColor, thickness);
+                    DrawColliderEllipse(
+                        drawList, world, radius, radius, 2,
+                        {0.0f, 0.0f,-length},
+                        viewProjection, viewportMin, viewportSize,
+                        lightColor, thickness);
+                }
             }
 
             drawList->PopClipRect();
@@ -363,6 +488,26 @@ namespace NoJob
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
+        // Keep the editor layout in the repository root instead of out/build.
+        // Deleting the CMake build directory will therefore not erase it.
+        static std::string imguiIniPath =
+            (std::filesystem::current_path() / "NoJobEngineLayout.ini").string();
+        io.IniFilename = imguiIniPath.c_str();
+
+        // A window-position-only ini is not enough: we need an actual docking
+        // tree. This also repairs ini files produced by the previous broken
+        // default-layout implementation.
+        s_BuildDefaultDockLayout = true;
+        if (std::filesystem::exists(imguiIniPath))
+        {
+            std::ifstream iniFile(imguiIniPath);
+            const std::string iniContents(
+                (std::istreambuf_iterator<char>(iniFile)),
+                std::istreambuf_iterator<char>());
+            s_BuildDefaultDockLayout =
+                iniContents.find("[Docking][Data]") == std::string::npos;
+        }
+
         ImGui::StyleColorsDark();
 
         ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -383,10 +528,53 @@ namespace NoJob
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
 
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const ImGuiID dockspaceID = ImGui::GetID("NoJobEngineDockSpace");
+
         ImGui::DockSpaceOverViewport(
-            0,
-            ImGui::GetMainViewport(),
+            dockspaceID,
+            viewport,
             ImGuiDockNodeFlags_PassthruCentralNode);
+
+        // Build only when Init found no valid saved docking data.
+        // Do not test DockBuilderGetNode here: DockSpaceOverViewport has
+        // already created that node by this point.
+        if (s_BuildDefaultDockLayout)
+        {
+            s_BuildDefaultDockLayout = false;
+            ImGui::DockBuilderRemoveNode(dockspaceID);
+            ImGui::DockBuilderAddNode(
+                dockspaceID,
+                ImGuiDockNodeFlags_PassthruCentralNode);
+            ImGui::DockBuilderSetNodeSize(
+                dockspaceID,
+                viewport->WorkSize);
+
+            ImGuiID mainID = dockspaceID;
+
+            // Left: narrow Hierarchy.
+            ImGuiID leftID = ImGui::DockBuilderSplitNode(
+                mainID, ImGuiDir_Left, 0.075f, nullptr, &mainID);
+
+            // Right: Inspector.
+            ImGuiID rightID = ImGui::DockBuilderSplitNode(
+                mainID, ImGuiDir_Right, 0.14f, nullptr, &mainID);
+
+            // Bottom: Console + Project, leaving most space to Viewport.
+            ImGuiID bottomID = ImGui::DockBuilderSplitNode(
+                mainID, ImGuiDir_Down, 0.16f, nullptr, &mainID);
+
+            ImGuiID consoleID = ImGui::DockBuilderSplitNode(
+                bottomID, ImGuiDir_Left, 0.22f, nullptr, &bottomID);
+
+            ImGui::DockBuilderDockWindow("Hierarchy", leftID);
+            ImGui::DockBuilderDockWindow("Inspector", rightID);
+            ImGui::DockBuilderDockWindow("Console", consoleID);
+            ImGui::DockBuilderDockWindow("Project", bottomID);
+            ImGui::DockBuilderDockWindow("Viewport", mainID);
+
+            ImGui::DockBuilderFinish(dockspaceID);
+        }
     }
 
     void EditorLayer::Draw()
@@ -564,6 +752,19 @@ namespace NoJob
             copy.AddComponent<CapsuleColliderComponent>(
                 source.GetComponent<CapsuleColliderComponent>());
 
+        if (source.HasComponent<CameraComponent>())
+            copy.AddComponent<CameraComponent>(
+                source.GetComponent<CameraComponent>());
+        if (source.HasComponent<DirectionalLightComponent>())
+            copy.AddComponent<DirectionalLightComponent>(
+                source.GetComponent<DirectionalLightComponent>());
+        if (source.HasComponent<PointLightComponent>())
+            copy.AddComponent<PointLightComponent>(
+                source.GetComponent<PointLightComponent>());
+        if (source.HasComponent<SpotLightComponent>())
+            copy.AddComponent<SpotLightComponent>(
+                source.GetComponent<SpotLightComponent>());
+
         m_SelectedEntity = copy;
     }
 
@@ -610,6 +811,38 @@ namespace NoJob
 
                 if (ImGui::MenuItem("3D Object/Cube"))
                     CreateCubeEntity();
+
+                ImGui::Separator();
+
+                if (ImGui::MenuItem("Camera") && m_Scene)
+                {
+                    Entity camera = m_Scene->CreateEntity("Camera");
+                    camera.AddComponent<CameraComponent>();
+                    m_SelectedEntity = camera;
+                }
+
+                if (ImGui::BeginMenu("Light"))
+                {
+                    if (ImGui::MenuItem("Directional Light") && m_Scene)
+                    {
+                        Entity light = m_Scene->CreateEntity("Directional Light");
+                        light.AddComponent<DirectionalLightComponent>();
+                        m_SelectedEntity = light;
+                    }
+                    if (ImGui::MenuItem("Point Light") && m_Scene)
+                    {
+                        Entity light = m_Scene->CreateEntity("Point Light");
+                        light.AddComponent<PointLightComponent>();
+                        m_SelectedEntity = light;
+                    }
+                    if (ImGui::MenuItem("Spot Light") && m_Scene)
+                    {
+                        Entity light = m_Scene->CreateEntity("Spot Light");
+                        light.AddComponent<SpotLightComponent>();
+                        m_SelectedEntity = light;
+                    }
+                    ImGui::EndMenu();
+                }
 
                 ImGui::EndMenu();
             }
@@ -1045,6 +1278,167 @@ namespace NoJob
                 m_SelectedEntity.AddComponent<CapsuleColliderComponent>();
             }
 
+            ImGui::Separator();
+
+            if (m_SelectedEntity.HasComponent<CameraComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Camera",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& camera =
+                        m_SelectedEntity.GetComponent<CameraComponent>();
+
+                    ImGui::Checkbox("Primary", &camera.Primary);
+
+                    const char* projectionTypes[] =
+                        { "Perspective", "Orthographic" };
+                    int projectionType =
+                        static_cast<int>(camera.ProjectionType);
+                    if (ImGui::Combo(
+                            "Projection",
+                            &projectionType,
+                            projectionTypes,
+                            IM_ARRAYSIZE(projectionTypes)))
+                    {
+                        camera.ProjectionType =
+                            static_cast<CameraProjectionType>(projectionType);
+                    }
+
+                    if (camera.ProjectionType ==
+                        CameraProjectionType::Perspective)
+                    {
+                        ImGui::SliderFloat(
+                            "Field of View",
+                            &camera.PerspectiveFOV,
+                            1.0f, 179.0f);
+                        ImGui::DragFloat(
+                            "Near Clip",
+                            &camera.PerspectiveNear,
+                            0.01f, 0.001f, 100.0f);
+                        ImGui::DragFloat(
+                            "Far Clip",
+                            &camera.PerspectiveFar,
+                            1.0f, 1.0f, 100000.0f);
+                        camera.PerspectiveFar =
+                            std::max(
+                                camera.PerspectiveFar,
+                                camera.PerspectiveNear + 0.01f);
+                    }
+                    else
+                    {
+                        ImGui::DragFloat(
+                            "Size",
+                            &camera.OrthographicSize,
+                            0.1f, 0.01f, 10000.0f);
+                        ImGui::DragFloat(
+                            "Near Clip##Ortho",
+                            &camera.OrthographicNear,
+                            0.1f);
+                        ImGui::DragFloat(
+                            "Far Clip##Ortho",
+                            &camera.OrthographicFar,
+                            1.0f);
+                    }
+
+                    if (ImGui::Button("Remove Camera"))
+                        m_SelectedEntity.RemoveComponent<CameraComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
+                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
+                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
+                     ImGui::Button("Add Camera"))
+            {
+                m_SelectedEntity.AddComponent<CameraComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<DirectionalLightComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Directional Light",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& light =
+                        m_SelectedEntity.GetComponent<DirectionalLightComponent>();
+                    ImGui::ColorEdit3("Color##Directional", &light.Color.x);
+                    ImGui::DragFloat(
+                        "Intensity##Directional",
+                        &light.Intensity, 0.05f, 0.0f, 100.0f);
+                    if (ImGui::Button("Remove Directional Light"))
+                        m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
+                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
+                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
+                     ImGui::Button("Add Directional Light"))
+            {
+                m_SelectedEntity.AddComponent<DirectionalLightComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<PointLightComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Point Light",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& light =
+                        m_SelectedEntity.GetComponent<PointLightComponent>();
+                    ImGui::ColorEdit3("Color##Point", &light.Color.x);
+                    ImGui::DragFloat(
+                        "Intensity##Point",
+                        &light.Intensity, 0.05f, 0.0f, 100.0f);
+                    ImGui::DragFloat(
+                        "Range##Point",
+                        &light.Range, 0.1f, 0.01f, 10000.0f);
+                    if (ImGui::Button("Remove Point Light"))
+                        m_SelectedEntity.RemoveComponent<PointLightComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
+                     !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
+                     !m_SelectedEntity.HasComponent<SpotLightComponent>() &&
+                     ImGui::Button("Add Point Light"))
+            {
+                m_SelectedEntity.AddComponent<PointLightComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<SpotLightComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Spot Light",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& light =
+                        m_SelectedEntity.GetComponent<SpotLightComponent>();
+                    ImGui::ColorEdit3("Color##Spot", &light.Color.x);
+                    ImGui::DragFloat(
+                        "Intensity##Spot",
+                        &light.Intensity, 0.05f, 0.0f, 100.0f);
+                    ImGui::DragFloat(
+                        "Range##Spot",
+                        &light.Range, 0.1f, 0.01f, 10000.0f);
+                    ImGui::SliderFloat(
+                        "Inner Angle",
+                        &light.InnerAngle, 0.1f, 89.0f);
+                    ImGui::SliderFloat(
+                        "Outer Angle",
+                        &light.OuterAngle, 0.1f, 89.0f);
+                    light.OuterAngle =
+                        std::max(light.OuterAngle, light.InnerAngle);
+                    if (ImGui::Button("Remove Spot Light"))
+                        m_SelectedEntity.RemoveComponent<SpotLightComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<CameraComponent>() &&
+                     !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
+                     !m_SelectedEntity.HasComponent<PointLightComponent>() &&
+                     ImGui::Button("Add Spot Light"))
+            {
+                m_SelectedEntity.AddComponent<SpotLightComponent>();
+            }
+
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
             {
                 ImGui::Separator();
@@ -1213,7 +1607,9 @@ namespace NoJob
 
         // Unity-style collider wireframes. These are editor-only overlays
         // and never become part of the game framebuffer.
-        if (m_Scene)
+        // Scene gizmos belong to Edit Mode only. During Play the viewport
+        // must contain only the game camera render, like Unity's Game view.
+        if (m_Scene && !m_IsPlaying)
         {
             DrawSceneColliderGizmos(
                 *m_Scene,
@@ -1222,6 +1618,37 @@ namespace NoJob
                 m_EditorProjection,
                 viewportMin,
                 ImVec2(m_ViewportWidth, m_ViewportHeight));
+        }
+
+        if (!m_IsPlaying &&
+            m_CameraPreviewTextureID != 0 &&
+            m_SelectedEntity &&
+            m_SelectedEntity.HasComponent<CameraComponent>())
+        {
+            const ImVec2 previewSize(320.0f, 180.0f);
+            const ImVec2 previewMin(
+                viewportMin.x + m_ViewportWidth - previewSize.x - 16.0f,
+                viewportMin.y + 16.0f);
+            const ImVec2 previewMax(
+                previewMin.x + previewSize.x,
+                previewMin.y + previewSize.y);
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(
+                {previewMin.x - 3.0f, previewMin.y - 3.0f},
+                {previewMax.x + 3.0f, previewMax.y + 3.0f},
+                IM_COL32(25, 25, 28, 240));
+            drawList->AddImage(
+                static_cast<ImTextureID>(
+                    static_cast<intptr_t>(m_CameraPreviewTextureID)),
+                previewMin,
+                previewMax,
+                ImVec2(0.0f, 1.0f),
+                ImVec2(1.0f, 0.0f));
+            drawList->AddText(
+                {previewMin.x + 8.0f, previewMin.y + 6.0f},
+                IM_COL32(255, 255, 255, 220),
+                "Camera Preview");
         }
 
         // W = Translate, E = Rotate, R = Scale.
