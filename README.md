@@ -7,6 +7,15 @@ NoJobEngine started with a simple goal: understand what sits underneath a modern
 > **Current milestone: NoJobEngine V1.0**  
 > The V1 foundation is complete and validated. From this point forward, development is focused on improving existing systems and adding more advanced engine features.
 
+
+<p align="center">
+  <img src="docs/images/renderer-settings.png" alt="NoJobEngine editor showing the rendering pipeline and graphics settings" width="100%">
+</p>
+
+<p align="center">
+  <strong>C++20 · OpenGL · Dear ImGui · Jolt Physics · Assimp</strong>
+</p>
+
 ---
 
 ## Why I built it
@@ -24,6 +33,49 @@ The project is especially focused on:
 - physics integration;
 - runtime/editor separation;
 - learning how high-level engine features are built internally.
+
+---
+
+
+## Editor preview
+
+The V1 editor brings the core workflow together in one place: scene editing, asset management, PBR rendering, prefabs, physics and runtime controls.
+
+### Rendering & graphics settings
+
+<p align="center">
+  <img src="docs/images/graphics-validation.png" alt="NoJobEngine graphics validation scene with PBR test objects, lights and shadows" width="100%">
+</p>
+
+The graphics validation scene is used to test PBR surfaces, emissive rendering, multiple light types and shadow behavior.
+
+
+
+### 3D model import
+
+<p align="center">
+  <img src="docs/images/model-import.png" alt="Imported 3D tree model displayed inside the NoJobEngine editor" width="100%">
+</p>
+
+The asset pipeline can import static 3D models through Assimp and instantiate them directly in the editor. V1 supports formats including FBX, glTF, GLB and OBJ, with imported meshes participating in the same scene, transform, lighting, prefab and serialization workflows as native engine entities.
+
+
+### PBR material showcase
+
+<p align="center">
+  <img src="docs/images/material-showcase.png" alt="NoJobEngine PBR material showcase with dielectric, metallic, rough and emissive surfaces" width="100%">
+</p>
+
+The material system exposes different physically based surface properties directly in the editor. This validation scene compares dielectric, metallic, rough and HDR emissive materials while the Graphics Settings panel provides real-time control over exposure, bloom, screen-space ambient occlusion and FXAA.
+
+
+### Prefab & asset workflow
+
+<p align="center">
+  <img src="docs/images/prefab-workflow.png" alt="NoJobEngine prefab workflow with Hierarchy, Project browser and Mesh Renderer Inspector" width="100%">
+</p>
+
+Entities can be turned into prefabs directly from the editor. Materials, textures and PBR parameters are exposed through the Inspector and persisted through the asset pipeline.
 
 ---
 
