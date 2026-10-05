@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(NoJobEngine VERSION 0.3.0 LANGUAGES C CXX)
+project(NoJobEngine VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,17 @@ FetchContent_Declare(glm
     GIT_TAG 1.0.1
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(glm)
+
+# Assimp - production static-model importer (FBX/glTF/GLB/OBJ/DAE/STL/PLY...)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG v5.4.3
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(assimp)
 
 FetchContent_Declare(glad
     GIT_REPOSITORY https://github.com/Dav1dde/glad.git
@@ -114,6 +125,10 @@ target_link_libraries(NoJobImGui PUBLIC glfw)
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
     Engine/Asset/AssetManager.cpp
+    Engine/Assets/AssetRegistry.cpp
+    Engine/Assets/Project.cpp
+    Engine/Assets/MaterialSerializer.cpp
+    Engine/Assets/PrefabSerializer.cpp
     Engine/Physics/PhysicsSystem.cpp
     Engine/Scene/Scene.cpp
     Engine/Scene/SceneSerializer.cpp
@@ -153,7 +168,8 @@ target_link_libraries(NoJobEngine PUBLIC
     glfw
     glm::glm
     NoJobGLAD
-    Jolt::Jolt)
+    Jolt::Jolt
+    assimp::assimp)
 
 add_executable(NoJobEditor
     Editor/main.cpp

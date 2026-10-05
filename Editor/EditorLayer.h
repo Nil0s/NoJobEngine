@@ -78,6 +78,7 @@ namespace NoJob
 
         Entity CreateEmptyEntity();
         Entity CreateCubeEntity();
+        Entity CreateModelEntity(const std::filesystem::path& modelPath);
         void DeleteSelectedEntity();
         void DuplicateSelectedEntity();
 

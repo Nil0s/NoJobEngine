@@ -1,8 +1,13 @@
 #include "Engine/Asset/AssetManager.h"
 
 #include "Engine/Renderer/Texture.h"
+#include "Engine/Renderer/Mesh.h"
+#include "Engine/Assets/AssetRegistry.h"
 
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
+#include <vector>
 
 namespace NoJob
 {
@@ -14,6 +19,8 @@ namespace NoJob
     std::unordered_map<
         const Texture2D*,
         std::filesystem::path> AssetManager::s_TexturePaths;
+    std::unordered_map<std::string,std::weak_ptr<Mesh>> AssetManager::s_MeshCache;
+    std::unordered_map<const Mesh*,std::filesystem::path> AssetManager::s_MeshPaths;
 
     void AssetManager::Init(const std::filesystem::path& projectRoot)
     {
@@ -24,6 +31,8 @@ namespace NoJob
         std::filesystem::create_directories(s_AssetsDirectory / "Models");
         std::filesystem::create_directories(s_AssetsDirectory / "Materials");
         std::filesystem::create_directories(s_AssetsDirectory / "Scenes");
+        std::filesystem::create_directories(s_AssetsDirectory / "Prefabs");
+        AssetRegistry registry(s_AssetsDirectory); registry.Load(); registry.Scan();
     }
 
     const std::filesystem::path& AssetManager::GetProjectRoot()
@@ -99,6 +108,26 @@ namespace NoJob
 
         return ToProjectRelative(destination);
     }
+
+    std::filesystem::path AssetManager::ImportModel(const std::filesystem::path& sourcePath)
+    {
+        if(!std::filesystem::exists(sourcePath))throw std::runtime_error("Model does not exist");
+        std::string ext=sourcePath.extension().string();std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return(char)std::tolower(c);});
+        static const std::vector<std::string> supported{
+            ".obj",".fbx",".gltf",".glb",".dae",".stl",".ply",".3ds",".blend"
+        };
+        if(std::find(supported.begin(),supported.end(),ext)==supported.end())
+            throw std::runtime_error("Unsupported model format: "+ext);
+        auto dst=MakeUniqueDestination(s_AssetsDirectory/"Models",sourcePath.filename());std::filesystem::copy_file(sourcePath,dst);
+        AssetRegistry r(s_AssetsDirectory);r.Load();r.Register(dst,AssetType::Mesh);r.Save();return ToProjectRelative(dst);
+    }
+    std::shared_ptr<Mesh> AssetManager::LoadMesh(const std::filesystem::path& path)
+    {
+        auto a=path.is_absolute()?path:s_ProjectRoot/path;a=std::filesystem::absolute(a).lexically_normal();auto key=a.generic_string();
+        if(auto it=s_MeshCache.find(key);it!=s_MeshCache.end())if(auto m=it->second.lock())return m;
+        auto m=Mesh::LoadModel(a);s_MeshCache[key]=m;s_MeshPaths[m.get()]=ToProjectRelative(a);return m;
+    }
+    std::filesystem::path AssetManager::GetMeshPath(const std::shared_ptr<Mesh>& m){if(!m)return{};auto i=s_MeshPaths.find(m.get());return i==s_MeshPaths.end()?std::filesystem::path{}:i->second;}
 
     std::shared_ptr<Texture2D> AssetManager::LoadTexture(
         const std::filesystem::path& path)

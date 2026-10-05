@@ -44,7 +44,7 @@ namespace NoJob
             if(e.HasComponent<BoxColliderComponent>()){auto& c=e.GetComponent<BoxColliderComponent>();out<<"BOX ";V3(out,c.Size);out<<' '<<c.IsTrigger<<' '<<c.Material.Friction<<' '<<c.Material.Bounciness<<'\n';}
             if(e.HasComponent<SphereColliderComponent>()){auto& c=e.GetComponent<SphereColliderComponent>();out<<"SPHERE "<<c.Radius<<' '<<c.IsTrigger<<' '<<c.Material.Friction<<' '<<c.Material.Bounciness<<'\n';}
             if(e.HasComponent<CapsuleColliderComponent>()){auto& c=e.GetComponent<CapsuleColliderComponent>();out<<"CAPSULE "<<c.Radius<<' '<<c.Height<<' '<<c.IsTrigger<<' '<<c.Material.Friction<<' '<<c.Material.Bounciness<<'\n';}
-            if(e.HasComponent<MeshComponent>()) out<<"MESH CUBE\n";
+            if(e.HasComponent<MeshComponent>()){auto mp=AssetManager::GetMeshPath(e.GetComponent<MeshComponent>().MeshAsset).generic_string();if(mp.empty())out<<"MESH CUBE\n";else out<<"MESH "<<std::quoted(mp)<<'\n';}
             if(e.HasComponent<MeshRendererComponent>() && e.GetComponent<MeshRendererComponent>().MaterialAsset)
             {
                 auto m=e.GetComponent<MeshRendererComponent>().MaterialAsset;
@@ -95,7 +95,7 @@ namespace NoJob
             else if(k=="BOX"){BoxColliderComponent c;ReadV3(s,c.Size);s>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<BoxColliderComponent>(c);}
             else if(k=="SPHERE"){SphereColliderComponent c;s>>c.Radius>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<SphereColliderComponent>(c);}
             else if(k=="CAPSULE"){CapsuleColliderComponent c;s>>c.Radius>>c.Height>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<CapsuleColliderComponent>(c);}
-            else if(k=="MESH"){current.AddComponent<MeshComponent>(defaultMesh);}
+            else if(k=="MESH"){std::string mp;s>>std::quoted(mp);if(mp=="CUBE"||mp.empty())current.AddComponent<MeshComponent>(defaultMesh);else{try{current.AddComponent<MeshComponent>(AssetManager::LoadMesh(mp));}catch(...){current.AddComponent<MeshComponent>(defaultMesh);}}}
             else if(k=="MATERIAL"){
                 auto m=std::make_shared<Material>(*defaultMaterial);
                 glm::vec4 col; s>>col.r>>col.g>>col.b>>col.a>>m->Metallic()>>m->Roughness()>>m->AmbientOcclusion()>>m->NormalStrength();

@@ -8,6 +8,7 @@
 namespace NoJob
 {
     class Texture2D;
+    class Mesh;
 
     class AssetManager
     {
@@ -21,6 +22,9 @@ namespace NoJob
         // a project-relative path such as Assets/Textures/brick.png.
         static std::filesystem::path ImportTexture(
             const std::filesystem::path& sourcePath);
+        static std::filesystem::path ImportModel(const std::filesystem::path& sourcePath);
+        static std::shared_ptr<Mesh> LoadMesh(const std::filesystem::path& path);
+        static std::filesystem::path GetMeshPath(const std::shared_ptr<Mesh>& mesh);
 
         // Loads/caches a texture using a project-relative or absolute path.
         static std::shared_ptr<Texture2D> LoadTexture(
@@ -47,5 +51,7 @@ namespace NoJob
         static std::unordered_map<
             const Texture2D*,
             std::filesystem::path> s_TexturePaths;
+        static std::unordered_map<std::string,std::weak_ptr<Mesh>> s_MeshCache;
+        static std::unordered_map<const Mesh*,std::filesystem::path> s_MeshPaths;
     };
 }

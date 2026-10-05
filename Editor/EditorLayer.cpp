@@ -6,6 +6,9 @@
 #include "Engine/Renderer/Texture.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
+#include "Engine/Assets/AssetRegistry.h"
+#include "Engine/Assets/MaterialSerializer.h"
+#include "Engine/Assets/PrefabSerializer.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -447,6 +450,16 @@ namespace NoJob
             drawList->PopClipRect();
         }
 
+        std::string OpenModelFileDialog(){
+#ifdef _WIN32
+char f[MAX_PATH]{};OPENFILENAMEA d{};d.lStructSize=sizeof(d);d.lpstrFile=f;d.nMaxFile=MAX_PATH;d.lpstrFilter=
+"3D Models\0*.obj;*.fbx;*.gltf;*.glb;*.dae;*.stl;*.ply;*.3ds;*.blend\0"
+"glTF / GLB\0*.gltf;*.glb\0"
+"FBX\0*.fbx\0"
+"Wavefront OBJ\0*.obj\0"
+"All Files\0*.*\0";d.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;if(GetOpenFileNameA(&d)==TRUE)return f;
+#endif
+return{};}
         std::string OpenTextureFileDialog()
         {
 #ifdef _WIN32
@@ -696,6 +709,8 @@ namespace NoJob
         return entity;
     }
 
+    Entity EditorLayer::CreateModelEntity(const std::filesystem::path& p){if(!m_Scene||p.empty())return{};try{auto mesh=AssetManager::LoadMesh(p);auto e=m_Scene->CreateEntity(p.stem().string());e.AddComponent<MeshComponent>(mesh);if(m_DefaultCubeMaterial){auto m=std::make_shared<Material>(*m_DefaultCubeMaterial);m->UseTexture()=false;e.AddComponent<MeshRendererComponent>(m);}m_SelectedEntity=e;return e;}catch(...){return{};}}
+
     void EditorLayer::DeleteSelectedEntity()
     {
         if (!m_Scene || !m_SelectedEntity)
@@ -806,6 +821,8 @@ namespace NoJob
                 if (ImGui::MenuItem("Load Graphics Test Scene"))
                     m_GraphicsTestSceneRequested = true;
                 ImGui::Separator();
+                if(ImGui::MenuItem("Import 3D Model...")){auto s=OpenModelFileDialog();if(!s.empty())try{CreateModelEntity(AssetManager::ImportModel(s));}catch(...){}}
+                ImGui::Separator();
                 ImGui::MenuItem("Exit");
                 ImGui::EndMenu();
             }
@@ -838,8 +855,27 @@ namespace NoJob
                 if (ImGui::MenuItem("Create Empty"))
                     CreateEmptyEntity();
 
-                if (ImGui::MenuItem("3D Object/Cube"))
-                    CreateCubeEntity();
+                if (ImGui::BeginMenu("3D Object"))
+                {
+                    if (ImGui::MenuItem("Cube"))
+                        CreateCubeEntity();
+
+                    if (ImGui::MenuItem("Import 3D Model..."))
+                    {
+                        const std::string source = OpenModelFileDialog();
+                        if (!source.empty())
+                        {
+                            try
+                            {
+                                const auto imported = AssetManager::ImportModel(source);
+                                CreateModelEntity(imported);
+                            }
+                            catch (...) {}
+                        }
+                    }
+
+                    ImGui::EndMenu();
+                }
 
                 ImGui::Separator();
 
@@ -849,6 +885,23 @@ namespace NoJob
                     camera.AddComponent<CameraComponent>();
                     m_SelectedEntity = camera;
                 }
+
+                if (m_SelectedEntity && ImGui::MenuItem("Create Prefab From Selected"))
+                {
+                    const auto prefabPath =
+                        AssetManager::GetAssetsDirectory() / "Prefabs" /
+                        (m_SelectedEntity.GetComponent<TagComponent>().Tag + ".nojobprefab");
+
+                    if (PrefabSerializer::Save(m_SelectedEntity, prefabPath))
+                    {
+                        AssetRegistry registry(AssetManager::GetAssetsDirectory());
+                        registry.Load();
+                        registry.Register(prefabPath, AssetType::Prefab);
+                        registry.Save();
+                    }
+                }
+
+                ImGui::Separator();
 
                 if (ImGui::BeginMenu("Light"))
                 {
@@ -1070,6 +1123,21 @@ namespace NoJob
             if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
                 DuplicateSelectedEntity();
 
+            if (ImGui::MenuItem("Create Prefab"))
+            {
+                const auto prefabPath =
+                    AssetManager::GetAssetsDirectory() / "Prefabs" /
+                    (entity.GetComponent<TagComponent>().Tag + ".nojobprefab");
+
+                if (PrefabSerializer::Save(entity, prefabPath))
+                {
+                    AssetRegistry registry(AssetManager::GetAssetsDirectory());
+                    registry.Load();
+                    registry.Register(prefabPath, AssetType::Prefab);
+                    registry.Save();
+                }
+            }
+
             if (relationship.Parent != 0
                 && ImGui::MenuItem("Unparent"))
             {
@@ -1126,20 +1194,38 @@ namespace NoJob
                 auto& transform =
                     m_SelectedEntity.GetComponent<TransformComponent>();
 
+                // Unity-style numeric transform fields:
+                // click a component to type an exact value, or drag it as before.
+                // Ctrl+click also switches a DragFloat field directly to text input.
+                ImGui::SetNextItemWidth(-1.0f);
                 ImGui::DragFloat3(
                     "Position",
                     &transform.Position.x,
-                    0.01f);
+                    0.01f,
+                    0.0f,
+                    0.0f,
+                    "%.3f");
 
+                ImGui::SetNextItemWidth(-1.0f);
                 ImGui::DragFloat3(
                     "Rotation",
                     &transform.Rotation.x,
-                    0.01f);
+                    0.01f,
+                    0.0f,
+                    0.0f,
+                    "%.3f");
 
+                ImGui::SetNextItemWidth(-1.0f);
                 ImGui::DragFloat3(
                     "Scale",
                     &transform.Scale.x,
-                    0.01f);
+                    0.01f,
+                    0.0f,
+                    0.0f,
+                    "%.3f");
+
+                ImGui::TextDisabled(
+                    "Ctrl + click a value to type an exact number.");
             }
 
             {
@@ -1489,6 +1575,65 @@ namespace NoJob
 
                     if (renderer.MaterialAsset)
                     {
+                        // Unity-style material slot. This is a real ImGui item,
+                        // so the drag/drop target is attached to the slot itself
+                        // instead of accidentally attaching to the previous button.
+                        ImGui::TextUnformatted("Material");
+                        ImGui::SameLine();
+                        ImGui::Button(
+                            "Material Slot",
+                            ImVec2(ImGui::GetContentRegionAvail().x, 0.0f));
+
+                        if (ImGui::BeginDragDropTarget())
+                        {
+                            if (const ImGuiPayload* materialPayload =
+                                    ImGui::AcceptDragDropPayload(
+                                        "NOJOB_MATERIAL_ASSET"))
+                            {
+                                const char* relativePath =
+                                    static_cast<const char*>(
+                                        materialPayload->Data);
+
+                                AssetRegistry registry(
+                                    AssetManager::GetAssetsDirectory());
+                                registry.Load();
+
+                                auto loaded = MaterialSerializer::Load(
+                                    AssetManager::GetProjectRoot() /
+                                        relativePath,
+                                    renderer.MaterialAsset->GetShader(),
+                                    registry);
+
+                                if (loaded)
+                                    renderer.MaterialAsset = loaded;
+                            }
+
+                            if (const ImGuiPayload* texturePayload =
+                                    ImGui::AcceptDragDropPayload(
+                                        "NOJOB_TEXTURE_ASSET"))
+                            {
+                                const char* relativePath =
+                                    static_cast<const char*>(
+                                        texturePayload->Data);
+
+                                try
+                                {
+                                    renderer.MaterialAsset->SetTexture(
+                                        AssetManager::LoadTexture(
+                                            relativePath));
+                                    renderer.MaterialAsset->UseTexture() =
+                                        true;
+                                }
+                                catch (const std::exception&)
+                                {
+                                }
+                            }
+
+                            ImGui::EndDragDropTarget();
+                        }
+
+                        ImGui::Separator();
+
                         auto& color =
                             renderer.MaterialAsset->GetColor();
 
@@ -1568,30 +1713,8 @@ namespace NoJob
                             renderer.MaterialAsset->UseTexture() = true;
                         }
 
-                        if (ImGui::BeginDragDropTarget())
-                        {
-                            if (const ImGuiPayload* payload =
-                                    ImGui::AcceptDragDropPayload(
-                                        "NOJOB_TEXTURE_ASSET"))
-                            {
-                                const char* relativePath =
-                                    static_cast<const char*>(payload->Data);
+                        if(ImGui::Button("Save Material Asset")){auto p=AssetManager::GetAssetsDirectory()/"Materials"/(m_SelectedEntity.GetComponent<TagComponent>().Tag+".nojobmat");AssetRegistry r(AssetManager::GetAssetsDirectory());r.Load();MaterialSerializer::Save(*renderer.MaterialAsset,p,r);r.Register(p,AssetType::Material);r.Save();} ImGui::SameLine(); if(ImGui::Button("Create Prefab")){auto p=AssetManager::GetAssetsDirectory()/"Prefabs"/(m_SelectedEntity.GetComponent<TagComponent>().Tag+".nojobprefab");PrefabSerializer::Save(m_SelectedEntity,p);AssetRegistry r(AssetManager::GetAssetsDirectory());r.Load();r.Register(p,AssetType::Prefab);r.Save();}
 
-                                try
-                                {
-                                    renderer.MaterialAsset->SetTexture(
-                                        AssetManager::LoadTexture(
-                                            relativePath));
-
-                                    renderer.MaterialAsset->UseTexture() = true;
-                                }
-                                catch (const std::exception&)
-                                {
-                                }
-                            }
-
-                            ImGui::EndDragDropTarget();
-                        }
 
                         if (renderer.MaterialAsset->GetTexture())
                         {
@@ -1863,6 +1986,139 @@ namespace NoJob
 
         ImGui::Separator();
 
+        // Unity-style prefab creation:
+        // drag an entity from Hierarchy and drop it into any folder inside Assets.
+        const bool projectFolderIsInsideAssets =
+            m_ProjectDirectory == assetsRoot
+            || m_ProjectDirectory.string().rfind(assetsRoot.string(), 0) == 0;
+
+        if (projectFolderIsInsideAssets)
+        {
+            ImGui::InvisibleButton(
+                "##ProjectPrefabDropTarget",
+                ImVec2(ImGui::GetContentRegionAvail().x, 28.0f));
+
+            // IMPORTANT: BeginDragDropTarget must be immediately after the
+            // target item. Previously TextDisabled became the last item,
+            // therefore ImGui never accepted the Hierarchy payload here.
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+                {
+                    const auto handle =
+                        *static_cast<const std::uint32_t*>(payload->Data);
+
+                    if (m_Scene && m_Scene->IsValid(handle))
+                    {
+                        Entity source(handle, m_Scene);
+                        auto prefabName =
+                            source.GetComponent<TagComponent>().Tag;
+
+                        for (char& c : prefabName)
+                        {
+                            if (c == '/' || c == '\\' || c == ':' ||
+                                c == '*' || c == '?' || c == '"' ||
+                                c == '<' || c == '>' || c == '|')
+                                c = '_';
+                        }
+
+                        auto prefabPath =
+                            m_ProjectDirectory /
+                            (prefabName + ".nojobprefab");
+
+                        int suffix = 1;
+                        while (std::filesystem::exists(prefabPath))
+                        {
+                            prefabPath =
+                                m_ProjectDirectory /
+                                (prefabName + " (" +
+                                 std::to_string(suffix++) +
+                                 ").nojobprefab");
+                        }
+
+                        if (PrefabSerializer::Save(source, prefabPath))
+                        {
+                            AssetRegistry registry(
+                                AssetManager::GetAssetsDirectory());
+                            registry.Load();
+                            registry.Register(
+                                prefabPath,
+                                AssetType::Prefab);
+                            registry.Save();
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 28.0f);
+            ImGui::TextDisabled("Drop a Hierarchy object here to create a Prefab");
+            ImGui::Separator();
+        }
+
+        // Right click empty Project space -> Create -> Prefab From Selected.
+        if (ImGui::BeginPopupContextWindow(
+                "ProjectCreateContext",
+                ImGuiPopupFlags_MouseButtonRight |
+                ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::BeginMenu("Create"))
+            {
+                const bool canCreatePrefab =
+                    projectFolderIsInsideAssets
+                    && static_cast<bool>(m_SelectedEntity);
+
+                if (ImGui::MenuItem(
+                        "Prefab From Selected",
+                        nullptr,
+                        false,
+                        canCreatePrefab))
+                {
+                    auto prefabName =
+                        m_SelectedEntity.GetComponent<TagComponent>().Tag;
+
+                    for (char& c : prefabName)
+                    {
+                        if (c == '/' || c == '\\' || c == ':' ||
+                            c == '*' || c == '?' || c == '"' ||
+                            c == '<' || c == '>' || c == '|')
+                            c = '_';
+                    }
+
+                    auto prefabPath =
+                        m_ProjectDirectory /
+                        (prefabName + ".nojobprefab");
+
+                    int suffix = 1;
+                    while (std::filesystem::exists(prefabPath))
+                    {
+                        prefabPath =
+                            m_ProjectDirectory /
+                            (prefabName + " (" +
+                             std::to_string(suffix++) +
+                             ").nojobprefab");
+                    }
+
+                    if (PrefabSerializer::Save(
+                            m_SelectedEntity,
+                            prefabPath))
+                    {
+                        AssetRegistry registry(
+                            AssetManager::GetAssetsDirectory());
+                        registry.Load();
+                        registry.Register(
+                            prefabPath,
+                            AssetType::Prefab);
+                        registry.Save();
+                    }
+                }
+
+                ImGui::EndMenu();
+            }
+            ImGui::EndPopup();
+        }
+
         std::error_code error;
         if (std::filesystem::exists(m_ProjectDirectory, error))
         {
@@ -1897,6 +2153,61 @@ namespace NoJob
                             m_ProjectDirectory = path;
                         }
                     }
+
+                    // Unity-style: drop a Hierarchy entity directly ON a
+                    // folder (for example Assets/Prefabs).
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        if (const ImGuiPayload* payload =
+                                ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+                        {
+                            const auto handle =
+                                *static_cast<const std::uint32_t*>(
+                                    payload->Data);
+
+                            if (m_Scene && m_Scene->IsValid(handle))
+                            {
+                                Entity source(handle, m_Scene);
+                                auto prefabName =
+                                    source.GetComponent<TagComponent>().Tag;
+
+                                for (char& c : prefabName)
+                                {
+                                    if (c == '/' || c == '\\' || c == ':' ||
+                                        c == '*' || c == '?' || c == '"' ||
+                                        c == '<' || c == '>' || c == '|')
+                                        c = '_';
+                                }
+
+                                auto prefabPath =
+                                    path / (prefabName + ".nojobprefab");
+
+                                int suffix = 1;
+                                while (std::filesystem::exists(prefabPath))
+                                {
+                                    prefabPath =
+                                        path /
+                                        (prefabName + " (" +
+                                         std::to_string(suffix++) +
+                                         ").nojobprefab");
+                                }
+
+                                if (PrefabSerializer::Save(
+                                        source,
+                                        prefabPath))
+                                {
+                                    AssetRegistry registry(
+                                        AssetManager::GetAssetsDirectory());
+                                    registry.Load();
+                                    registry.Register(
+                                        prefabPath,
+                                        AssetType::Prefab);
+                                    registry.Save();
+                                }
+                            }
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
                 }
                 else
                 {
@@ -1910,7 +2221,69 @@ namespace NoJob
                         || extension == ".bmp"
                         || extension == ".tga";
 
-                    if (isTexture)
+                    const bool isModel =
+                        extension == ".obj" || extension == ".fbx" ||
+                        extension == ".gltf" || extension == ".glb" ||
+                        extension == ".dae" || extension == ".stl" ||
+                        extension == ".ply" || extension == ".3ds" ||
+                        extension == ".blend";
+                    const bool isMaterial = extension == ".nojobmat";
+                    const bool isPrefab = extension == ".nojobprefab";
+                    if(isModel){if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)&&ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))CreateModelEntity(AssetManager::ToProjectRelative(path));}
+                    else if(isPrefab)
+                    {
+                        if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)
+                            && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        {
+                            auto e=PrefabSerializer::Instantiate(
+                                *m_Scene,path,m_DefaultCubeMesh,m_DefaultCubeMaterial);
+                            if(e)m_SelectedEntity=e;
+                        }
+
+                        if(ImGui::BeginPopupContextItem())
+                        {
+                            if(ImGui::MenuItem("Instantiate Prefab"))
+                            {
+                                auto e=PrefabSerializer::Instantiate(
+                                    *m_Scene,path,m_DefaultCubeMesh,m_DefaultCubeMaterial);
+                                if(e)m_SelectedEntity=e;
+                            }
+                            ImGui::EndPopup();
+                        }
+                    }
+                    else if(isMaterial)
+                    {
+                        const bool clicked=ImGui::Selectable(
+                            name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick);
+
+                        const std::string relative =
+                            AssetManager::ToProjectRelative(path).generic_string();
+
+                        if(clicked && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
+                           && m_SelectedEntity
+                           && m_SelectedEntity.HasComponent<MeshRendererComponent>())
+                        {
+                            auto& renderer=m_SelectedEntity.GetComponent<MeshRendererComponent>();
+                            if(renderer.MaterialAsset)
+                            {
+                                AssetRegistry registry(AssetManager::GetAssetsDirectory());
+                                registry.Load();
+                                auto loaded=MaterialSerializer::Load(
+                                    path,renderer.MaterialAsset->GetShader(),registry);
+                                if(loaded) renderer.MaterialAsset=loaded;
+                            }
+                        }
+
+                        if(ImGui::BeginDragDropSource())
+                        {
+                            ImGui::SetDragDropPayload(
+                                "NOJOB_MATERIAL_ASSET",
+                                relative.c_str(),relative.size()+1);
+                            ImGui::Text("Material: %s",name.c_str());
+                            ImGui::EndDragDropSource();
+                        }
+                    }
+                    else if (isTexture)
                     {
                         ImGui::Selectable(name.c_str());
 

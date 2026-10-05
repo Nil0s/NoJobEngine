@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <filesystem>
 #include <glm/glm.hpp>
 
 namespace NoJob
@@ -29,6 +30,8 @@ namespace NoJob
         }
 
         static std::shared_ptr<Mesh> CreateCube();
+        static std::shared_ptr<Mesh> LoadOBJ(const std::filesystem::path& path);
+        static std::shared_ptr<Mesh> LoadModel(const std::filesystem::path& path);
 
     private:
         std::shared_ptr<VertexArray> m_VertexArray;

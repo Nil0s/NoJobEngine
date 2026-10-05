@@ -1,9 +1,5 @@
 #pragma once
+#include "Engine/Scene/Entity.h"
 #include <filesystem>
 #include <memory>
-namespace NoJob { class Scene; class Entity; class Mesh; class Material;
-class PrefabSerializer {
-public:
- static bool Save(Entity entity,const std::filesystem::path& path);
- static Entity Instantiate(Scene& scene,const std::filesystem::path& path,const std::shared_ptr<Mesh>& mesh,const std::shared_ptr<Material>& material);
-};}
+namespace NoJob{class Scene;class Mesh;class Material;class PrefabSerializer{public:static bool Save(Entity,const std::filesystem::path&);static Entity Instantiate(Scene&,const std::filesystem::path&,const std::shared_ptr<Mesh>&,const std::shared_ptr<Material>&);};}
