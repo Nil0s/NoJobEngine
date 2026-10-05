@@ -66,6 +66,8 @@ namespace NoJob
             std::optional<MeshComponent> Mesh;
             std::optional<MeshRendererComponent> MeshRenderer;
             std::optional<NativeScriptComponent> NativeScript;
+            std::optional<RigidbodyComponent> Rigidbody;
+            std::optional<BoxColliderComponent> BoxCollider;
         };
 
         template<typename T>
@@ -87,6 +89,10 @@ namespace NoJob
                 return data.MeshRenderer.value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
                 return data.NativeScript.value();
+            else if constexpr (std::is_same_v<T, RigidbodyComponent>)
+                return data.Rigidbody.value();
+            else if constexpr (std::is_same_v<T, BoxColliderComponent>)
+                return data.BoxCollider.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -110,6 +116,10 @@ namespace NoJob
                 return data.MeshRenderer.value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
                 return data.NativeScript.value();
+            else if constexpr (std::is_same_v<T, RigidbodyComponent>)
+                return data.Rigidbody.value();
+            else if constexpr (std::is_same_v<T, BoxColliderComponent>)
+                return data.BoxCollider.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -142,6 +152,16 @@ namespace NoJob
                 data.NativeScript.emplace(T{ std::forward<Args>(args)... });
                 return data.NativeScript.value();
             }
+            else if constexpr (std::is_same_v<T, RigidbodyComponent>)
+            {
+                data.Rigidbody.emplace(T{ std::forward<Args>(args)... });
+                return data.Rigidbody.value();
+            }
+            else if constexpr (std::is_same_v<T, BoxColliderComponent>)
+            {
+                data.BoxCollider.emplace(T{ std::forward<Args>(args)... });
+                return data.BoxCollider.value();
+            }
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -157,6 +177,10 @@ namespace NoJob
                 data.MeshRenderer.reset();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
                 data.NativeScript.reset();
+            else if constexpr (std::is_same_v<T, RigidbodyComponent>)
+                data.Rigidbody.reset();
+            else if constexpr (std::is_same_v<T, BoxColliderComponent>)
+                data.BoxCollider.reset();
             else
                 static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }
@@ -180,6 +204,10 @@ namespace NoJob
                 return data.MeshRenderer.has_value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
                 return data.NativeScript.has_value();
+            else if constexpr (std::is_same_v<T, RigidbodyComponent>)
+                return data.Rigidbody.has_value();
+            else if constexpr (std::is_same_v<T, BoxColliderComponent>)
+                return data.BoxCollider.has_value();
             else
                 return false;
         }

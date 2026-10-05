@@ -65,6 +65,31 @@ if(NOT imguizmo_POPULATED)
     FetchContent_Populate(imguizmo)
 endif()
 
+
+# Jolt Physics 5.6.0 - runtime rigid body physics.
+# Disable optional tools/compute backends: NoJobEngine only needs the core library.
+set(JPH_MASTER_PROJECT OFF CACHE BOOL "" FORCE)
+set(JPH_SAMPLES OFF CACHE BOOL "" FORCE)
+set(JPH_TESTS OFF CACHE BOOL "" FORCE)
+set(JPH_INSTALL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
+set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
+set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+# NoJobEngine uses the DLL MSVC runtime (/MD, /MDd). Jolt defaults to the
+# static runtime (/MT, /MTd), which causes LNK2038/LNK2005 when linked
+# into NoJobEditor. Force Jolt to use the same runtime as the engine.
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+set(CPP_EXCEPTIONS_ENABLED ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(JoltPhysics
+    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+    GIT_TAG v5.6.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR Build)
+FetchContent_MakeAvailable(JoltPhysics)
+
 add_library(NoJobImGui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -89,6 +114,7 @@ target_link_libraries(NoJobImGui PUBLIC glfw)
 add_library(NoJobEngine STATIC
     Engine/Core/Window.cpp
     Engine/Asset/AssetManager.cpp
+    Engine/Physics/PhysicsSystem.cpp
     Engine/Scene/Scene.cpp
     Engine/Scene/SceneRenderer.cpp
 
@@ -125,7 +151,8 @@ target_compile_definitions(NoJobEngine PUBLIC
 target_link_libraries(NoJobEngine PUBLIC
     glfw
     glm::glm
-    NoJobGLAD)
+    NoJobGLAD
+    Jolt::Jolt)
 
 add_executable(NoJobEditor
     Editor/main.cpp

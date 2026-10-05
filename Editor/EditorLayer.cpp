@@ -257,6 +257,14 @@ namespace NoJob
             copy.AddComponent<NativeScriptComponent>(
                 source.GetComponent<NativeScriptComponent>());
 
+        if (source.HasComponent<RigidbodyComponent>())
+            copy.AddComponent<RigidbodyComponent>(
+                source.GetComponent<RigidbodyComponent>());
+
+        if (source.HasComponent<BoxColliderComponent>())
+            copy.AddComponent<BoxColliderComponent>(
+                source.GetComponent<BoxColliderComponent>());
+
         m_SelectedEntity = copy;
     }
 
@@ -617,6 +625,83 @@ namespace NoJob
             }
             else if (ImGui::Button("Add Rotator Script"))
                 m_SelectedEntity.AddComponent<NativeScriptComponent>();
+
+            ImGui::Separator();
+            if (m_SelectedEntity.HasComponent<RigidbodyComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Rigidbody",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& body =
+                        m_SelectedEntity.GetComponent<RigidbodyComponent>();
+
+                    const char* bodyTypes[] = {
+                        "Static", "Dynamic", "Kinematic"
+                    };
+                    int type = static_cast<int>(body.Type);
+                    if (ImGui::Combo(
+                            "Body Type",
+                            &type,
+                            bodyTypes,
+                            IM_ARRAYSIZE(bodyTypes)))
+                    {
+                        body.Type = static_cast<RigidbodyType>(type);
+                    }
+
+                    if (body.Type == RigidbodyType::Dynamic)
+                    {
+                        ImGui::DragFloat(
+                            "Mass",
+                            &body.Mass,
+                            0.05f,
+                            0.001f,
+                            10000.0f);
+                        ImGui::Checkbox("Use Gravity", &body.UseGravity);
+                    }
+                    else if (body.Type == RigidbodyType::Kinematic)
+                    {
+                        ImGui::Checkbox("Use Gravity", &body.UseGravity);
+                        ImGui::TextDisabled(
+                            "Kinematic motion control comes in a later step.");
+                    }
+
+                    if (ImGui::Button("Remove Rigidbody"))
+                        m_SelectedEntity.RemoveComponent<RigidbodyComponent>();
+                }
+            }
+            else if (ImGui::Button("Add Rigidbody"))
+            {
+                m_SelectedEntity.AddComponent<RigidbodyComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<BoxColliderComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Box Collider",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& collider =
+                        m_SelectedEntity.GetComponent<BoxColliderComponent>();
+
+                    ImGui::DragFloat3(
+                        "Size##BoxCollider",
+                        &collider.Size.x,
+                        0.05f,
+                        0.01f,
+                        1000.0f);
+
+                    collider.Size =
+                        glm::max(collider.Size, glm::vec3(0.01f));
+
+                    if (ImGui::Button("Remove Box Collider"))
+                        m_SelectedEntity.RemoveComponent<BoxColliderComponent>();
+                }
+            }
+            else if (ImGui::Button("Add Box Collider"))
+            {
+                m_SelectedEntity.AddComponent<BoxColliderComponent>();
+            }
 
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
             {

@@ -59,6 +59,27 @@ namespace NoJob
         std::vector<std::uint32_t> Children;
     };
 
+
+    enum class RigidbodyType
+    {
+        Static = 0,
+        Dynamic,
+        Kinematic
+    };
+
+    struct RigidbodyComponent
+    {
+        RigidbodyType Type = RigidbodyType::Dynamic;
+        float Mass = 1.0f;
+        bool UseGravity = true;
+    };
+
+    struct BoxColliderComponent
+    {
+        // Full local-space size. The entity world scale is applied at runtime.
+        glm::vec3 Size{ 1.0f, 1.0f, 1.0f };
+    };
+
     struct NativeScriptComponent
     {
         bool Enabled = true;

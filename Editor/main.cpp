@@ -1,4 +1,5 @@
 #include "Engine/Core/Window.h"
+#include "Engine/Physics/PhysicsSystem.h"
 #include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Framebuffer.h"
 #include "Engine/Renderer/Material.h"
@@ -114,6 +115,31 @@ int main()
         NoJob::Entity cube = editorScene.CreateEntity("Cube");
         cube.AddComponent<NoJob::MeshComponent>(cubeMesh);
         cube.AddComponent<NoJob::MeshRendererComponent>(cubeMaterial);
+        cube.GetComponent<NoJob::TransformComponent>().Position =
+            { 0.0f, 2.0f, 0.0f };
+        cube.AddComponent<NoJob::RigidbodyComponent>();
+        cube.AddComponent<NoJob::BoxColliderComponent>();
+
+        auto groundMaterial = std::make_shared<NoJob::Material>(
+            shader,
+            glm::vec4(0.28f, 0.32f, 0.38f, 1.0f));
+        groundMaterial->SetTexture(checkerTexture);
+
+        NoJob::Entity ground = editorScene.CreateEntity("Ground");
+        ground.AddComponent<NoJob::MeshComponent>(cubeMesh);
+        ground.AddComponent<NoJob::MeshRendererComponent>(groundMaterial);
+        auto& groundTransform =
+            ground.GetComponent<NoJob::TransformComponent>();
+        groundTransform.Position = { 0.0f, -1.5f, 0.0f };
+        groundTransform.Scale = { 6.0f, 0.5f, 6.0f };
+
+        NoJob::RigidbodyComponent groundBody;
+        groundBody.Type = NoJob::RigidbodyType::Static;
+        groundBody.UseGravity = false;
+        ground.AddComponent<NoJob::RigidbodyComponent>(groundBody);
+        ground.AddComponent<NoJob::BoxColliderComponent>();
+
+        NoJob::PhysicsSystem physics;
 
         NoJob::FramebufferSpecification framebufferSpecification;
         framebufferSpecification.Width = 1280;
@@ -219,7 +245,10 @@ int main()
             window.PollEvents();
 
             if (isPlaying && !isPaused && runtimeScene)
+            {
                 runtimeScene->OnUpdate(deltaTime);
+                physics.Update(deltaTime);
+            }
 
             const std::uint32_t viewportWidth =
                 editor.GetViewportWidth();
@@ -287,6 +316,7 @@ int main()
             {
                 runtimeScene = editorScene.Copy();
                 runtimeScene->OnRuntimeStart();
+                physics.Start(*runtimeScene);
                 activeScene = runtimeScene.get();
                 isPlaying = true;
                 isPaused = false;
@@ -303,6 +333,7 @@ int main()
 
             if (editor.ConsumeStopRequest() && isPlaying)
             {
+                physics.Stop();
                 runtimeScene->OnRuntimeStop();
                 runtimeScene.reset();
                 activeScene = &editorScene;
@@ -326,6 +357,7 @@ int main()
         gridIB.reset();
         gridVB.reset();
 
+        groundMaterial.reset();
         cubeMaterial.reset();
         cubeMesh.reset();
         shader.reset();
