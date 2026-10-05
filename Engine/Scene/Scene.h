@@ -68,6 +68,8 @@ namespace NoJob
             std::optional<NativeScriptComponent> NativeScript;
             std::optional<RigidbodyComponent> Rigidbody;
             std::optional<BoxColliderComponent> BoxCollider;
+            std::optional<SphereColliderComponent> SphereCollider;
+            std::optional<CapsuleColliderComponent> CapsuleCollider;
         };
 
         template<typename T>
@@ -93,6 +95,10 @@ namespace NoJob
                 return data.Rigidbody.value();
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.value();
+            else if constexpr (std::is_same_v<T, SphereColliderComponent>)
+                return data.SphereCollider.value();
+            else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
+                return data.CapsuleCollider.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -120,6 +126,10 @@ namespace NoJob
                 return data.Rigidbody.value();
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.value();
+            else if constexpr (std::is_same_v<T, SphereColliderComponent>)
+                return data.SphereCollider.value();
+            else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
+                return data.CapsuleCollider.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -162,6 +172,16 @@ namespace NoJob
                 data.BoxCollider.emplace(T{ std::forward<Args>(args)... });
                 return data.BoxCollider.value();
             }
+            else if constexpr (std::is_same_v<T, SphereColliderComponent>)
+            {
+                data.SphereCollider.emplace(T{ std::forward<Args>(args)... });
+                return data.SphereCollider.value();
+            }
+            else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
+            {
+                data.CapsuleCollider.emplace(T{ std::forward<Args>(args)... });
+                return data.CapsuleCollider.value();
+            }
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -181,6 +201,10 @@ namespace NoJob
                 data.Rigidbody.reset();
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 data.BoxCollider.reset();
+            else if constexpr (std::is_same_v<T, SphereColliderComponent>)
+                data.SphereCollider.reset();
+            else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
+                data.CapsuleCollider.reset();
             else
                 static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }
@@ -208,6 +232,10 @@ namespace NoJob
                 return data.Rigidbody.has_value();
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.has_value();
+            else if constexpr (std::is_same_v<T, SphereColliderComponent>)
+                return data.SphereCollider.has_value();
+            else if constexpr (std::is_same_v<T, CapsuleColliderComponent>)
+                return data.CapsuleCollider.has_value();
             else
                 return false;
         }

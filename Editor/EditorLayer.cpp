@@ -14,8 +14,10 @@
 #include <GLFW/glfw3.h>
 #include <ImGuizmo.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -31,6 +33,295 @@ namespace NoJob
 {
     namespace
     {
+        ImVec2 ProjectColliderPoint(
+            const glm::vec3& point,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            bool& visible)
+        {
+            const glm::vec4 clip = viewProjection * glm::vec4(point, 1.0f);
+            if (clip.w <= 0.0001f)
+            {
+                visible = false;
+                return {};
+            }
+
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            visible = ndc.z >= -1.0f && ndc.z <= 1.0f;
+
+            return {
+                viewportMin.x + (ndc.x * 0.5f + 0.5f) * viewportSize.x,
+                viewportMin.y + (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y
+            };
+        }
+
+        void DrawColliderLine(
+            ImDrawList* drawList,
+            const glm::vec3& a,
+            const glm::vec3& b,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 color,
+            float thickness)
+        {
+            bool visibleA = false;
+            bool visibleB = false;
+            const ImVec2 screenA = ProjectColliderPoint(
+                a, viewProjection, viewportMin, viewportSize, visibleA);
+            const ImVec2 screenB = ProjectColliderPoint(
+                b, viewProjection, viewportMin, viewportSize, visibleB);
+
+            if (!visibleA && !visibleB)
+                return;
+
+            drawList->AddLine(screenA, screenB, color, thickness);
+        }
+
+        glm::vec3 ColliderTransformPoint(
+            const glm::mat4& transform,
+            const glm::vec3& point)
+        {
+            return glm::vec3(transform * glm::vec4(point, 1.0f));
+        }
+
+        void DrawBoxColliderWire(
+            ImDrawList* drawList,
+            const glm::mat4& world,
+            const glm::vec3& size,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 color,
+            float thickness)
+        {
+            const glm::vec3 h = glm::max(size * 0.5f, glm::vec3(0.005f));
+            const glm::vec3 local[8] = {
+                {-h.x,-h.y,-h.z}, { h.x,-h.y,-h.z},
+                { h.x, h.y,-h.z}, {-h.x, h.y,-h.z},
+                {-h.x,-h.y, h.z}, { h.x,-h.y, h.z},
+                { h.x, h.y, h.z}, {-h.x, h.y, h.z}
+            };
+
+            glm::vec3 points[8];
+            for (int i = 0; i < 8; ++i)
+                points[i] = ColliderTransformPoint(world, local[i]);
+
+            constexpr int edges[12][2] = {
+                {0,1},{1,2},{2,3},{3,0},
+                {4,5},{5,6},{6,7},{7,4},
+                {0,4},{1,5},{2,6},{3,7}
+            };
+
+            for (const auto& edge : edges)
+                DrawColliderLine(
+                    drawList, points[edge[0]], points[edge[1]],
+                    viewProjection, viewportMin, viewportSize,
+                    color, thickness);
+        }
+
+        void DrawColliderEllipse(
+            ImDrawList* drawList,
+            const glm::mat4& world,
+            float radiusA,
+            float radiusB,
+            int plane,
+            const glm::vec3& offset,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 color,
+            float thickness)
+        {
+            constexpr int segments = 48;
+            glm::vec3 previous{};
+            bool hasPrevious = false;
+
+            for (int i = 0; i <= segments; ++i)
+            {
+                const float angle =
+                    glm::two_pi<float>() * static_cast<float>(i) /
+                    static_cast<float>(segments);
+                const float c = std::cos(angle);
+                const float s = std::sin(angle);
+
+                glm::vec3 local = offset;
+                if (plane == 0) {
+                    local.y += c * radiusA;
+                    local.z += s * radiusB;
+                }
+                else if (plane == 1) {
+                    local.x += c * radiusA;
+                    local.z += s * radiusB;
+                }
+                else {
+                    local.x += c * radiusA;
+                    local.y += s * radiusB;
+                }
+
+                const glm::vec3 current =
+                    ColliderTransformPoint(world, local);
+
+                if (hasPrevious)
+                    DrawColliderLine(
+                        drawList, previous, current,
+                        viewProjection, viewportMin, viewportSize,
+                        color, thickness);
+
+                previous = current;
+                hasPrevious = true;
+            }
+        }
+
+        void DrawSphereColliderWire(
+            ImDrawList* drawList,
+            const glm::mat4& world,
+            float radius,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 color,
+            float thickness)
+        {
+            radius = std::max(radius, 0.005f);
+            DrawColliderEllipse(drawList, world, radius, radius, 0, {},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+            DrawColliderEllipse(drawList, world, radius, radius, 1, {},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+            DrawColliderEllipse(drawList, world, radius, radius, 2, {},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+        }
+
+        void DrawCapsuleColliderWire(
+            ImDrawList* drawList,
+            const glm::mat4& world,
+            float radius,
+            float height,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 color,
+            float thickness)
+        {
+            radius = std::max(radius, 0.005f);
+            height = std::max(height, radius * 2.0f);
+            const float halfCylinder = height * 0.5f - radius;
+
+            DrawColliderEllipse(drawList, world, radius, radius, 1,
+                {0.0f, halfCylinder, 0.0f},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+            DrawColliderEllipse(drawList, world, radius, radius, 1,
+                {0.0f,-halfCylinder, 0.0f},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+
+            const glm::vec3 top[4] = {
+                { radius, halfCylinder, 0.0f},
+                {-radius, halfCylinder, 0.0f},
+                {0.0f, halfCylinder, radius},
+                {0.0f, halfCylinder,-radius}
+            };
+            const glm::vec3 bottom[4] = {
+                { radius,-halfCylinder, 0.0f},
+                {-radius,-halfCylinder, 0.0f},
+                {0.0f,-halfCylinder, radius},
+                {0.0f,-halfCylinder,-radius}
+            };
+
+            for (int i = 0; i < 4; ++i)
+                DrawColliderLine(
+                    drawList,
+                    ColliderTransformPoint(world, top[i]),
+                    ColliderTransformPoint(world, bottom[i]),
+                    viewProjection, viewportMin, viewportSize,
+                    color, thickness);
+
+            // Two full meridians create the rounded top/bottom silhouette.
+            DrawColliderEllipse(drawList, world, radius,
+                halfCylinder + radius, 2, {},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+            DrawColliderEllipse(drawList, world, radius,
+                halfCylinder + radius, 0, {},
+                viewProjection, viewportMin, viewportSize, color, thickness);
+        }
+
+        void DrawSceneColliderGizmos(
+            Scene& scene,
+            Entity selectedEntity,
+            const glm::mat4& view,
+            const glm::mat4& projection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize)
+        {
+            if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f)
+                return;
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->PushClipRect(
+                viewportMin,
+                {viewportMin.x + viewportSize.x,
+                 viewportMin.y + viewportSize.y},
+                true);
+
+            const glm::mat4 viewProjection = projection * view;
+            std::uint64_t selectedID = 0;
+            if (selectedEntity && selectedEntity.HasComponent<IDComponent>())
+                selectedID = selectedEntity.GetComponent<IDComponent>().ID;
+
+            for (Entity entity : scene.GetEntities())
+            {
+                const std::uint64_t entityID =
+                    entity.GetComponent<IDComponent>().ID;
+                const bool selected =
+                    selectedID != 0 && entityID == selectedID;
+
+                const float thickness = selected ? 2.5f : 1.25f;
+                const ImU32 normalColor = selected
+                    ? IM_COL32(110, 255, 135, 255)
+                    : IM_COL32(80, 205, 110, 175);
+                const ImU32 triggerColor = selected
+                    ? IM_COL32(255, 205, 80, 255)
+                    : IM_COL32(230, 170, 65, 175);
+
+                const glm::mat4 world = scene.GetWorldTransform(entity);
+
+                if (entity.HasComponent<BoxColliderComponent>())
+                {
+                    const auto& c =
+                        entity.GetComponent<BoxColliderComponent>();
+                    DrawBoxColliderWire(
+                        drawList, world, c.Size,
+                        viewProjection, viewportMin, viewportSize,
+                        c.IsTrigger ? triggerColor : normalColor,
+                        thickness);
+                }
+
+                if (entity.HasComponent<SphereColliderComponent>())
+                {
+                    const auto& c =
+                        entity.GetComponent<SphereColliderComponent>();
+                    DrawSphereColliderWire(
+                        drawList, world, c.Radius,
+                        viewProjection, viewportMin, viewportSize,
+                        c.IsTrigger ? triggerColor : normalColor,
+                        thickness);
+                }
+
+                if (entity.HasComponent<CapsuleColliderComponent>())
+                {
+                    const auto& c =
+                        entity.GetComponent<CapsuleColliderComponent>();
+                    DrawCapsuleColliderWire(
+                        drawList, world, c.Radius, c.Height,
+                        viewProjection, viewportMin, viewportSize,
+                        c.IsTrigger ? triggerColor : normalColor,
+                        thickness);
+                }
+            }
+
+            drawList->PopClipRect();
+        }
+
         std::string OpenTextureFileDialog()
         {
 #ifdef _WIN32
@@ -264,6 +555,14 @@ namespace NoJob
         if (source.HasComponent<BoxColliderComponent>())
             copy.AddComponent<BoxColliderComponent>(
                 source.GetComponent<BoxColliderComponent>());
+
+        if (source.HasComponent<SphereColliderComponent>())
+            copy.AddComponent<SphereColliderComponent>(
+                source.GetComponent<SphereColliderComponent>());
+
+        if (source.HasComponent<CapsuleColliderComponent>())
+            copy.AddComponent<CapsuleColliderComponent>(
+                source.GetComponent<CapsuleColliderComponent>());
 
         m_SelectedEntity = copy;
     }
@@ -681,26 +980,69 @@ namespace NoJob
                         "Box Collider",
                         ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto& collider =
-                        m_SelectedEntity.GetComponent<BoxColliderComponent>();
-
-                    ImGui::DragFloat3(
-                        "Size##BoxCollider",
-                        &collider.Size.x,
-                        0.05f,
-                        0.01f,
-                        1000.0f);
-
-                    collider.Size =
-                        glm::max(collider.Size, glm::vec3(0.01f));
-
+                    auto& c = m_SelectedEntity.GetComponent<BoxColliderComponent>();
+                    ImGui::DragFloat3("Size##Box", &c.Size.x, 0.05f, 0.01f, 1000.0f);
+                    c.Size = glm::max(c.Size, glm::vec3(0.01f));
+                    ImGui::Checkbox("Is Trigger##Box", &c.IsTrigger);
+                    ImGui::SliderFloat("Friction##Box", &c.Material.Friction, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Bounciness##Box", &c.Material.Bounciness, 0.0f, 1.0f);
                     if (ImGui::Button("Remove Box Collider"))
                         m_SelectedEntity.RemoveComponent<BoxColliderComponent>();
                 }
             }
-            else if (ImGui::Button("Add Box Collider"))
+            else if (!m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
+                     !m_SelectedEntity.HasComponent<CapsuleColliderComponent>() &&
+                     ImGui::Button("Add Box Collider"))
             {
                 m_SelectedEntity.AddComponent<BoxColliderComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<SphereColliderComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Sphere Collider",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& c = m_SelectedEntity.GetComponent<SphereColliderComponent>();
+                    ImGui::DragFloat("Radius##Sphere", &c.Radius, 0.02f, 0.01f, 1000.0f);
+                    c.Radius = std::max(c.Radius, 0.01f);
+                    ImGui::Checkbox("Is Trigger##Sphere", &c.IsTrigger);
+                    ImGui::SliderFloat("Friction##Sphere", &c.Material.Friction, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Bounciness##Sphere", &c.Material.Bounciness, 0.0f, 1.0f);
+                    if (ImGui::Button("Remove Sphere Collider"))
+                        m_SelectedEntity.RemoveComponent<SphereColliderComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
+                     !m_SelectedEntity.HasComponent<CapsuleColliderComponent>() &&
+                     ImGui::Button("Add Sphere Collider"))
+            {
+                m_SelectedEntity.AddComponent<SphereColliderComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<CapsuleColliderComponent>())
+            {
+                if (ImGui::CollapsingHeader(
+                        "Capsule Collider",
+                        ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& c = m_SelectedEntity.GetComponent<CapsuleColliderComponent>();
+                    ImGui::DragFloat("Radius##Capsule", &c.Radius, 0.02f, 0.01f, 1000.0f);
+                    ImGui::DragFloat("Height##Capsule", &c.Height, 0.05f, 0.02f, 1000.0f);
+                    c.Radius = std::max(c.Radius, 0.01f);
+                    c.Height = std::max(c.Height, c.Radius * 2.0f);
+                    ImGui::Checkbox("Is Trigger##Capsule", &c.IsTrigger);
+                    ImGui::SliderFloat("Friction##Capsule", &c.Material.Friction, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Bounciness##Capsule", &c.Material.Bounciness, 0.0f, 1.0f);
+                    if (ImGui::Button("Remove Capsule Collider"))
+                        m_SelectedEntity.RemoveComponent<CapsuleColliderComponent>();
+                }
+            }
+            else if (!m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
+                     !m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
+                     ImGui::Button("Add Capsule Collider"))
+            {
+                m_SelectedEntity.AddComponent<CapsuleColliderComponent>();
             }
 
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
@@ -867,6 +1209,19 @@ namespace NoJob
                     m_ViewportHeight),
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
+        }
+
+        // Unity-style collider wireframes. These are editor-only overlays
+        // and never become part of the game framebuffer.
+        if (m_Scene)
+        {
+            DrawSceneColliderGizmos(
+                *m_Scene,
+                m_SelectedEntity,
+                m_EditorView,
+                m_EditorProjection,
+                viewportMin,
+                ImVec2(m_ViewportWidth, m_ViewportHeight));
         }
 
         // W = Translate, E = Rotate, R = Scale.

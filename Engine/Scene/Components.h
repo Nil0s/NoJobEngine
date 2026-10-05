@@ -74,10 +74,32 @@ namespace NoJob
         bool UseGravity = true;
     };
 
+    struct PhysicsMaterial
+    {
+        float Friction = 0.5f;
+        float Bounciness = 0.0f;
+    };
+
     struct BoxColliderComponent
     {
-        // Full local-space size. The entity world scale is applied at runtime.
         glm::vec3 Size{ 1.0f, 1.0f, 1.0f };
+        bool IsTrigger = false;
+        PhysicsMaterial Material;
+    };
+
+    struct SphereColliderComponent
+    {
+        float Radius = 0.5f;
+        bool IsTrigger = false;
+        PhysicsMaterial Material;
+    };
+
+    struct CapsuleColliderComponent
+    {
+        float Radius = 0.5f;
+        float Height = 2.0f;
+        bool IsTrigger = false;
+        PhysicsMaterial Material;
     };
 
     struct NativeScriptComponent
