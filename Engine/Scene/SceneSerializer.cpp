@@ -3,6 +3,7 @@
 #include "Engine/Scene/Components.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Asset/AssetManager.h"
 
 #include <fstream>
 #include <iomanip>
@@ -50,6 +51,16 @@ namespace NoJob
                 auto col=m->GetColor();
                 out<<"MATERIAL "<<col.r<<' '<<col.g<<' '<<col.b<<' '<<col.a<<' '<<m->Metallic()<<' '<<m->Roughness()<<' '<<m->AmbientOcclusion()<<' '<<m->NormalStrength()<<' ';
                 V3(out,m->EmissiveColor()); out<<' '<<m->EmissiveStrength()<<'\n';
+
+                const auto albedo = AssetManager::GetTexturePath(m->GetTexture()).generic_string();
+                const auto normal = AssetManager::GetTexturePath(m->GetNormalTexture()).generic_string();
+                const auto metallic = AssetManager::GetTexturePath(m->GetMetallicTexture()).generic_string();
+                const auto roughness = AssetManager::GetTexturePath(m->GetRoughnessTexture()).generic_string();
+                const auto ao = AssetManager::GetTexturePath(m->GetAOTexture()).generic_string();
+                const auto emissive = AssetManager::GetTexturePath(m->GetEmissiveTexture()).generic_string();
+                out<<"TEXTURES "<<std::quoted(albedo)<<' '<<std::quoted(normal)<<' '
+                   <<std::quoted(metallic)<<' '<<std::quoted(roughness)<<' '
+                   <<std::quoted(ao)<<' '<<std::quoted(emissive)<<'\n';
             }
             out<<"END\n";
         }
@@ -66,12 +77,12 @@ namespace NoJob
         struct ParentRequest{Entity child;std::uint32_t oldParent;};
         std::vector<ParentRequest> parents;
         std::unordered_map<std::uint32_t,Entity> handleMap;
-        std::uint32_t sequential=1;
+        
 
         while(std::getline(in,line))
         {
             std::istringstream s(line); std::string k; s>>k;
-            if(k=="ENTITY"){std::uint64_t id;std::string name;s>>id>>std::quoted(name);current=scene.CreateEntity(name);handleMap[sequential++]=current;}
+            if(k=="ENTITY"){std::uint64_t id;std::string name;s>>id>>std::quoted(name);current=scene.CreateEntity(name);handleMap[static_cast<std::uint32_t>(id)]=current;}
             else if(!current) continue;
             else if(k=="TRANSFORM"){auto& c=current.GetComponent<TransformComponent>();ReadV3(s,c.Position);ReadV3(s,c.Rotation);ReadV3(s,c.Scale);}
             else if(k=="PARENT"){s>>parentHandle;if(parentHandle)parents.push_back({current,parentHandle});}
@@ -89,10 +100,29 @@ namespace NoJob
                 auto m=std::make_shared<Material>(*defaultMaterial);
                 glm::vec4 col; s>>col.r>>col.g>>col.b>>col.a>>m->Metallic()>>m->Roughness()>>m->AmbientOcclusion()>>m->NormalStrength();
                 ReadV3(s,m->EmissiveColor());s>>m->EmissiveStrength();m->GetColor()=col;
+                // The editor default material may contain the checker/default texture.
+                // A serialized material must not inherit it just because it was cloned.
+                // TEXTURES below explicitly restores a real albedo texture when one was saved.
+                m->UseTexture() = false;
                 current.AddComponent<MeshRendererComponent>(m);
             }
+            else if(k=="TEXTURES" && current.HasComponent<MeshRendererComponent>()){
+                std::string albedo,normal,metallic,roughness,ao,emissive;
+                s>>std::quoted(albedo)>>std::quoted(normal)>>std::quoted(metallic)
+                 >>std::quoted(roughness)>>std::quoted(ao)>>std::quoted(emissive);
+                auto m=current.GetComponent<MeshRendererComponent>().MaterialAsset;
+                auto load=[](const std::string& path)->std::shared_ptr<Texture2D>{
+                    return path.empty()?nullptr:AssetManager::LoadTexture(path);
+                };
+                if(!albedo.empty()){m->SetTexture(load(albedo));m->UseTexture()=true;}
+                m->SetNormalTexture(load(normal));
+                m->SetMetallicTexture(load(metallic));
+                m->SetRoughnessTexture(load(roughness));
+                m->SetAOTexture(load(ao));
+                m->SetEmissiveTexture(load(emissive));
+            }
         }
-        // Current serializer uses creation order for relationship handles.
+        // Resolve saved parent IDs after all entities have been created.
         for(auto& pr:parents){auto it=handleMap.find(pr.oldParent);if(it!=handleMap.end())scene.SetParent(pr.child,it->second,false);}
         return true;
     }

@@ -479,7 +479,7 @@ namespace NoJob
         m_Scene = scene;
 
         AssetManager::Init(std::filesystem::current_path());
-        m_ProjectDirectory = AssetManager::GetAssetsDirectory();
+        m_ProjectDirectory = AssetManager::GetProjectRoot();
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -1838,16 +1838,20 @@ namespace NoJob
         ImGui::Begin("Project");
 
         if (m_ProjectDirectory.empty())
-            m_ProjectDirectory = AssetManager::GetAssetsDirectory();
+            m_ProjectDirectory = AssetManager::GetProjectRoot();
 
-        const auto assetsRoot =
-            AssetManager::GetAssetsDirectory();
+        const auto projectRoot = AssetManager::GetProjectRoot();
+        const auto assetsRoot = AssetManager::GetAssetsDirectory();
 
-        if (m_ProjectDirectory != assetsRoot)
+        if (m_ProjectDirectory != projectRoot)
         {
             if (ImGui::Button("< Back"))
+            {
+                const auto parent = m_ProjectDirectory.parent_path();
                 m_ProjectDirectory =
-                    m_ProjectDirectory.parent_path();
+                    parent.string().size() < projectRoot.string().size()
+                    ? projectRoot : parent;
+            }
 
             ImGui::SameLine();
         }
@@ -1871,6 +1875,12 @@ namespace NoJob
                 const auto path = entry.path();
                 const std::string name =
                     path.filename().string();
+
+                // Unity-style root: Project shows the Assets folder first,
+                // instead of dumping CMake/source files into this panel.
+                if (m_ProjectDirectory == projectRoot
+                    && path.lexically_normal() != assetsRoot.lexically_normal())
+                    continue;
 
                 ImGui::PushID(path.string().c_str());
 

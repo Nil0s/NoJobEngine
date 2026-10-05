@@ -29,6 +29,11 @@ namespace NoJob
         static std::filesystem::path ToProjectRelative(
             const std::filesystem::path& path);
 
+        // Returns the canonical project-relative source path for a texture
+        // loaded by AssetManager. Empty means procedural/non-persistent.
+        static std::filesystem::path GetTexturePath(
+            const std::shared_ptr<Texture2D>& texture);
+
     private:
         static std::filesystem::path MakeUniqueDestination(
             const std::filesystem::path& directory,
@@ -39,5 +44,8 @@ namespace NoJob
         static std::unordered_map<
             std::string,
             std::weak_ptr<Texture2D>> s_TextureCache;
+        static std::unordered_map<
+            const Texture2D*,
+            std::filesystem::path> s_TexturePaths;
     };
 }

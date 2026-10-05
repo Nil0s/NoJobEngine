@@ -11,6 +11,9 @@ namespace NoJob
     std::unordered_map<
         std::string,
         std::weak_ptr<Texture2D>> AssetManager::s_TextureCache;
+    std::unordered_map<
+        const Texture2D*,
+        std::filesystem::path> AssetManager::s_TexturePaths;
 
     void AssetManager::Init(const std::filesystem::path& projectRoot)
     {
@@ -121,7 +124,22 @@ namespace NoJob
             Texture2D::Create(absolutePath.string());
 
         s_TextureCache[key] = texture;
+        s_TexturePaths[texture.get()] = ToProjectRelative(absolutePath);
         return texture;
+    }
+
+
+    std::filesystem::path AssetManager::GetTexturePath(
+        const std::shared_ptr<Texture2D>& texture)
+    {
+        if (!texture)
+            return {};
+
+        const auto found = s_TexturePaths.find(texture.get());
+        if (found == s_TexturePaths.end())
+            return {};
+
+        return found->second;
     }
 
     std::filesystem::path AssetManager::ToProjectRelative(
