@@ -12,6 +12,7 @@ namespace NoJob
 {
     class Mesh;
     class Material;
+    class AnimationAsset;
 
     struct IDComponent
     {
@@ -171,6 +172,23 @@ namespace NoJob
     {
         bool Enabled = true;
         float RotationSpeed = 1.0f; // radians per second
+    };
+
+
+    struct AnimatorComponent
+    {
+        std::shared_ptr<AnimationAsset> Animation;
+        int ClipIndex = 0;
+        float TimeSeconds = 0.0f;
+        float Speed = 1.0f;
+        bool Playing = true;
+        bool Loop = true;
+    };
+
+    struct PrefabInstanceComponent
+    {
+        std::string SourcePath;
+        bool IsRoot = true;
     };
 
     struct MeshComponent

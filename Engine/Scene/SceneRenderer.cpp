@@ -5,6 +5,7 @@
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/Texture.h"
+#include "Engine/Animation/Animation.h"
 
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -89,12 +90,25 @@ namespace NoJob
                 #version 460 core
                 layout(location=0) in vec3 a_Position;
                 layout(location=2) in vec2 a_TexCoord;
+                layout(location=3) in vec4 a_BoneIDs;
+                layout(location=4) in vec4 a_BoneWeights;
                 uniform mat4 u_Transform;
+                uniform int u_UseSkinning;
+                uniform mat4 u_Bones[128];
                 uniform mat4 u_ViewProjection;
                 out vec3 v_WorldPosition;
                 out vec2 v_TexCoord;
                 void main(){
-                    vec4 w = u_Transform * vec4(a_Position,1.0);
+                    vec4 localPosition=vec4(a_Position,1.0);
+                    if(u_UseSkinning==1){
+                        ivec4 ids=ivec4(a_BoneIDs);
+                        mat4 skin=u_Bones[ids.x]*a_BoneWeights.x+
+                                  u_Bones[ids.y]*a_BoneWeights.y+
+                                  u_Bones[ids.z]*a_BoneWeights.z+
+                                  u_Bones[ids.w]*a_BoneWeights.w;
+                        if(dot(a_BoneWeights,vec4(1.0))>0.0) localPosition=skin*localPosition;
+                    }
+                    vec4 w = u_Transform * localPosition;
                     v_WorldPosition = w.xyz;
                     v_TexCoord = a_TexCoord;
                     gl_Position = u_ViewProjection * w;
@@ -148,6 +162,24 @@ namespace NoJob
             glCreateVertexArrays(1, &s.SkyVAO);
         }
 
+        void UploadSkinning(Entity entity, const std::shared_ptr<Mesh>& mesh,
+                            const std::shared_ptr<Shader>& shader)
+        {
+            constexpr std::size_t MaxBones = 128;
+            const bool canSkin = mesh && mesh->HasSkinning() &&
+                entity.HasComponent<AnimatorComponent>() &&
+                entity.GetComponent<AnimatorComponent>().Animation;
+            shader->SetInt("u_UseSkinning", canSkin ? 1 : 0);
+            if (!canSkin) return;
+
+            const auto& animator = entity.GetComponent<AnimatorComponent>();
+            const auto palette = animator.Animation->EvaluatePose(
+                animator.ClipIndex, animator.TimeSeconds);
+            const std::size_t count = std::min(palette.size(), MaxBones);
+            for (std::size_t i=0;i<count;++i)
+                shader->SetMat4("u_Bones[" + std::to_string(i) + "]", palette[i]);
+        }
+
         void RenderDepthScene(Scene& scene, const glm::mat4& lightVP,
                               bool radial, const glm::vec3& lightPos,
                               float farPlane)
@@ -181,6 +213,7 @@ namespace NoJob
                     s.DepthShader->SetInt("u_AlphaTexture", 0);
                     if (textured) material->GetTexture()->Bind(0);
 
+                    UploadSkinning(entity, mesh.MeshAsset, s.DepthShader);
                     if (count)
                         Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),
                             s.DepthShader, count, offset,
@@ -445,6 +478,7 @@ namespace NoJob
                 bindMap(material->GetAOTexture(),"u_AOMap","u_UseAOMap",4);
                 bindMap(material->GetEmissiveTexture(),"u_EmissiveMap","u_UseEmissiveMap",8);
 
+                UploadSkinning(entity, mesh.MeshAsset, shader);
                 if(count)
                     Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),shader,
                         count,offset,scene.GetWorldTransform(entity),viewProjection,

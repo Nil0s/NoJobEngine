@@ -5,6 +5,7 @@
 namespace NoJob
 {
     class Scene;
+    class PrefabSerializer;
 
     class Entity
     {
@@ -49,5 +50,6 @@ namespace NoJob
         Scene* m_Scene = nullptr;
 
         friend class Scene;
+        friend class PrefabSerializer;
     };
 }

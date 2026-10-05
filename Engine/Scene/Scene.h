@@ -65,6 +65,8 @@ namespace NoJob
             RelationshipComponent Relationship;
 
             std::optional<MeshComponent> Mesh;
+            std::optional<AnimatorComponent> Animator;
+            std::optional<PrefabInstanceComponent> PrefabInstance;
             std::optional<MeshRendererComponent> MeshRenderer;
             std::optional<NativeScriptComponent> NativeScript;
             std::optional<RigidbodyComponent> Rigidbody;
@@ -92,6 +94,10 @@ namespace NoJob
                 return data.Relationship;
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.value();
+            else if constexpr (std::is_same_v<T, AnimatorComponent>)
+                return data.Animator.value();
+            else if constexpr (std::is_same_v<T, PrefabInstanceComponent>)
+                return data.PrefabInstance.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
@@ -131,6 +137,10 @@ namespace NoJob
                 return data.Relationship;
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.value();
+            else if constexpr (std::is_same_v<T, AnimatorComponent>)
+                return data.Animator.value();
+            else if constexpr (std::is_same_v<T, PrefabInstanceComponent>)
+                return data.PrefabInstance.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)
@@ -172,6 +182,16 @@ namespace NoJob
             {
                 data.Mesh.emplace(T{ std::forward<Args>(args)... });
                 return data.Mesh.value();
+            }
+            else if constexpr (std::is_same_v<T, AnimatorComponent>)
+            {
+                data.Animator.emplace(T{ std::forward<Args>(args)... });
+                return data.Animator.value();
+            }
+            else if constexpr (std::is_same_v<T, PrefabInstanceComponent>)
+            {
+                data.PrefabInstance.emplace(T{ std::forward<Args>(args)... });
+                return data.PrefabInstance.value();
             }
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
             {
@@ -273,6 +293,10 @@ namespace NoJob
                 return true;
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.has_value();
+            else if constexpr (std::is_same_v<T, AnimatorComponent>)
+                return data.Animator.has_value();
+            else if constexpr (std::is_same_v<T, PrefabInstanceComponent>)
+                return data.PrefabInstance.has_value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.has_value();
             else if constexpr (std::is_same_v<T, NativeScriptComponent>)

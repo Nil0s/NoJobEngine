@@ -2,6 +2,8 @@
 #include "Engine/Scene/NativeScripts.h"
 
 #include <algorithm>
+#include <cmath>
+#include "Engine/Animation/Animation.h"
 #include <glm/gtc/matrix_inverse.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
@@ -172,6 +174,25 @@ namespace NoJob
     {
         m_DeltaTime = deltaTime;
         if (!m_RuntimeRunning) return;
+
+        // Advance Animator playback clocks. Bone-pose evaluation/render skinning
+        // is intentionally isolated from scene timing and can consume this state.
+        for (auto& [handle, data] : m_Entities)
+        {
+            (void)handle;
+            if (!data.Animator || !data.Animator->Playing || !data.Animator->Animation)
+                continue;
+            const auto& clips = data.Animator->Animation->Clips();
+            if (clips.empty())
+                continue;
+            data.Animator->ClipIndex = std::clamp(data.Animator->ClipIndex, 0, static_cast<int>(clips.size()) - 1);
+            auto& animator = *data.Animator;
+            const float duration = static_cast<float>(clips[animator.ClipIndex].DurationSeconds());
+            animator.TimeSeconds += deltaTime * animator.Speed;
+            if (duration > 0.0f && animator.TimeSeconds > duration)
+                animator.TimeSeconds = animator.Loop ? std::fmod(animator.TimeSeconds, duration) : duration;
+        }
+
         // Snapshot handles: scripts can create/destroy entities during update.
         std::vector<std::uint32_t> handles;
         handles.reserve(m_Entities.size());

@@ -130,6 +130,7 @@ add_library(NoJobEngine STATIC
     Engine/Assets/MaterialSerializer.cpp
     Engine/Assets/PrefabSerializer.cpp
     Engine/Physics/PhysicsSystem.cpp
+    Engine/Animation/Animation.cpp
     Engine/Scene/Scene.cpp
     Engine/Scene/SceneSerializer.cpp
     Engine/Scene/SceneRenderer.cpp

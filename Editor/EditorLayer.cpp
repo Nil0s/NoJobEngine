@@ -9,6 +9,7 @@
 #include "Engine/Assets/AssetRegistry.h"
 #include "Engine/Assets/MaterialSerializer.h"
 #include "Engine/Assets/PrefabSerializer.h"
+#include "Engine/Animation/Animation.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -753,6 +754,25 @@ return{};}
                 entity.GetComponent<MeshRendererComponent>()
                     .SetMaterials(std::move(materials));
             }
+
+            // Unity-style import: if the model contains an Assimp skeleton/animation,
+            // automatically attach an Animator so the clips are immediately visible.
+            try
+            {
+                auto animation = AnimationAsset::Load(p);
+                if (animation && animation->HasAnimations())
+                {
+                    AnimatorComponent animator;
+                    animator.Animation = std::move(animation);
+                    animator.ClipIndex = 0;
+                    animator.TimeSeconds = 0.0f;
+                    animator.Speed = 1.0f;
+                    animator.Playing = true;
+                    animator.Loop = true;
+                    entity.AddComponent<AnimatorComponent>(std::move(animator));
+                }
+            }
+            catch (...) {}
 
             m_SelectedEntity = entity;
             return entity;
@@ -1700,6 +1720,57 @@ return{};}
                      ImGui::Button("Add Spot Light"))
             {
                 m_SelectedEntity.AddComponent<SpotLightComponent>();
+            }
+
+            if (m_SelectedEntity.HasComponent<AnimatorComponent>())
+            {
+                ImGui::Separator();
+                if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& animator=m_SelectedEntity.GetComponent<AnimatorComponent>();
+                    ImGui::Checkbox("Playing", &animator.Playing);
+                    ImGui::SameLine(); ImGui::Checkbox("Loop", &animator.Loop);
+                    ImGui::DragFloat("Speed", &animator.Speed, 0.05f, -4.0f, 4.0f);
+                    if(animator.Animation && !animator.Animation->Clips().empty())
+                    {
+                        const auto& clips=animator.Animation->Clips();
+                        animator.ClipIndex=std::clamp(animator.ClipIndex,0,(int)clips.size()-1);
+                        if(ImGui::BeginCombo("Clip", clips[animator.ClipIndex].Name.c_str()))
+                        {
+                            for(int ci=0;ci<(int)clips.size();++ci)
+                                if(ImGui::Selectable(clips[ci].Name.c_str(),ci==animator.ClipIndex))
+                                { animator.ClipIndex=ci; animator.TimeSeconds=0.0f; }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::Text("Skeleton bones: %zu", animator.Animation->Bones().size());
+                        ImGui::Text("Time: %.2f / %.2f s", animator.TimeSeconds,
+                            (float)clips[animator.ClipIndex].DurationSeconds());
+                    }
+                    else ImGui::TextDisabled("No animation asset loaded.");
+                }
+            }
+
+            if (m_SelectedEntity.HasComponent<PrefabInstanceComponent>())
+            {
+                ImGui::Separator();
+                if(ImGui::CollapsingHeader("Prefab Instance",ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& pi=m_SelectedEntity.GetComponent<PrefabInstanceComponent>();
+                    ImGui::TextWrapped("Source: %s",pi.SourcePath.c_str());
+                    if(ImGui::Button("Apply to Prefab"))
+                    {
+                        CaptureUndoSnapshot();
+                        PrefabSerializer::Apply(m_SelectedEntity,pi.SourcePath);
+                    }
+                    ImGui::SameLine();
+                    if(ImGui::Button("Revert"))
+                    {
+                        CaptureUndoSnapshot();
+                        Entity reverted=PrefabSerializer::Revert(
+                            m_SelectedEntity,m_DefaultCubeMesh,m_DefaultCubeMaterial);
+                        if(reverted) m_SelectedEntity=reverted;
+                    }
+                }
             }
 
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())

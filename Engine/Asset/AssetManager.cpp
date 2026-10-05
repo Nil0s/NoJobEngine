@@ -18,6 +18,7 @@
 #include <vector>
 #include <fstream>
 #include <iomanip>
+#include <cmath>
 
 namespace NoJob
 {
@@ -402,6 +403,29 @@ namespace NoJob
             std::string ref=ar.C_Str(); if(ref.empty()) return {};
             try
             {
+                // Assimp can expose embedded FBX textures either as "*0" references
+                // or by their embedded filename. Handle both forms.
+                if (const aiTexture* embeddedByName = scene->GetEmbeddedTexture(ref.c_str()))
+                {
+                    if (embeddedByName->mHeight == 0)
+                    {
+                        std::string ext = embeddedByName->achFormatHint[0]
+                            ? ("." + std::string(embeddedByName->achFormatHint))
+                            : std::filesystem::path(ref).extension().string();
+                        if (ext.empty()) ext = ".png";
+                        auto dest = MakeUniqueDestination(textureDirectory,
+                            source.stem().string() + "_embedded_" +
+                            std::filesystem::path(ref).stem().string() + ext);
+                        std::ofstream out(dest, std::ios::binary);
+                        out.write(reinterpret_cast<const char*>(embeddedByName->pcData),
+                                  static_cast<std::streamsize>(embeddedByName->mWidth));
+                        out.close();
+                        AssetRegistry r(s_AssetsDirectory); r.Load();
+                        r.Register(dest, AssetType::Texture2D); r.Save();
+                        return LoadTexture(ToProjectRelative(dest));
+                    }
+                }
+
                 if(ref[0]=='*')
                 {
                     unsigned idx=static_cast<unsigned>(std::stoul(ref.substr(1)));
@@ -422,6 +446,33 @@ namespace NoJob
                 std::filesystem::path tp(ref);
                 if(tp.is_relative()) tp=source.parent_path()/tp;
                 tp=std::filesystem::absolute(tp).lexically_normal();
+
+                // FBX files (notably Mixamo exports) often retain an exporter-specific
+                // relative/absolute texture path that no longer exists on this machine.
+                // Recover by filename from the model folder or Assets/Textures.
+                if(!std::filesystem::exists(tp))
+                {
+                    const auto wanted=std::filesystem::path(ref).filename();
+                    const auto direct=source.parent_path()/wanted;
+                    if(std::filesystem::exists(direct))
+                        tp=direct;
+                    else
+                    {
+                        std::error_code ec;
+                        for(std::filesystem::recursive_directory_iterator it(source.parent_path(),ec),end;
+                            !ec && it!=end;++it)
+                        {
+                            if(it->is_regular_file(ec) && it->path().filename()==wanted)
+                            { tp=it->path(); break; }
+                        }
+                    }
+                    if(!std::filesystem::exists(tp))
+                    {
+                        const auto importedCandidate=textureDirectory/wanted;
+                        if(std::filesystem::exists(importedCandidate))
+                            return LoadTexture(ToProjectRelative(importedCandidate));
+                    }
+                }
                 if(!std::filesystem::exists(tp)) return {};
                 auto rel=ImportTexture(tp);
                 AssetRegistry r(s_AssetsDirectory);r.Load();
@@ -473,14 +524,64 @@ namespace NoJob
 
             auto al=loadRef(sm,aiTextureType_BASE_COLOR);
             if(!al) al=loadRef(sm,aiTextureType_DIFFUSE);
-            if(al){m->SetTexture(al);m->UseTexture()=true;}else m->UseTexture()=false;
+            if(al)
+            {
+                m->SetTexture(al);
+                m->UseTexture()=true;
+
+                // FBX/Mixamo diffuse colors are commonly an additional legacy
+                // material tint. Multiplying that tint by an already-authored
+                // diffuse texture makes skin/clothes much too dark.
+                // Keep alpha, but let the texture provide the RGB color.
+                if(source.extension()==".fbx" || source.extension()==".FBX")
+                {
+                    const float alpha=m->GetColor().a;
+                    m->GetColor()={1.0f,1.0f,1.0f,alpha};
+                }
+            }
+            else m->UseTexture()=false;
+
             auto normal=loadRef(sm,aiTextureType_NORMAL_CAMERA);
             if(!normal)normal=loadRef(sm,aiTextureType_NORMALS);
             m->SetNormalTexture(normal);
-            m->SetMetallicTexture(loadRef(sm,aiTextureType_METALNESS));
-            m->SetRoughnessTexture(loadRef(sm,aiTextureType_DIFFUSE_ROUGHNESS));
+
+            auto metallicMap=loadRef(sm,aiTextureType_METALNESS);
+            auto roughnessMap=loadRef(sm,aiTextureType_DIFFUSE_ROUGHNESS);
+            m->SetMetallicTexture(metallicMap);
+            m->SetRoughnessTexture(roughnessMap);
+
+            const bool isFBX=(source.extension()==".fbx" || source.extension()==".FBX");
+            if(isFBX)
+            {
+                // Mixamo FBX materials are legacy/Phong rather than metallic-
+                // roughness PBR. They should not become metallic simply because
+                // Assimp exposes a converted scalar property.
+                if(!metallicMap) m->Metallic()=0.0f;
+
+                // Convert legacy Phong shininess to a sensible PBR roughness.
+                // If there is no shininess information, use a neutral cloth/skin
+                // default instead of trusting an importer-generated PBR factor.
+                if(!roughnessMap)
+                {
+                    ai_real shininess=0.0f;
+                    if(aiGetMaterialFloat(sm,AI_MATKEY_SHININESS,&shininess)==AI_SUCCESS &&
+                       shininess>0.0f)
+                    {
+                        m->Roughness()=std::clamp(
+                            std::sqrt(2.0f/(static_cast<float>(shininess)+2.0f)),
+                            0.18f,0.9f);
+                    }
+                    else
+                    {
+                        m->Roughness()=0.65f;
+                    }
+                }
+            }
+
             auto ao=loadRef(sm,aiTextureType_AMBIENT_OCCLUSION);
-            if(!ao)ao=loadRef(sm,aiTextureType_LIGHTMAP);
+            // LIGHTMAP is not a reliable AO semantic for legacy FBX and can
+            // incorrectly blacken Mixamo materials.
+            if(!ao && !isFBX) ao=loadRef(sm,aiTextureType_LIGHTMAP);
             m->SetAOTexture(ao);
             m->SetEmissiveTexture(loadRef(sm,aiTextureType_EMISSIVE));
 

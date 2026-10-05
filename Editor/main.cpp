@@ -41,8 +41,12 @@ int main()
             layout(location = 0) in vec3 a_Position;
             layout(location = 1) in vec3 a_Normal;
             layout(location = 2) in vec2 a_TexCoord;
+            layout(location = 3) in vec4 a_BoneIDs;
+            layout(location = 4) in vec4 a_BoneWeights;
 
             uniform mat4 u_Transform;
+            uniform int u_UseSkinning;
+            uniform mat4 u_Bones[128];
             uniform mat4 u_ViewProjection;
 
             out vec3 v_WorldPosition;
@@ -51,12 +55,25 @@ int main()
 
             void main()
             {
-                vec4 worldPosition =
-                    u_Transform * vec4(a_Position, 1.0);
+                vec4 localPosition = vec4(a_Position, 1.0);
+                vec3 localNormal = a_Normal;
+                if (u_UseSkinning == 1 && dot(a_BoneWeights, vec4(1.0)) > 0.0)
+                {
+                    ivec4 ids = ivec4(a_BoneIDs);
+                    mat4 skin =
+                        u_Bones[ids.x] * a_BoneWeights.x +
+                        u_Bones[ids.y] * a_BoneWeights.y +
+                        u_Bones[ids.z] * a_BoneWeights.z +
+                        u_Bones[ids.w] * a_BoneWeights.w;
+                    localPosition = skin * localPosition;
+                    localNormal = normalize(mat3(skin) * a_Normal);
+                }
+
+                vec4 worldPosition = u_Transform * localPosition;
 
                 v_WorldPosition = worldPosition.xyz;
                 v_Normal =
-                    mat3(transpose(inverse(u_Transform))) * a_Normal;
+                    mat3(transpose(inverse(u_Transform))) * localNormal;
                 v_TexCoord = a_TexCoord;
 
                 gl_Position =
@@ -112,8 +129,17 @@ int main()
                 mapN.xy*=u_NormalStrength;
                 vec3 Q1=dFdx(v_WorldPosition), Q2=dFdy(v_WorldPosition);
                 vec2 st1=dFdx(v_TexCoord), st2=dFdy(v_TexCoord);
-                vec3 T=normalize(Q1*st2.t-Q2*st1.t);
-                vec3 B=normalize(-cross(N,T));
+
+                // Reconstruct the full cotangent frame from position/UV
+                // derivatives. The previous B=-cross(N,T) assumed one fixed
+                // UV handedness, which breaks on mirrored FBX/Mixamo UV
+                // islands and can turn correctly textured areas almost black.
+                float det=st1.x*st2.y-st1.y*st2.x;
+                if(abs(det)<0.000001) return N;
+                vec3 T=(Q1*st2.y-Q2*st1.y)/det;
+                vec3 B=(-Q1*st2.x+Q2*st1.x)/det;
+                T=normalize(T-N*dot(N,T));
+                B=normalize(B-N*dot(N,B));
                 return normalize(mat3(T,B,N)*mapN);
             }
             float Shadow2D(sampler2D map,mat4 lightSpace,float bias){

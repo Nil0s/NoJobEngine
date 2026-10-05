@@ -10,6 +10,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <unordered_map>
 
 namespace NoJob
 {
@@ -17,7 +18,7 @@ namespace NoJob
                const std::vector<std::uint32_t>& indices)
     {
         std::vector<float> data;
-        data.reserve(vertices.size() * 8);
+        data.reserve(vertices.size() * 16);
 
         for (const MeshVertex& vertex : vertices)
         {
@@ -25,7 +26,9 @@ namespace NoJob
             {
                 vertex.Position.x, vertex.Position.y, vertex.Position.z,
                 vertex.Normal.x, vertex.Normal.y, vertex.Normal.z,
-                vertex.TexCoord.x, vertex.TexCoord.y
+                vertex.TexCoord.x, vertex.TexCoord.y,
+                vertex.BoneIDs.x, vertex.BoneIDs.y, vertex.BoneIDs.z, vertex.BoneIDs.w,
+                vertex.BoneWeights.x, vertex.BoneWeights.y, vertex.BoneWeights.z, vertex.BoneWeights.w
             });
         }
 
@@ -43,7 +46,9 @@ namespace NoJob
             BufferLayout{
                 { ShaderDataType::Float3, "a_Position" },
                 { ShaderDataType::Float3, "a_Normal" },
-                { ShaderDataType::Float2, "a_TexCoord" }
+                { ShaderDataType::Float2, "a_TexCoord" },
+                { ShaderDataType::Float4, "a_BoneIDs" },
+                { ShaderDataType::Float4, "a_BoneWeights" }
             });
         m_VertexArray->SetIndexBuffer(m_IndexBuffer);
     }
@@ -72,14 +77,28 @@ namespace NoJob
             path.string(),
             aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
             aiProcess_GenSmoothNormals | aiProcess_ImproveCacheLocality |
-            aiProcess_SortByPType | aiProcess_PreTransformVertices |
-            aiProcess_FlipUVs);
+            aiProcess_SortByPType | aiProcess_LimitBoneWeights);
         if (!scene || !scene->HasMeshes())
             throw std::runtime_error("Assimp import failed: " + std::string(importer.GetErrorString()));
 
         std::vector<MeshVertex> vertices;
         std::vector<std::uint32_t> indices;
         std::vector<Submesh> submeshes;
+        std::unordered_map<std::string, std::uint32_t> boneIndices;
+        bool hasSkinning = false;
+
+        // Match AnimationAsset's stable bone-index order: first appearance while
+        // walking Assimp meshes/bones.
+        for (unsigned mi=0; mi<scene->mNumMeshes; ++mi)
+        {
+            const aiMesh* sourceMesh = scene->mMeshes[mi];
+            for (unsigned bi=0; bi<sourceMesh->mNumBones; ++bi)
+            {
+                const std::string name = sourceMesh->mBones[bi]->mName.C_Str();
+                if (!boneIndices.contains(name))
+                    boneIndices[name] = static_cast<std::uint32_t>(boneIndices.size());
+            }
+        }
 
         for (unsigned mi=0; mi<scene->mNumMeshes; ++mi)
         {
@@ -94,6 +113,39 @@ namespace NoJob
                 if(s->HasTextureCoords(0)) v.TexCoord={s->mTextureCoords[0][i].x,s->mTextureCoords[0][i].y};
                 vertices.push_back(v);
             }
+
+            for (unsigned bi=0; bi<s->mNumBones; ++bi)
+            {
+                const aiBone* bone = s->mBones[bi];
+                const auto found = boneIndices.find(bone->mName.C_Str());
+                if (found == boneIndices.end()) continue;
+                const float boneID = static_cast<float>(found->second);
+                for (unsigned wi=0; wi<bone->mNumWeights; ++wi)
+                {
+                    const aiVertexWeight& weight = bone->mWeights[wi];
+                    if (weight.mVertexId >= s->mNumVertices || weight.mWeight <= 0.0f) continue;
+                    MeshVertex& vertex = vertices[base + weight.mVertexId];
+                    for (int slot=0; slot<4; ++slot)
+                    {
+                        if (vertex.BoneWeights[slot] == 0.0f)
+                        {
+                            vertex.BoneIDs[slot] = boneID;
+                            vertex.BoneWeights[slot] = weight.mWeight;
+                            hasSkinning = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Normalize weights after Assimp's LimitBoneWeights pass.
+            for (unsigned vi=0; vi<s->mNumVertices; ++vi)
+            {
+                auto& w = vertices[base + vi].BoneWeights;
+                const float sum = w.x + w.y + w.z + w.w;
+                if (sum > 0.000001f) w /= sum;
+            }
+
             for(unsigned f=0;f<s->mNumFaces;++f)
             {
                 const aiFace& face=s->mFaces[f];
@@ -108,6 +160,7 @@ namespace NoJob
         if(vertices.empty()||indices.empty()) throw std::runtime_error("Imported model has no triangles.");
         auto mesh=std::make_shared<Mesh>(vertices,indices);
         mesh->SetSubmeshes(std::move(submeshes));
+        mesh->SetHasSkinning(hasSkinning);
         return mesh;
     }
 
