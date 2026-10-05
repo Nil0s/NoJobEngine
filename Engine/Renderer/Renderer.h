@@ -29,5 +29,12 @@ namespace NoJob
         const glm::mat4& viewProjection,
         const glm::vec4& color,
         int useTexture);
+
+        static void SubmitRange(
+            const std::shared_ptr<VertexArray>& vertexArray,
+            const std::shared_ptr<Shader>& shader,
+            std::uint32_t indexCount, std::uint32_t indexOffset,
+            const glm::mat4& transform, const glm::mat4& viewProjection,
+            const glm::vec4& color, int useTexture);
     };
 }

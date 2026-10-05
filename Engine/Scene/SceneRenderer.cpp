@@ -88,21 +88,33 @@ namespace NoJob
             const std::string depthVS = R"(
                 #version 460 core
                 layout(location=0) in vec3 a_Position;
+                layout(location=2) in vec2 a_TexCoord;
                 uniform mat4 u_Transform;
                 uniform mat4 u_ViewProjection;
                 out vec3 v_WorldPosition;
+                out vec2 v_TexCoord;
                 void main(){
                     vec4 w = u_Transform * vec4(a_Position,1.0);
                     v_WorldPosition = w.xyz;
+                    v_TexCoord = a_TexCoord;
                     gl_Position = u_ViewProjection * w;
                 })";
             const std::string depthFS = R"(
                 #version 460 core
                 in vec3 v_WorldPosition;
+                in vec2 v_TexCoord;
+                uniform sampler2D u_AlphaTexture;
+                uniform int u_UseAlphaTexture;
+                uniform int u_AlphaClip;
+                uniform float u_AlphaCutoff;
+                uniform float u_BaseAlpha;
                 uniform int u_RadialDepth;
                 uniform vec3 u_LightPosition;
                 uniform float u_FarPlane;
                 void main(){
+                    float alpha=u_BaseAlpha;
+                    if(u_UseAlphaTexture==1) alpha*=texture(u_AlphaTexture,v_TexCoord).a;
+                    if(u_AlphaClip==1 && alpha<u_AlphaCutoff) discard;
                     if(u_RadialDepth==1)
                         gl_FragDepth = length(v_WorldPosition-u_LightPosition)/u_FarPlane;
                 })";
@@ -150,10 +162,47 @@ namespace NoJob
                 if (!entity.HasComponent<MeshComponent>() ||
                     !entity.HasComponent<MeshRendererComponent>()) continue;
                 const auto& mesh = entity.GetComponent<MeshComponent>();
+                const auto& renderer = entity.GetComponent<MeshRendererComponent>();
                 if (!mesh.MeshAsset) continue;
-                Renderer::Submit(mesh.MeshAsset->GetVertexArray(), s.DepthShader,
-                                 scene.GetWorldTransform(entity), lightVP,
-                                 glm::vec4(1.0f));
+
+                auto drawDepth = [&](const std::shared_ptr<Material>& material,
+                                     std::uint32_t count,
+                                     std::uint32_t offset)
+                {
+                    const bool clip = material &&
+                        material->SurfaceMode() == MaterialSurfaceMode::AlphaClip;
+                    s.DepthShader->SetInt("u_AlphaClip", clip ? 1 : 0);
+                    s.DepthShader->SetFloat("u_AlphaCutoff",
+                        material ? material->AlphaCutoff() : 0.5f);
+                    s.DepthShader->SetFloat("u_BaseAlpha",
+                        material ? material->GetColor().a : 1.0f);
+                    const bool textured = clip && material->IsUsingTexture();
+                    s.DepthShader->SetInt("u_UseAlphaTexture", textured ? 1 : 0);
+                    s.DepthShader->SetInt("u_AlphaTexture", 0);
+                    if (textured) material->GetTexture()->Bind(0);
+
+                    if (count)
+                        Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),
+                            s.DepthShader, count, offset,
+                            scene.GetWorldTransform(entity), lightVP,
+                            glm::vec4(1.0f), 0);
+                    else
+                        Renderer::Submit(mesh.MeshAsset->GetVertexArray(),
+                            s.DepthShader, scene.GetWorldTransform(entity),
+                            lightVP, glm::vec4(1.0f), 0);
+                };
+
+                const auto& subs = mesh.MeshAsset->GetSubmeshes();
+                if (!subs.empty() && !renderer.Materials.empty())
+                {
+                    for (const auto& sub : subs)
+                    {
+                        auto mat = renderer.GetMaterial(sub.MaterialIndex);
+                        if (!mat) mat = renderer.MaterialAsset;
+                        drawDepth(mat, sub.IndexCount, sub.IndexOffset);
+                    }
+                }
+                else drawDepth(renderer.MaterialAsset, 0, 0);
             }
         }
 
@@ -342,40 +391,87 @@ namespace NoJob
     {
         BuildShadowMaps(scene);
         RenderSky(viewProjection,cameraPosition,scene);
+
         for(Entity entity:scene.GetEntities())
         {
-            if(!entity.HasComponent<MeshComponent>() || !entity.HasComponent<MeshRendererComponent>()) continue;
-            const auto& mesh=entity.GetComponent<MeshComponent>(); const auto& renderer=entity.GetComponent<MeshRendererComponent>();
-            if(!mesh.MeshAsset || !renderer.MaterialAsset || !renderer.MaterialAsset->GetShader()) continue;
-            const auto& material=renderer.MaterialAsset; const auto& shader=material->GetShader();
-            UploadLighting(scene,shader,cameraPosition);
-            shader->SetFloat("u_Metallic",glm::clamp(material->Metallic(),0.f,1.f));
-            shader->SetFloat("u_Roughness",glm::clamp(material->Roughness(),0.04f,1.f));
-            shader->SetFloat("u_AO",glm::clamp(material->AmbientOcclusion(),0.f,1.f));
-            shader->SetFloat("u_NormalStrength",glm::max(material->NormalStrength(),0.f));
-            shader->SetFloat3("u_EmissiveColor",material->EmissiveColor());
-            shader->SetFloat("u_EmissiveStrength",glm::max(material->EmissiveStrength(),0.f));
+            if(!entity.HasComponent<MeshComponent>() ||
+               !entity.HasComponent<MeshRendererComponent>()) continue;
 
-            if(material->IsUsingTexture()) material->GetTexture()->Bind(0);
-            shader->SetInt("u_Texture",0);
+            const auto& mesh=entity.GetComponent<MeshComponent>();
+            const auto& renderer=entity.GetComponent<MeshRendererComponent>();
+            if(!mesh.MeshAsset || !renderer.MaterialAsset) continue;
 
-            // Optional PBR maps. IMPORTANT: material instances that existed before
-            // this milestone can come from stale object files after Material's layout
-            // changed. A clean rebuild is required once for ABI safety.
-            const auto bindMap=[&](const std::shared_ptr<Texture2D>& tex,const char* sampler,const char* enabled,int slot)
+            auto drawMaterial=[&](const std::shared_ptr<Material>& material,
+                                  std::uint32_t count,std::uint32_t offset)
             {
-                shader->SetInt(enabled, tex != nullptr ? 1 : 0);
-                shader->SetInt(sampler, slot);
-                if (tex != nullptr)
-                    tex->Bind(static_cast<std::uint32_t>(slot));
-            };
-            bindMap(material->GetNormalTexture(),"u_NormalMap","u_UseNormalMap",1);
-            bindMap(material->GetMetallicTexture(),"u_MetallicMap","u_UseMetallicMap",2);
-            bindMap(material->GetRoughnessTexture(),"u_RoughnessMap","u_UseRoughnessMap",3);
-            bindMap(material->GetAOTexture(),"u_AOMap","u_UseAOMap",4);
-            bindMap(material->GetEmissiveTexture(),"u_EmissiveMap","u_UseEmissiveMap",8);
+                if(!material || !material->GetShader()) return;
+                const auto& shader=material->GetShader();
+                UploadLighting(scene,shader,cameraPosition);
+                shader->SetInt("u_SurfaceMode", static_cast<int>(material->SurfaceMode()));
+                shader->SetFloat("u_AlphaCutoff", material->AlphaCutoff());
 
-            Renderer::Submit(mesh.MeshAsset->GetVertexArray(),shader,scene.GetWorldTransform(entity),viewProjection,material->GetColor(),material->IsUsingTexture()?1:0);
+                const bool transparent =
+                    material->SurfaceMode() == MaterialSurfaceMode::Transparent;
+                if (transparent)
+                {
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    glDepthMask(GL_FALSE);
+                }
+                else
+                {
+                    glDisable(GL_BLEND);
+                    glDepthMask(GL_TRUE);
+                }
+
+                shader->SetFloat("u_Metallic",glm::clamp(material->Metallic(),0.f,1.f));
+                shader->SetFloat("u_Roughness",glm::clamp(material->Roughness(),0.04f,1.f));
+                shader->SetFloat("u_AO",glm::clamp(material->AmbientOcclusion(),0.f,1.f));
+                shader->SetFloat("u_NormalStrength",glm::max(material->NormalStrength(),0.f));
+                shader->SetFloat3("u_EmissiveColor",material->EmissiveColor());
+                shader->SetFloat("u_EmissiveStrength",glm::max(material->EmissiveStrength(),0.f));
+                if(material->IsUsingTexture()) material->GetTexture()->Bind(0);
+                shader->SetInt("u_Texture",0);
+
+                const auto bindMap=[&](const std::shared_ptr<Texture2D>& tex,
+                                      const char* sampler,const char* enabled,int slot)
+                {
+                    shader->SetInt(enabled,tex?1:0);shader->SetInt(sampler,slot);
+                    if(tex)tex->Bind(static_cast<std::uint32_t>(slot));
+                };
+                bindMap(material->GetNormalTexture(),"u_NormalMap","u_UseNormalMap",1);
+                bindMap(material->GetMetallicTexture(),"u_MetallicMap","u_UseMetallicMap",2);
+                bindMap(material->GetRoughnessTexture(),"u_RoughnessMap","u_UseRoughnessMap",3);
+                bindMap(material->GetAOTexture(),"u_AOMap","u_UseAOMap",4);
+                bindMap(material->GetEmissiveTexture(),"u_EmissiveMap","u_UseEmissiveMap",8);
+
+                if(count)
+                    Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),shader,
+                        count,offset,scene.GetWorldTransform(entity),viewProjection,
+                        material->GetColor(),material->IsUsingTexture()?1:0);
+                else
+                    Renderer::Submit(mesh.MeshAsset->GetVertexArray(),shader,
+                        scene.GetWorldTransform(entity),viewProjection,
+                        material->GetColor(),material->IsUsingTexture()?1:0);
+
+                if (transparent)
+                {
+                    glDepthMask(GL_TRUE);
+                    glDisable(GL_BLEND);
+                }
+            };
+
+            const auto& subs=mesh.MeshAsset->GetSubmeshes();
+            if(!subs.empty() && !renderer.Materials.empty())
+            {
+                for(const auto& sub:subs)
+                {
+                    auto mat=renderer.GetMaterial(sub.MaterialIndex);
+                    if(!mat)mat=renderer.MaterialAsset;
+                    drawMaterial(mat,sub.IndexCount,sub.IndexOffset);
+                }
+            }
+            else drawMaterial(renderer.MaterialAsset,0,0);
         }
     }
 }

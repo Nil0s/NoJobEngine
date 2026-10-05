@@ -49,4 +49,17 @@ namespace NoJob
             GL_UNSIGNED_INT,
             nullptr);
     }
+    void OpenGLRendererAPI::DrawIndexedRange(
+        const VertexArray& vertexArray,
+        std::uint32_t indexCount,
+        std::uint32_t indexOffset)
+    {
+        if(indexCount==0) return;
+        vertexArray.Bind();
+        glDrawElements(GL_TRIANGLES,
+            static_cast<GLsizei>(indexCount),GL_UNSIGNED_INT,
+            reinterpret_cast<const void*>(
+                static_cast<std::uintptr_t>(indexOffset*sizeof(std::uint32_t))));
+    }
+
 }

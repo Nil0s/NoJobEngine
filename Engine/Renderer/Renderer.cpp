@@ -57,4 +57,20 @@ namespace NoJob
         shader->SetInt("u_UseTexture", useTexture);
         RenderCommand::DrawIndexed(*vertexArray);
     }
+    void Renderer::SubmitRange(
+        const std::shared_ptr<VertexArray>& vertexArray,
+        const std::shared_ptr<Shader>& shader,
+        std::uint32_t indexCount, std::uint32_t indexOffset,
+        const glm::mat4& transform, const glm::mat4& viewProjection,
+        const glm::vec4& color, int useTexture)
+    {
+        shader->Bind();
+        shader->SetMat4("u_Transform",transform);
+        shader->SetMat4("u_ViewProjection",viewProjection);
+        shader->SetFloat4("u_Color",color);
+        shader->SetInt("u_Texture",0);
+        shader->SetInt("u_UseTexture",useTexture);
+        RenderCommand::DrawIndexedRange(*vertexArray,indexCount,indexOffset);
+    }
+
 }

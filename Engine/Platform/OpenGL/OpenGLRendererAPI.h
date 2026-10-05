@@ -17,5 +17,8 @@ namespace NoJob
         void SetClearColor(float r, float g, float b, float a) override;
         void Clear() override;
         void DrawIndexed(const VertexArray& vertexArray) override;
+        void DrawIndexedRange(const VertexArray& vertexArray,
+                              std::uint32_t indexCount,
+                              std::uint32_t indexOffset) override;
     };
 }

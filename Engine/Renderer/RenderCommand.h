@@ -21,6 +21,9 @@ namespace NoJob
         static void SetClearColor(float r, float g, float b, float a);
         static void Clear();
         static void DrawIndexed(const VertexArray& vertexArray);
+        static void DrawIndexedRange(const VertexArray& vertexArray,
+                                     std::uint32_t indexCount,
+                                     std::uint32_t indexOffset);
 
     private:
         static std::unique_ptr<RendererAPI> s_RendererAPI;

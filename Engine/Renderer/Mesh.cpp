@@ -70,69 +70,45 @@ namespace NoJob
         Assimp::Importer importer;
         const aiScene* scene = importer.ReadFile(
             path.string(),
-            aiProcess_Triangulate |
-            aiProcess_JoinIdenticalVertices |
-            aiProcess_GenSmoothNormals |
-            aiProcess_ImproveCacheLocality |
-            aiProcess_SortByPType |
-            aiProcess_PreTransformVertices |
+            aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+            aiProcess_GenSmoothNormals | aiProcess_ImproveCacheLocality |
+            aiProcess_SortByPType | aiProcess_PreTransformVertices |
             aiProcess_FlipUVs);
-
         if (!scene || !scene->HasMeshes())
-            throw std::runtime_error(
-                "Assimp could not import model '" + path.string() +
-                "': " + importer.GetErrorString());
+            throw std::runtime_error("Assimp import failed: " + std::string(importer.GetErrorString()));
 
         std::vector<MeshVertex> vertices;
         std::vector<std::uint32_t> indices;
+        std::vector<Submesh> submeshes;
 
-        for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
+        for (unsigned mi=0; mi<scene->mNumMeshes; ++mi)
         {
-            const aiMesh* source = scene->mMeshes[meshIndex];
-            const std::uint32_t base =
-                static_cast<std::uint32_t>(vertices.size());
-
-            vertices.reserve(vertices.size() + source->mNumVertices);
-            for (unsigned int i = 0; i < source->mNumVertices; ++i)
+            const aiMesh* s=scene->mMeshes[mi];
+            const std::uint32_t base=static_cast<std::uint32_t>(vertices.size());
+            const std::uint32_t first=static_cast<std::uint32_t>(indices.size());
+            for(unsigned i=0;i<s->mNumVertices;++i)
             {
                 MeshVertex v{};
-                v.Position = {
-                    source->mVertices[i].x,
-                    source->mVertices[i].y,
-                    source->mVertices[i].z
-                };
-
-                if (source->HasNormals())
-                    v.Normal = {
-                        source->mNormals[i].x,
-                        source->mNormals[i].y,
-                        source->mNormals[i].z
-                    };
-
-                if (source->HasTextureCoords(0))
-                    v.TexCoord = {
-                        source->mTextureCoords[0][i].x,
-                        source->mTextureCoords[0][i].y
-                    };
-
+                v.Position={s->mVertices[i].x,s->mVertices[i].y,s->mVertices[i].z};
+                if(s->HasNormals()) v.Normal={s->mNormals[i].x,s->mNormals[i].y,s->mNormals[i].z};
+                if(s->HasTextureCoords(0)) v.TexCoord={s->mTextureCoords[0][i].x,s->mTextureCoords[0][i].y};
                 vertices.push_back(v);
             }
-
-            for (unsigned int f = 0; f < source->mNumFaces; ++f)
+            for(unsigned f=0;f<s->mNumFaces;++f)
             {
-                const aiFace& face = source->mFaces[f];
-                if (face.mNumIndices != 3)
-                    continue;
-                indices.push_back(base + face.mIndices[0]);
-                indices.push_back(base + face.mIndices[1]);
-                indices.push_back(base + face.mIndices[2]);
+                const aiFace& face=s->mFaces[f];
+                if(face.mNumIndices!=3) continue;
+                indices.push_back(base+face.mIndices[0]);
+                indices.push_back(base+face.mIndices[1]);
+                indices.push_back(base+face.mIndices[2]);
             }
+            const auto count=static_cast<std::uint32_t>(indices.size())-first;
+            if(count) submeshes.push_back({first,count,s->mMaterialIndex});
         }
-
-        if (vertices.empty() || indices.empty())
-            throw std::runtime_error("Imported model contains no renderable triangles.");
-
-        return std::make_shared<Mesh>(vertices, indices);
+        if(vertices.empty()||indices.empty()) throw std::runtime_error("Imported model has no triangles.");
+        auto mesh=std::make_shared<Mesh>(vertices,indices);
+        mesh->SetSubmeshes(std::move(submeshes));
+        return mesh;
     }
 
     std::shared_ptr<Mesh> Mesh::CreateCube()

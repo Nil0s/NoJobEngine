@@ -58,6 +58,17 @@ namespace NoJob
         return std::make_unique<Scene>(*this);
     }
 
+    void Scene::RestoreFrom(const Scene& other)
+    {
+        OnRuntimeStop();
+        m_Entities = other.m_Entities;
+        m_NextHandle = other.m_NextHandle;
+        m_NextID = other.m_NextID;
+        m_DeltaTime = other.m_DeltaTime;
+        m_RuntimeRunning = false;
+        m_ScriptInstances.clear();
+    }
+
     Entity Scene::CreateEntity(const std::string& name)
     {
         const std::uint32_t handle = m_NextHandle++;

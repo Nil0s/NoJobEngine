@@ -105,7 +105,9 @@ namespace NoJob
         {
             if(!e.is_regular_file()) continue;
             const auto& p=e.path();
-            if(p.filename()=="AssetRegistry.nojob" || p.extension()==".meta") continue;
+            if(p.filename()=="AssetRegistry.nojob"
+               || p.extension()==".meta"
+               || p.extension()==".source") continue;
             Register(p);
         }
         Save();

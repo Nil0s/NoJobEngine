@@ -32,6 +32,10 @@ namespace NoJob
 
         virtual void DrawIndexed(
             const VertexArray& vertexArray) = 0;
+        virtual void DrawIndexedRange(
+            const VertexArray& vertexArray,
+            std::uint32_t indexCount,
+            std::uint32_t indexOffset) = 0;
 
         static GraphicsAPI GetAPI() { return s_API; }
 

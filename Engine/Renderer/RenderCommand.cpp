@@ -49,4 +49,12 @@ namespace NoJob
     {
         s_RendererAPI->DrawIndexed(vertexArray);
     }
+    void RenderCommand::DrawIndexedRange(
+        const VertexArray& vertexArray,
+        std::uint32_t indexCount,
+        std::uint32_t indexOffset)
+    {
+        s_RendererAPI->DrawIndexedRange(vertexArray,indexCount,indexOffset);
+    }
+
 }

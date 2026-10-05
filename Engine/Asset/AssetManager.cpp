@@ -3,11 +3,21 @@
 #include "Engine/Renderer/Texture.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Assets/AssetRegistry.h"
+#include "Engine/Assets/MaterialSerializer.h"
+#include "Engine/Renderer/Material.h"
+#include "Engine/Renderer/Shader.h"
+
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/material.h>
+#include <assimp/postprocess.h>
 
 #include <stdexcept>
 #include <algorithm>
 #include <cctype>
 #include <vector>
+#include <fstream>
+#include <iomanip>
 
 namespace NoJob
 {
@@ -118,9 +128,374 @@ namespace NoJob
         };
         if(std::find(supported.begin(),supported.end(),ext)==supported.end())
             throw std::runtime_error("Unsupported model format: "+ext);
-        auto dst=MakeUniqueDestination(s_AssetsDirectory/"Models",sourcePath.filename());std::filesystem::copy_file(sourcePath,dst);
-        AssetRegistry r(s_AssetsDirectory);r.Load();r.Register(dst,AssetType::Mesh);r.Save();return ToProjectRelative(dst);
+        auto dst=MakeUniqueDestination(s_AssetsDirectory/"Models",sourcePath.filename());
+        std::filesystem::copy_file(sourcePath,dst);
+
+        // Preserve the original import location. Assimp material texture paths
+        // are commonly relative to the source FBX/OBJ/glTF directory.
+        {
+            std::ofstream sidecar(dst.string()+".source",std::ios::trunc);
+            if(sidecar) sidecar<<std::quoted(std::filesystem::absolute(sourcePath).lexically_normal().generic_string())<<"\n";
+        }
+
+        AssetRegistry r(s_AssetsDirectory);
+        r.Load();
+        r.Register(dst,AssetType::Mesh);
+        r.Save();
+        return ToProjectRelative(dst);
     }
+
+    std::shared_ptr<Material> AssetManager::ImportModelMaterial(
+        const std::filesystem::path& modelPath,
+        const std::shared_ptr<Shader>& shader)
+    {
+        if (!shader)
+            return {};
+
+        std::filesystem::path imported =
+            modelPath.is_absolute() ? modelPath : s_ProjectRoot / modelPath;
+        imported = std::filesystem::absolute(imported).lexically_normal();
+
+        // Prefer the original source when available so relative texture
+        // references still resolve even though the model was copied to Assets.
+        std::filesystem::path source = imported;
+        {
+            std::ifstream sidecar(imported.string() + ".source");
+            std::string original;
+            if (sidecar >> std::quoted(original))
+            {
+                std::filesystem::path candidate(original);
+                if (std::filesystem::exists(candidate))
+                    source = candidate;
+            }
+        }
+
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(
+            source.string(),
+            aiProcess_Triangulate |
+            aiProcess_GenSmoothNormals |
+            aiProcess_JoinIdenticalVertices);
+
+        if (!scene || scene->mNumMaterials == 0)
+            return {};
+
+        unsigned materialIndex = 0;
+        if (scene->mNumMeshes > 0)
+            materialIndex = scene->mMeshes[0]->mMaterialIndex;
+        if (materialIndex >= scene->mNumMaterials)
+            materialIndex = 0;
+
+        aiMaterial* sourceMaterial = scene->mMaterials[materialIndex];
+        auto material = std::make_shared<Material>(shader);
+
+        aiColor4D color;
+        if (aiGetMaterialColor(
+                sourceMaterial, AI_MATKEY_BASE_COLOR, &color) == AI_SUCCESS ||
+            aiGetMaterialColor(
+                sourceMaterial, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
+        {
+            material->GetColor() =
+                glm::vec4(color.r, color.g, color.b, color.a);
+        }
+
+        ai_real value = 0.0f;
+        if (aiGetMaterialFloat(
+                sourceMaterial, AI_MATKEY_METALLIC_FACTOR, &value) == AI_SUCCESS)
+            material->Metallic() = static_cast<float>(value);
+
+        if (aiGetMaterialFloat(
+                sourceMaterial, AI_MATKEY_ROUGHNESS_FACTOR, &value) == AI_SUCCESS)
+            material->Roughness() =
+                std::clamp(static_cast<float>(value), 0.04f, 1.0f);
+
+        aiColor3D emissive(0.0f);
+        if (sourceMaterial->Get(
+                AI_MATKEY_COLOR_EMISSIVE, emissive) == AI_SUCCESS)
+        {
+            material->EmissiveColor() =
+                glm::vec3(emissive.r, emissive.g, emissive.b);
+            const float peak = std::max(
+                emissive.r, std::max(emissive.g, emissive.b));
+            if (peak > 0.0f)
+                material->EmissiveStrength() = 1.0f;
+        }
+
+        const auto textureDirectory = s_AssetsDirectory / "Textures";
+        std::filesystem::create_directories(textureDirectory);
+
+        auto importTextureReference =
+            [&](aiTextureType type) -> std::shared_ptr<Texture2D>
+        {
+            if (sourceMaterial->GetTextureCount(type) == 0)
+                return {};
+
+            aiString textureRef;
+            if (sourceMaterial->GetTexture(type, 0, &textureRef) != AI_SUCCESS)
+                return {};
+
+            const std::string ref = textureRef.C_Str();
+            if (ref.empty())
+                return {};
+
+            try
+            {
+                // Embedded Assimp texture reference, e.g. "*0".
+                if (ref[0] == '*')
+                {
+                    const unsigned index =
+                        static_cast<unsigned>(std::stoul(ref.substr(1)));
+                    if (index >= scene->mNumTextures)
+                        return {};
+
+                    const aiTexture* embedded = scene->mTextures[index];
+                    std::string extension =
+                        embedded->achFormatHint[0]
+                            ? ("." + std::string(embedded->achFormatHint))
+                            : ".png";
+
+                    auto destination = MakeUniqueDestination(
+                        textureDirectory,
+                        source.stem().string() + "_embedded_" +
+                            std::to_string(index) + extension);
+
+                    if (embedded->mHeight == 0)
+                    {
+                        std::ofstream out(destination, std::ios::binary);
+                        out.write(
+                            reinterpret_cast<const char*>(embedded->pcData),
+                            static_cast<std::streamsize>(embedded->mWidth));
+                    }
+                    else
+                    {
+                        // Raw aiTexel embedded textures are uncommon for FBX.
+                        // They require an image encoder, so keep them as a
+                        // graceful unsupported case instead of corrupting data.
+                        return {};
+                    }
+
+                    AssetRegistry registry(s_AssetsDirectory);
+                    registry.Load();
+                    registry.Register(destination, AssetType::Texture2D);
+                    registry.Save();
+                    return LoadTexture(ToProjectRelative(destination));
+                }
+
+                std::filesystem::path texturePath(ref);
+                if (texturePath.is_relative())
+                    texturePath = source.parent_path() / texturePath;
+                texturePath =
+                    std::filesystem::absolute(texturePath).lexically_normal();
+
+                if (!std::filesystem::exists(texturePath))
+                    return {};
+
+                const auto importedTexture = ImportTexture(texturePath);
+                AssetRegistry registry(s_AssetsDirectory);
+                registry.Load();
+                registry.Register(
+                    s_ProjectRoot / importedTexture,
+                    AssetType::Texture2D);
+                registry.Save();
+                return LoadTexture(importedTexture);
+            }
+            catch (...)
+            {
+                return {};
+            }
+        };
+
+        float opacity = 1.0f;
+        if (aiGetMaterialFloat(sourceMaterial, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
+            material->GetColor().a *= std::clamp(opacity, 0.0f, 1.0f);
+        aiString alphaMode;
+        const bool hasAlphaMode =
+            sourceMaterial->Get("$mat.gltf.alphaMode", 0, 0, alphaMode) == AI_SUCCESS;
+        const bool hasOpacityMap =
+            sourceMaterial->GetTextureCount(aiTextureType_OPACITY) > 0;
+        if (hasAlphaMode && std::string(alphaMode.C_Str()) == "BLEND")
+            material->SurfaceMode() = MaterialSurfaceMode::Transparent;
+        else if ((hasAlphaMode && std::string(alphaMode.C_Str()) == "MASK") || hasOpacityMap)
+            material->SurfaceMode() = MaterialSurfaceMode::AlphaClip;
+        else if (material->GetColor().a < 0.999f)
+            material->SurfaceMode() = MaterialSurfaceMode::Transparent;
+
+        auto albedo = importTextureReference(aiTextureType_BASE_COLOR);
+        if (!albedo)
+            albedo = importTextureReference(aiTextureType_DIFFUSE);
+        if (albedo)
+        {
+            material->SetTexture(albedo);
+            material->UseTexture() = true;
+        }
+        else
+        {
+            material->UseTexture() = false;
+        }
+
+        auto normal = importTextureReference(aiTextureType_NORMAL_CAMERA);
+        if (!normal)
+            normal = importTextureReference(aiTextureType_NORMALS);
+        material->SetNormalTexture(normal);
+
+        material->SetMetallicTexture(
+            importTextureReference(aiTextureType_METALNESS));
+        material->SetRoughnessTexture(
+            importTextureReference(aiTextureType_DIFFUSE_ROUGHNESS));
+
+        auto ao = importTextureReference(aiTextureType_AMBIENT_OCCLUSION);
+        if (!ao)
+            ao = importTextureReference(aiTextureType_LIGHTMAP);
+        material->SetAOTexture(ao);
+        material->SetEmissiveTexture(
+            importTextureReference(aiTextureType_EMISSIVE));
+
+        // Persist the generated material next to the rest of the project's
+        // materials so it is visible/reusable in Project.
+        const auto materialPath = MakeUniqueDestination(
+            s_AssetsDirectory / "Materials",
+            imported.stem().string() + ".nojobmat");
+
+        AssetRegistry registry(s_AssetsDirectory);
+        registry.Load();
+        MaterialSerializer::Save(*material, materialPath, registry);
+        registry.Register(materialPath, AssetType::Material);
+        registry.Save();
+
+        return material;
+    }
+
+
+    std::vector<std::shared_ptr<Material>> AssetManager::ImportModelMaterials(
+        const std::filesystem::path& modelPath,
+        const std::shared_ptr<Shader>& shader)
+    {
+        std::vector<std::shared_ptr<Material>> materials;
+        if(!shader) return materials;
+
+        std::filesystem::path imported=modelPath.is_absolute()?modelPath:s_ProjectRoot/modelPath;
+        imported=std::filesystem::absolute(imported).lexically_normal();
+        std::filesystem::path source=imported;
+        {
+            std::ifstream sidecar(imported.string()+".source");
+            std::string original;
+            if(sidecar>>std::quoted(original))
+            {
+                std::filesystem::path candidate(original);
+                if(std::filesystem::exists(candidate)) source=candidate;
+            }
+        }
+
+        Assimp::Importer importer;
+        const aiScene* scene=importer.ReadFile(source.string(),
+            aiProcess_Triangulate|aiProcess_GenSmoothNormals|aiProcess_JoinIdenticalVertices);
+        if(!scene || scene->mNumMaterials==0) return materials;
+
+        const auto textureDirectory=s_AssetsDirectory/"Textures";
+        std::filesystem::create_directories(textureDirectory);
+        std::filesystem::create_directories(s_AssetsDirectory/"Materials");
+
+        auto loadRef=[&](aiMaterial* sm,aiTextureType type)->std::shared_ptr<Texture2D>
+        {
+            if(sm->GetTextureCount(type)==0) return {};
+            aiString ar; if(sm->GetTexture(type,0,&ar)!=AI_SUCCESS) return {};
+            std::string ref=ar.C_Str(); if(ref.empty()) return {};
+            try
+            {
+                if(ref[0]=='*')
+                {
+                    unsigned idx=static_cast<unsigned>(std::stoul(ref.substr(1)));
+                    if(idx>=scene->mNumTextures) return {};
+                    const aiTexture* e=scene->mTextures[idx];
+                    if(e->mHeight!=0) return {};
+                    std::string ext=e->achFormatHint[0]?("."+std::string(e->achFormatHint)):".png";
+                    auto dest=MakeUniqueDestination(textureDirectory,
+                        source.stem().string()+"_embedded_"+std::to_string(idx)+ext);
+                    std::ofstream out(dest,std::ios::binary);
+                    out.write(reinterpret_cast<const char*>(e->pcData),
+                              static_cast<std::streamsize>(e->mWidth));
+                    out.close();
+                    AssetRegistry r(s_AssetsDirectory);r.Load();
+                    r.Register(dest,AssetType::Texture2D);r.Save();
+                    return LoadTexture(ToProjectRelative(dest));
+                }
+                std::filesystem::path tp(ref);
+                if(tp.is_relative()) tp=source.parent_path()/tp;
+                tp=std::filesystem::absolute(tp).lexically_normal();
+                if(!std::filesystem::exists(tp)) return {};
+                auto rel=ImportTexture(tp);
+                AssetRegistry r(s_AssetsDirectory);r.Load();
+                r.Register(s_ProjectRoot/rel,AssetType::Texture2D);r.Save();
+                return LoadTexture(rel);
+            }catch(...){return {};}
+        };
+
+        for(unsigned i=0;i<scene->mNumMaterials;++i)
+        {
+            aiMaterial* sm=scene->mMaterials[i];
+            auto m=std::make_shared<Material>(shader);
+            aiColor4D c;
+            if(aiGetMaterialColor(sm,AI_MATKEY_BASE_COLOR,&c)==AI_SUCCESS ||
+               aiGetMaterialColor(sm,AI_MATKEY_COLOR_DIFFUSE,&c)==AI_SUCCESS)
+                m->GetColor()={c.r,c.g,c.b,c.a};
+            ai_real v=0;
+            if(aiGetMaterialFloat(sm,AI_MATKEY_METALLIC_FACTOR,&v)==AI_SUCCESS)m->Metallic()=(float)v;
+            if(aiGetMaterialFloat(sm,AI_MATKEY_ROUGHNESS_FACTOR,&v)==AI_SUCCESS)m->Roughness()=std::clamp((float)v,0.04f,1.0f);
+            aiColor3D ec(0);
+            if(sm->Get(AI_MATKEY_COLOR_EMISSIVE,ec)==AI_SUCCESS)
+            {m->EmissiveColor()={ec.r,ec.g,ec.b};if(std::max(ec.r,std::max(ec.g,ec.b))>0)m->EmissiveStrength()=1;}
+
+            // Import surface/transparency semantics. FBX commonly exposes
+            // foliage masks through aiTextureType_OPACITY; glTF exposes alphaMode.
+            float opacity = 1.0f;
+            if (aiGetMaterialFloat(sm, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
+                m->GetColor().a *= std::clamp(opacity, 0.0f, 1.0f);
+
+            aiString alphaMode;
+            const bool hasAlphaMode =
+                sm->Get("$mat.gltf.alphaMode", 0, 0, alphaMode) == AI_SUCCESS;
+            const bool hasOpacityMap =
+                sm->GetTextureCount(aiTextureType_OPACITY) > 0;
+
+            if (hasAlphaMode && std::string(alphaMode.C_Str()) == "BLEND")
+                m->SurfaceMode() = MaterialSurfaceMode::Transparent;
+            else if (hasAlphaMode && std::string(alphaMode.C_Str()) == "MASK")
+                m->SurfaceMode() = MaterialSurfaceMode::AlphaClip;
+            else if (hasOpacityMap)
+                m->SurfaceMode() = MaterialSurfaceMode::AlphaClip;
+            else if (m->GetColor().a < 0.999f)
+                m->SurfaceMode() = MaterialSurfaceMode::Transparent;
+
+            ai_real cutoff = 0.5f;
+            if (sm->Get("$mat.gltf.alphaCutoff", 0, 0, cutoff) == AI_SUCCESS)
+                m->AlphaCutoff() =
+                    std::clamp(static_cast<float>(cutoff), 0.0f, 1.0f);
+
+            auto al=loadRef(sm,aiTextureType_BASE_COLOR);
+            if(!al) al=loadRef(sm,aiTextureType_DIFFUSE);
+            if(al){m->SetTexture(al);m->UseTexture()=true;}else m->UseTexture()=false;
+            auto normal=loadRef(sm,aiTextureType_NORMAL_CAMERA);
+            if(!normal)normal=loadRef(sm,aiTextureType_NORMALS);
+            m->SetNormalTexture(normal);
+            m->SetMetallicTexture(loadRef(sm,aiTextureType_METALNESS));
+            m->SetRoughnessTexture(loadRef(sm,aiTextureType_DIFFUSE_ROUGHNESS));
+            auto ao=loadRef(sm,aiTextureType_AMBIENT_OCCLUSION);
+            if(!ao)ao=loadRef(sm,aiTextureType_LIGHTMAP);
+            m->SetAOTexture(ao);
+            m->SetEmissiveTexture(loadRef(sm,aiTextureType_EMISSIVE));
+
+            aiString nm; std::string name="Material_"+std::to_string(i);
+            if(sm->Get(AI_MATKEY_NAME,nm)==AI_SUCCESS && nm.length>0)name=nm.C_Str();
+            for(char& ch:name)if(ch=='/'||ch=='\\'||ch==':'||ch=='*'||ch=='?'||ch=='"'||ch=='<'||ch=='>'||ch=='|')ch='_';
+            auto mp=MakeUniqueDestination(s_AssetsDirectory/"Materials",
+                                          imported.stem().string()+"_"+name+".nojobmat");
+            AssetRegistry r(s_AssetsDirectory);r.Load();
+            MaterialSerializer::Save(*m,mp,r);r.Register(mp,AssetType::Material);r.Save();
+            materials.push_back(m);
+        }
+        return materials;
+    }
+
     std::shared_ptr<Mesh> AssetManager::LoadMesh(const std::filesystem::path& path)
     {
         auto a=path.is_absolute()?path:s_ProjectRoot/path;a=std::filesystem::absolute(a).lexically_normal();auto key=a.generic_string();

@@ -7,6 +7,13 @@ namespace NoJob
     class Shader;
     class Texture2D;
 
+    enum class MaterialSurfaceMode
+    {
+        Opaque = 0,
+        AlphaClip = 1,
+        Transparent = 2
+    };
+
     class Material
     {
     public:
@@ -55,6 +62,11 @@ namespace NoJob
         const std::shared_ptr<Texture2D>& GetAOTexture() const { return m_AOTexture; }
         const std::shared_ptr<Texture2D>& GetEmissiveTexture() const { return m_EmissiveTexture; }
 
+        MaterialSurfaceMode& SurfaceMode() { return m_SurfaceMode; }
+        MaterialSurfaceMode SurfaceMode() const { return m_SurfaceMode; }
+        float& AlphaCutoff() { return m_AlphaCutoff; }
+        float AlphaCutoff() const { return m_AlphaCutoff; }
+
     private:
         std::shared_ptr<Shader> m_Shader;
         glm::vec4 m_Color{ 1.0f };
@@ -71,5 +83,7 @@ namespace NoJob
         std::shared_ptr<Texture2D> m_RoughnessTexture;
         std::shared_ptr<Texture2D> m_AOTexture;
         std::shared_ptr<Texture2D> m_EmissiveTexture;
+        MaterialSurfaceMode m_SurfaceMode = MaterialSurfaceMode::Opaque;
+        float m_AlphaCutoff = 0.5f;
     };
 }

@@ -4,11 +4,14 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace NoJob
 {
     class Texture2D;
     class Mesh;
+    class Shader;
+    class Material;
 
     class AssetManager
     {
@@ -23,6 +26,17 @@ namespace NoJob
         static std::filesystem::path ImportTexture(
             const std::filesystem::path& sourcePath);
         static std::filesystem::path ImportModel(const std::filesystem::path& sourcePath);
+
+        // Reads the first material referenced by an imported model, imports
+        // its external/embedded textures and creates a persistent .nojobmat.
+        // This is the V1.1 automatic material pipeline. Multi-material
+        // submeshes are intentionally the next renderer-level extension.
+        static std::shared_ptr<Material> ImportModelMaterial(
+            const std::filesystem::path& modelPath,
+            const std::shared_ptr<Shader>& shader);
+        static std::vector<std::shared_ptr<Material>> ImportModelMaterials(
+            const std::filesystem::path& modelPath,
+            const std::shared_ptr<Shader>& shader);
         static std::shared_ptr<Mesh> LoadMesh(const std::filesystem::path& path);
         static std::filesystem::path GetMeshPath(const std::shared_ptr<Mesh>& mesh);
 

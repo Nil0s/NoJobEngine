@@ -181,5 +181,17 @@ namespace NoJob
     struct MeshRendererComponent
     {
         std::shared_ptr<Material> MaterialAsset;
+        std::vector<std::shared_ptr<Material>> Materials;
+
+        std::shared_ptr<Material> GetMaterial(std::size_t index) const
+        {
+            if(index<Materials.size() && Materials[index]) return Materials[index];
+            return index==0 ? MaterialAsset : nullptr;
+        }
+        void SetMaterials(std::vector<std::shared_ptr<Material>> materials)
+        {
+            Materials=std::move(materials);
+            MaterialAsset=Materials.empty()?nullptr:Materials.front();
+        }
     };
 }

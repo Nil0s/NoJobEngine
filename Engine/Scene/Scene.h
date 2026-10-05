@@ -25,6 +25,7 @@ namespace NoJob
         ~Scene();
 
         std::unique_ptr<Scene> Copy() const;
+        void RestoreFrom(const Scene& other);
 
         Entity CreateEntity(const std::string& name = "Entity");
         void DestroyEntity(Entity entity);

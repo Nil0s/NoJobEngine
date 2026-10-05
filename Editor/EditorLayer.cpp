@@ -606,6 +606,18 @@ return{};}
             DeleteSelectedEntity();
 
         const ImGuiIO& io = ImGui::GetIO();
+
+        if (!io.WantTextInput && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
+        {
+            if (io.KeyShift)
+                Redo();
+            else
+                Undo();
+        }
+
+        if (!io.WantTextInput && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y))
+            Redo();
+
         if (m_SelectedEntity
             && io.KeyCtrl
             && ImGui::IsKeyPressed(ImGuiKey_D))
@@ -663,6 +675,7 @@ return{};}
         if (!m_Scene)
             return {};
 
+        CaptureUndoSnapshot();
         Entity entity = m_Scene->CreateEntity("Empty Entity");
         m_SelectedEntity = entity;
         return entity;
@@ -673,6 +686,7 @@ return{};}
         if (!m_Scene)
             return {};
 
+        CaptureUndoSnapshot();
         Entity entity = m_Scene->CreateEntity("Cube");
 
         if (m_DefaultCubeMesh)
@@ -709,13 +723,111 @@ return{};}
         return entity;
     }
 
-    Entity EditorLayer::CreateModelEntity(const std::filesystem::path& p){if(!m_Scene||p.empty())return{};try{auto mesh=AssetManager::LoadMesh(p);auto e=m_Scene->CreateEntity(p.stem().string());e.AddComponent<MeshComponent>(mesh);if(m_DefaultCubeMaterial){auto m=std::make_shared<Material>(*m_DefaultCubeMaterial);m->UseTexture()=false;e.AddComponent<MeshRendererComponent>(m);}m_SelectedEntity=e;return e;}catch(...){return{};}}
+    Entity EditorLayer::CreateModelEntity(const std::filesystem::path& p)
+    {
+        if (!m_Scene || p.empty())
+            return {};
+
+        try
+        {
+            CaptureUndoSnapshot();
+
+            auto mesh = AssetManager::LoadMesh(p);
+            auto entity = m_Scene->CreateEntity(p.stem().string());
+            entity.AddComponent<MeshComponent>(mesh);
+
+            std::shared_ptr<Material> material;
+            if (m_DefaultCubeMaterial)
+            {
+                auto materials=AssetManager::ImportModelMaterials(
+                    p,m_DefaultCubeMaterial->GetShader());
+                if(materials.empty())
+                {
+                    material=std::make_shared<Material>(*m_DefaultCubeMaterial);
+                    material->UseTexture()=false;
+                    materials.push_back(material);
+                }
+                else material=materials.front();
+
+                entity.AddComponent<MeshRendererComponent>(material);
+                entity.GetComponent<MeshRendererComponent>()
+                    .SetMaterials(std::move(materials));
+            }
+
+            m_SelectedEntity = entity;
+            return entity;
+        }
+        catch (...)
+        {
+            return {};
+        }
+    }
+
+    void EditorLayer::ClearRedoHistory()
+    {
+        m_RedoHistory.clear();
+    }
+
+    void EditorLayer::PushUndoSnapshot(std::unique_ptr<Scene> snapshot)
+    {
+        if (!snapshot)
+            return;
+
+        m_UndoHistory.push_back(std::move(snapshot));
+        if (m_UndoHistory.size() > MaxHistoryEntries)
+            m_UndoHistory.erase(m_UndoHistory.begin());
+
+        ClearRedoHistory();
+    }
+
+    void EditorLayer::CaptureUndoSnapshot()
+    {
+        if (m_Scene && !m_IsPlaying)
+            PushUndoSnapshot(m_Scene->Copy());
+    }
+
+    void EditorLayer::Undo()
+    {
+        if (!m_Scene || m_IsPlaying || m_UndoHistory.empty())
+            return;
+
+        const std::uint32_t selected =
+            m_SelectedEntity ? m_SelectedEntity.GetHandle() : 0;
+
+        m_RedoHistory.push_back(m_Scene->Copy());
+        m_Scene->RestoreFrom(*m_UndoHistory.back());
+        m_UndoHistory.pop_back();
+
+        m_SelectedEntity =
+            selected != 0 && m_Scene->IsValid(selected)
+                ? Entity(selected, m_Scene)
+                : Entity{};
+    }
+
+    void EditorLayer::Redo()
+    {
+        if (!m_Scene || m_IsPlaying || m_RedoHistory.empty())
+            return;
+
+        const std::uint32_t selected =
+            m_SelectedEntity ? m_SelectedEntity.GetHandle() : 0;
+
+        m_UndoHistory.push_back(m_Scene->Copy());
+        m_Scene->RestoreFrom(*m_RedoHistory.back());
+        m_RedoHistory.pop_back();
+
+        m_SelectedEntity =
+            selected != 0 && m_Scene->IsValid(selected)
+                ? Entity(selected, m_Scene)
+                : Entity{};
+    }
 
     void EditorLayer::DeleteSelectedEntity()
     {
         if (!m_Scene || !m_SelectedEntity)
             return;
 
+        CaptureUndoSnapshot();
         m_Scene->DestroyEntity(m_SelectedEntity);
         m_SelectedEntity = {};
     }
@@ -724,6 +836,8 @@ return{};}
     {
         if (!m_Scene || !m_SelectedEntity)
             return;
+
+        CaptureUndoSnapshot();
 
         const Entity source = m_SelectedEntity;
         const auto& sourceTag = source.GetComponent<TagComponent>().Tag;
@@ -850,6 +964,20 @@ return{};}
                 ImGui::EndMenu();
             }
 
+            if (ImGui::BeginMenu("Edit"))
+            {
+                ImGui::BeginDisabled(m_UndoHistory.empty() || m_IsPlaying);
+                if (ImGui::MenuItem("Undo", "Ctrl+Z"))
+                    Undo();
+                ImGui::EndDisabled();
+
+                ImGui::BeginDisabled(m_RedoHistory.empty() || m_IsPlaying);
+                if (ImGui::MenuItem("Redo", "Ctrl+Y"))
+                    Redo();
+                ImGui::EndDisabled();
+                ImGui::EndMenu();
+            }
+
             if (ImGui::BeginMenu("GameObject"))
             {
                 if (ImGui::MenuItem("Create Empty"))
@@ -881,6 +1009,7 @@ return{};}
 
                 if (ImGui::MenuItem("Camera") && m_Scene)
                 {
+                    CaptureUndoSnapshot();
                     Entity camera = m_Scene->CreateEntity("Camera");
                     camera.AddComponent<CameraComponent>();
                     m_SelectedEntity = camera;
@@ -907,19 +1036,22 @@ return{};}
                 {
                     if (ImGui::MenuItem("Directional Light") && m_Scene)
                     {
-                        Entity light = m_Scene->CreateEntity("Directional Light");
+                        CaptureUndoSnapshot();
+                    Entity light = m_Scene->CreateEntity("Directional Light");
                         light.AddComponent<DirectionalLightComponent>();
                         m_SelectedEntity = light;
                     }
                     if (ImGui::MenuItem("Point Light") && m_Scene)
                     {
-                        Entity light = m_Scene->CreateEntity("Point Light");
+                        CaptureUndoSnapshot();
+                    Entity light = m_Scene->CreateEntity("Point Light");
                         light.AddComponent<PointLightComponent>();
                         m_SelectedEntity = light;
                     }
                     if (ImGui::MenuItem("Spot Light") && m_Scene)
                     {
-                        Entity light = m_Scene->CreateEntity("Spot Light");
+                        CaptureUndoSnapshot();
+                    Entity light = m_Scene->CreateEntity("Spot Light");
                         light.AddComponent<SpotLightComponent>();
                         m_SelectedEntity = light;
                     }
@@ -1043,7 +1175,10 @@ return{};}
                     *static_cast<const std::uint32_t*>(payload->Data);
 
                 if (m_Scene->IsValid(handle))
+                {
+                    CaptureUndoSnapshot();
                     m_Scene->Unparent(Entity(handle, m_Scene), true);
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -1110,6 +1245,7 @@ return{};}
                 if (m_Scene->IsValid(childHandle))
                 {
                     Entity child(childHandle, m_Scene);
+                    CaptureUndoSnapshot();
                     m_Scene->SetParent(child, entity, true);
                 }
             }
@@ -1141,6 +1277,7 @@ return{};}
             if (relationship.Parent != 0
                 && ImGui::MenuItem("Unparent"))
             {
+                CaptureUndoSnapshot();
                 m_Scene->Unparent(entity, true);
             }
 
@@ -1194,38 +1331,39 @@ return{};}
                 auto& transform =
                     m_SelectedEntity.GetComponent<TransformComponent>();
 
-                // Unity-style numeric transform fields:
-                // click a component to type an exact value, or drag it as before.
-                // Ctrl+click also switches a DragFloat field directly to text input.
-                ImGui::SetNextItemWidth(-1.0f);
-                ImGui::DragFloat3(
-                    "Position",
-                    &transform.Position.x,
-                    0.01f,
-                    0.0f,
-                    0.0f,
-                    "%.3f");
+                // Unity-style numeric transform fields with Undo/Redo transactions.
+                auto editTransform = [&](const char* label, glm::vec3& value)
+                {
+                    ImGui::SetNextItemWidth(-1.0f);
+                    ImGui::DragFloat3(
+                        label,
+                        &value.x,
+                        0.01f,
+                        0.0f,
+                        0.0f,
+                        "%.3f");
 
-                ImGui::SetNextItemWidth(-1.0f);
-                ImGui::DragFloat3(
-                    "Rotation",
-                    &transform.Rotation.x,
-                    0.01f,
-                    0.0f,
-                    0.0f,
-                    "%.3f");
+                    if (ImGui::IsItemActivated() && !m_TransformEditSnapshot)
+                        m_TransformEditSnapshot = m_Scene->Copy();
 
-                ImGui::SetNextItemWidth(-1.0f);
-                ImGui::DragFloat3(
-                    "Scale",
-                    &transform.Scale.x,
-                    0.01f,
-                    0.0f,
-                    0.0f,
-                    "%.3f");
+                    if (ImGui::IsItemDeactivatedAfterEdit()
+                        && m_TransformEditSnapshot)
+                    {
+                        PushUndoSnapshot(std::move(m_TransformEditSnapshot));
+                    }
+                    else if (ImGui::IsItemDeactivated()
+                             && m_TransformEditSnapshot)
+                    {
+                        m_TransformEditSnapshot.reset();
+                    }
+                };
+
+                editTransform("Position", transform.Position);
+                editTransform("Rotation", transform.Rotation);
+                editTransform("Scale", transform.Scale);
 
                 ImGui::TextDisabled(
-                    "Ctrl + click a value to type an exact number.");
+                    "Ctrl + click to type | Ctrl+Z / Ctrl+Y to undo/redo.");
             }
 
             {
@@ -1238,7 +1376,10 @@ return{};}
 
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Unparent"))
+                    {
+                        CaptureUndoSnapshot();
                         m_Scene->Unparent(m_SelectedEntity, true);
+                    }
                 }
                 else
                 {
@@ -1570,175 +1711,380 @@ return{};}
                         ImGuiTreeNodeFlags_DefaultOpen))
                 {
                     auto& renderer =
-                        m_SelectedEntity
-                            .GetComponent<MeshRendererComponent>();
+                        m_SelectedEntity.GetComponent<MeshRendererComponent>();
 
-                    if (renderer.MaterialAsset)
+                    // Upgrade V1 renderers to the slot representation lazily.
+                    if (renderer.Materials.empty() && renderer.MaterialAsset)
+                        renderer.Materials.push_back(renderer.MaterialAsset);
+                    else if (!renderer.Materials.empty() && !renderer.MaterialAsset)
+                        renderer.MaterialAsset = renderer.Materials.front();
+
+                    if (!renderer.Materials.empty())
                     {
-                        // Unity-style material slot. This is a real ImGui item,
-                        // so the drag/drop target is attached to the slot itself
-                        // instead of accidentally attaching to the previous button.
-                        ImGui::TextUnformatted("Material");
-                        ImGui::SameLine();
-                        ImGui::Button(
-                            "Material Slot",
-                            ImVec2(ImGui::GetContentRegionAvail().x, 0.0f));
+                        if (m_SelectedMaterialSlot >= renderer.Materials.size())
+                            m_SelectedMaterialSlot = 0;
 
-                        if (ImGui::BeginDragDropTarget())
+                        ImGui::SeparatorText("Materials");
+                        for (std::size_t slot = 0;
+                             slot < renderer.Materials.size();
+                             ++slot)
                         {
-                            if (const ImGuiPayload* materialPayload =
-                                    ImGui::AcceptDragDropPayload(
-                                        "NOJOB_MATERIAL_ASSET"))
+                            ImGui::PushID(static_cast<int>(slot));
+
+                            const bool selected =
+                                slot == m_SelectedMaterialSlot;
+                            const char* state =
+                                renderer.Materials[slot] ? "Assigned" : "None";
+
+                            std::string label =
+                                "Element " + std::to_string(slot) +
+                                "  [" + state + "]";
+
+                            if (ImGui::Selectable(label.c_str(), selected))
+                                m_SelectedMaterialSlot = slot;
+
+                            // Every element is a real material drop target.
+                            if (ImGui::BeginDragDropTarget())
                             {
-                                const char* relativePath =
-                                    static_cast<const char*>(
-                                        materialPayload->Data);
+                                if (const ImGuiPayload* payload =
+                                        ImGui::AcceptDragDropPayload(
+                                            "NOJOB_MATERIAL_ASSET"))
+                                {
+                                    const char* relativePath =
+                                        static_cast<const char*>(payload->Data);
 
-                                AssetRegistry registry(
-                                    AssetManager::GetAssetsDirectory());
-                                registry.Load();
+                                    AssetRegistry registry(
+                                        AssetManager::GetAssetsDirectory());
+                                    registry.Load();
 
-                                auto loaded = MaterialSerializer::Load(
-                                    AssetManager::GetProjectRoot() /
-                                        relativePath,
-                                    renderer.MaterialAsset->GetShader(),
-                                    registry);
+                                    std::shared_ptr<Shader> shader;
+                                    if (renderer.Materials[slot])
+                                        shader =
+                                            renderer.Materials[slot]->GetShader();
+                                    else if (renderer.MaterialAsset)
+                                        shader =
+                                            renderer.MaterialAsset->GetShader();
 
-                                if (loaded)
-                                    renderer.MaterialAsset = loaded;
+                                    auto loaded = MaterialSerializer::Load(
+                                        AssetManager::GetProjectRoot() /
+                                            relativePath,
+                                        shader,
+                                        registry);
+
+                                    if (loaded)
+                                    {
+                                        renderer.Materials[slot] = loaded;
+                                        if (slot == 0)
+                                            renderer.MaterialAsset = loaded;
+                                    }
+                                }
+                                ImGui::EndDragDropTarget();
                             }
 
-                            if (const ImGuiPayload* texturePayload =
-                                    ImGui::AcceptDragDropPayload(
-                                        "NOJOB_TEXTURE_ASSET"))
-                            {
-                                const char* relativePath =
-                                    static_cast<const char*>(
-                                        texturePayload->Data);
-
-                                try
-                                {
-                                    renderer.MaterialAsset->SetTexture(
-                                        AssetManager::LoadTexture(
-                                            relativePath));
-                                    renderer.MaterialAsset->UseTexture() =
-                                        true;
-                                }
-                                catch (const std::exception&)
-                                {
-                                }
-                            }
-
-                            ImGui::EndDragDropTarget();
+                            ImGui::PopID();
                         }
 
-                        ImGui::Separator();
+                        auto& activeMaterial =
+                            renderer.Materials[m_SelectedMaterialSlot];
 
-                        auto& color =
-                            renderer.MaterialAsset->GetColor();
-
-                        ImGui::ColorEdit4(
-                            "Material Color",
-                            &color.x);
-
-                        ImGui::SeparatorText("PBR Surface");
-                        ImGui::SliderFloat("Metallic", &renderer.MaterialAsset->Metallic(), 0.0f, 1.0f);
-                        ImGui::SliderFloat("Roughness", &renderer.MaterialAsset->Roughness(), 0.04f, 1.0f);
-                        ImGui::SliderFloat("Ambient Occlusion", &renderer.MaterialAsset->AmbientOcclusion(), 0.0f, 1.0f);
-                        ImGui::SliderFloat("Normal Strength", &renderer.MaterialAsset->NormalStrength(), 0.0f, 2.0f);
-                        ImGui::ColorEdit3("Emissive Color", &renderer.MaterialAsset->EmissiveColor().x);
-                        ImGui::SliderFloat("Emissive Strength", &renderer.MaterialAsset->EmissiveStrength(), 0.0f, 20.0f);
-
-                        ImGui::SeparatorText("PBR Texture Maps");
-                        auto selectPBRMap = [&](const char* label, auto setter)
+                        if (!activeMaterial)
                         {
-                            if (ImGui::Button(label))
+                            ImGui::TextDisabled(
+                                "Selected material slot is empty.");
+                        }
+                        else
+                        {
+                            // Keep the legacy slot-0 alias synchronized.
+                            if (m_SelectedMaterialSlot == 0)
+                                renderer.MaterialAsset = activeMaterial;
+
+                            ImGui::SeparatorText(
+                                ("Element " +
+                                 std::to_string(m_SelectedMaterialSlot))
+                                    .c_str());
+
+                            const char* surfaceModes[] =
                             {
-                                const std::string path = OpenTextureFileDialog();
+                                "Opaque",
+                                "Alpha Clip",
+                                "Transparent"
+                            };
+
+                            int surfaceMode =
+                                static_cast<int>(
+                                    activeMaterial->SurfaceMode());
+
+                            if (ImGui::Combo(
+                                    "Rendering Mode",
+                                    &surfaceMode,
+                                    surfaceModes,
+                                    3))
+                            {
+                                activeMaterial->SurfaceMode() =
+                                    static_cast<MaterialSurfaceMode>(
+                                        surfaceMode);
+                            }
+
+                            if (activeMaterial->SurfaceMode() ==
+                                MaterialSurfaceMode::AlphaClip)
+                            {
+                                ImGui::SliderFloat(
+                                    "Alpha Cutoff",
+                                    &activeMaterial->AlphaCutoff(),
+                                    0.0f,
+                                    1.0f);
+                            }
+
+                            ImGui::TextUnformatted("Material");
+                            ImGui::SameLine();
+                            ImGui::Button(
+                                "Material Slot",
+                                ImVec2(
+                                    ImGui::GetContentRegionAvail().x,
+                                    0.0f));
+
+                            if (ImGui::BeginDragDropTarget())
+                            {
+                                if (const ImGuiPayload* materialPayload =
+                                        ImGui::AcceptDragDropPayload(
+                                            "NOJOB_MATERIAL_ASSET"))
+                                {
+                                    const char* relativePath =
+                                        static_cast<const char*>(
+                                            materialPayload->Data);
+
+                                    AssetRegistry registry(
+                                        AssetManager::GetAssetsDirectory());
+                                    registry.Load();
+
+                                    auto loaded = MaterialSerializer::Load(
+                                        AssetManager::GetProjectRoot() /
+                                            relativePath,
+                                        activeMaterial->GetShader(),
+                                        registry);
+
+                                    if (loaded)
+                                    {
+                                        activeMaterial = loaded;
+                                        if (m_SelectedMaterialSlot == 0)
+                                            renderer.MaterialAsset = loaded;
+                                    }
+                                }
+
+                                if (const ImGuiPayload* texturePayload =
+                                        ImGui::AcceptDragDropPayload(
+                                            "NOJOB_TEXTURE_ASSET"))
+                                {
+                                    const char* relativePath =
+                                        static_cast<const char*>(
+                                            texturePayload->Data);
+                                    try
+                                    {
+                                        activeMaterial->SetTexture(
+                                            AssetManager::LoadTexture(
+                                                relativePath));
+                                        activeMaterial->UseTexture() = true;
+                                    }
+                                    catch (const std::exception&) {}
+                                }
+
+                                ImGui::EndDragDropTarget();
+                            }
+
+                            ImGui::Separator();
+                            auto& color = activeMaterial->GetColor();
+                            ImGui::ColorEdit4(
+                                "Material Color", &color.x);
+
+                            ImGui::SeparatorText("PBR Surface");
+                            ImGui::SliderFloat(
+                                "Metallic",
+                                &activeMaterial->Metallic(), 0.0f, 1.0f);
+                            ImGui::SliderFloat(
+                                "Roughness",
+                                &activeMaterial->Roughness(), 0.04f, 1.0f);
+                            ImGui::SliderFloat(
+                                "Ambient Occlusion",
+                                &activeMaterial->AmbientOcclusion(),
+                                0.0f, 1.0f);
+                            ImGui::SliderFloat(
+                                "Normal Strength",
+                                &activeMaterial->NormalStrength(),
+                                0.0f, 2.0f);
+                            ImGui::ColorEdit3(
+                                "Emissive Color",
+                                &activeMaterial->EmissiveColor().x);
+                            ImGui::SliderFloat(
+                                "Emissive Strength",
+                                &activeMaterial->EmissiveStrength(),
+                                0.0f, 20.0f);
+
+                            ImGui::SeparatorText("PBR Texture Maps");
+                            auto selectPBRMap =
+                                [&](const char* label, auto setter)
+                            {
+                                if (ImGui::Button(label))
+                                {
+                                    const std::string path =
+                                        OpenTextureFileDialog();
+                                    if (!path.empty())
+                                    {
+                                        try
+                                        {
+                                            const auto importedPath =
+                                                AssetManager::ImportTexture(
+                                                    path);
+                                            setter(
+                                                AssetManager::LoadTexture(
+                                                    importedPath));
+                                        }
+                                        catch (const std::exception&) {}
+                                    }
+                                }
+                            };
+
+                            selectPBRMap(
+                                "Normal Map...",
+                                [&](std::shared_ptr<Texture2D> v)
+                                {
+                                    activeMaterial->SetNormalTexture(
+                                        std::move(v));
+                                });
+                            ImGui::SameLine();
+                            selectPBRMap(
+                                "Metallic Map...",
+                                [&](std::shared_ptr<Texture2D> v)
+                                {
+                                    activeMaterial->SetMetallicTexture(
+                                        std::move(v));
+                                });
+                            selectPBRMap(
+                                "Roughness Map...",
+                                [&](std::shared_ptr<Texture2D> v)
+                                {
+                                    activeMaterial->SetRoughnessTexture(
+                                        std::move(v));
+                                });
+                            ImGui::SameLine();
+                            selectPBRMap(
+                                "AO Map...",
+                                [&](std::shared_ptr<Texture2D> v)
+                                {
+                                    activeMaterial->SetAOTexture(
+                                        std::move(v));
+                                });
+                            selectPBRMap(
+                                "Emissive Map...",
+                                [&](std::shared_ptr<Texture2D> v)
+                                {
+                                    activeMaterial->SetEmissiveTexture(
+                                        std::move(v));
+                                });
+
+                            ImGui::Checkbox(
+                                "Use Texture",
+                                &activeMaterial->UseTexture());
+
+                            if (ImGui::Button("Select Texture..."))
+                            {
+                                const std::string path =
+                                    OpenTextureFileDialog();
                                 if (!path.empty())
                                 {
                                     try
                                     {
-                                        const auto importedPath = AssetManager::ImportTexture(path);
-                                        setter(AssetManager::LoadTexture(importedPath));
+                                        const auto importedPath =
+                                            AssetManager::ImportTexture(path);
+                                        activeMaterial->SetTexture(
+                                            AssetManager::LoadTexture(
+                                                importedPath));
+                                        activeMaterial->UseTexture() = true;
                                     }
                                     catch (const std::exception&) {}
                                 }
                             }
-                        };
-                        selectPBRMap("Normal Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetNormalTexture(std::move(v)); });
-                        ImGui::SameLine();
-                        selectPBRMap("Metallic Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetMetallicTexture(std::move(v)); });
-                        selectPBRMap("Roughness Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetRoughnessTexture(std::move(v)); });
-                        ImGui::SameLine();
-                        selectPBRMap("AO Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetAOTexture(std::move(v)); });
-                        selectPBRMap("Emissive Map...", [&](std::shared_ptr<Texture2D> v){ renderer.MaterialAsset->SetEmissiveTexture(std::move(v)); });
 
-                        ImGui::Checkbox(
-                            "Use Texture",
-                            &renderer.MaterialAsset->UseTexture());
-
-                        if (ImGui::Button("Select Texture..."))
-                        {
-                            const std::string path =
-                                OpenTextureFileDialog();
-
-                            if (!path.empty())
+                            ImGui::SameLine();
+                            if (ImGui::Button("Checkerboard"))
                             {
-                                try
-                                {
-                                    const auto importedPath =
-                                        AssetManager::ImportTexture(path);
+                                activeMaterial->SetTexture(
+                                    Texture2D::CreateCheckerboard());
+                                activeMaterial->UseTexture() = true;
+                            }
 
-                                    renderer.MaterialAsset->SetTexture(
-                                        AssetManager::LoadTexture(importedPath));
+                            if (ImGui::Button("Save Material Asset"))
+                            {
+                                const auto& tag =
+                                    m_SelectedEntity
+                                        .GetComponent<TagComponent>().Tag;
 
-                                    renderer.MaterialAsset->UseTexture() = true;
-                                }
-                                catch (const std::exception& exception)
-                                {
-                                    // Keep the previous texture if loading fails.
-                                    // A proper editor notification system comes later.
-                                    (void)exception;
-                                }
+                                const auto materialPath =
+                                    AssetManager::GetAssetsDirectory() /
+                                    "Materials" /
+                                    (tag + "_Element" +
+                                     std::to_string(
+                                         m_SelectedMaterialSlot) +
+                                     ".nojobmat");
+
+                                AssetRegistry registry(
+                                    AssetManager::GetAssetsDirectory());
+                                registry.Load();
+                                MaterialSerializer::Save(
+                                    *activeMaterial,
+                                    materialPath,
+                                    registry);
+                                registry.Register(
+                                    materialPath,
+                                    AssetType::Material);
+                                registry.Save();
+                            }
+
+                            ImGui::SameLine();
+                            if (ImGui::Button("Create Prefab"))
+                            {
+                                auto prefabPath =
+                                    AssetManager::GetAssetsDirectory() /
+                                    "Prefabs" /
+                                    (m_SelectedEntity
+                                         .GetComponent<TagComponent>().Tag +
+                                     ".nojobprefab");
+                                PrefabSerializer::Save(
+                                    m_SelectedEntity, prefabPath);
+                                AssetRegistry registry(
+                                    AssetManager::GetAssetsDirectory());
+                                registry.Load();
+                                registry.Register(
+                                    prefabPath, AssetType::Prefab);
+                                registry.Save();
+                            }
+
+                            if (activeMaterial->GetTexture())
+                            {
+                                const auto& texture =
+                                    activeMaterial->GetTexture();
+                                const std::filesystem::path texturePath(
+                                    texture->GetPath());
+
+                                const std::string displayName =
+                                    texture->GetPath() == "Checkerboard"
+                                        ? std::string("Checkerboard")
+                                        : texturePath.filename().string();
+
+                                ImGui::TextDisabled(
+                                    "Texture: %s",
+                                    displayName.c_str());
+
+                                ImGui::Image(
+                                    static_cast<ImTextureID>(
+                                        static_cast<intptr_t>(
+                                            texture->GetRendererID())),
+                                    ImVec2(96.0f, 96.0f));
                             }
                         }
-
-                        ImGui::SameLine();
-
-                        if (ImGui::Button("Checkerboard"))
-                        {
-                            renderer.MaterialAsset->SetTexture(
-                                Texture2D::CreateCheckerboard());
-                            renderer.MaterialAsset->UseTexture() = true;
-                        }
-
-                        if(ImGui::Button("Save Material Asset")){auto p=AssetManager::GetAssetsDirectory()/"Materials"/(m_SelectedEntity.GetComponent<TagComponent>().Tag+".nojobmat");AssetRegistry r(AssetManager::GetAssetsDirectory());r.Load();MaterialSerializer::Save(*renderer.MaterialAsset,p,r);r.Register(p,AssetType::Material);r.Save();} ImGui::SameLine(); if(ImGui::Button("Create Prefab")){auto p=AssetManager::GetAssetsDirectory()/"Prefabs"/(m_SelectedEntity.GetComponent<TagComponent>().Tag+".nojobprefab");PrefabSerializer::Save(m_SelectedEntity,p);AssetRegistry r(AssetManager::GetAssetsDirectory());r.Load();r.Register(p,AssetType::Prefab);r.Save();}
-
-
-                        if (renderer.MaterialAsset->GetTexture())
-                        {
-                            const auto& texture =
-                                renderer.MaterialAsset->GetTexture();
-
-                            const std::filesystem::path texturePath(
-                                texture->GetPath());
-
-                            const std::string displayName =
-                                texture->GetPath() == "Checkerboard"
-                                    ? std::string("Checkerboard")
-                                    : texturePath.filename().string();
-
-                            ImGui::TextDisabled(
-                                "Texture: %s",
-                                displayName.c_str());
-
-                            ImGui::Image(
-                                static_cast<ImTextureID>(
-                                    static_cast<intptr_t>(
-                                        texture->GetRendererID())),
-                                ImVec2(96.0f, 96.0f));
-                        }
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("No material assigned.");
                     }
                 }
             }
@@ -1895,7 +2241,11 @@ return{};}
                 mode,
                 glm::value_ptr(transformMatrix));
 
-            if (ImGuizmo::IsUsing())
+            const bool gizmoUsing = ImGuizmo::IsUsing();
+            if (gizmoUsing && !m_GizmoWasUsing)
+                m_TransformEditSnapshot = m_Scene->Copy();
+
+            if (gizmoUsing)
             {
                 float translation[3]{};
                 float rotationDegrees[3]{};
@@ -1913,6 +2263,11 @@ return{};}
                     m_SelectedEntity,
                     transformMatrix);
             }
+
+            if (!gizmoUsing && m_GizmoWasUsing && m_TransformEditSnapshot)
+                PushUndoSnapshot(std::move(m_TransformEditSnapshot));
+
+            m_GizmoWasUsing = gizmoUsing;
         }
 
         // Small toolbar over the scene.

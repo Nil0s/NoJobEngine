@@ -18,6 +18,13 @@ namespace NoJob
         glm::vec2 TexCoord{ 0.0f };
     };
 
+    struct Submesh
+    {
+        std::uint32_t IndexOffset = 0;
+        std::uint32_t IndexCount = 0;
+        std::uint32_t MaterialIndex = 0;
+    };
+
     class Mesh
     {
     public:
@@ -33,9 +40,13 @@ namespace NoJob
         static std::shared_ptr<Mesh> LoadOBJ(const std::filesystem::path& path);
         static std::shared_ptr<Mesh> LoadModel(const std::filesystem::path& path);
 
+        const std::vector<Submesh>& GetSubmeshes() const { return m_Submeshes; }
+        void SetSubmeshes(std::vector<Submesh> submeshes) { m_Submeshes = std::move(submeshes); }
+
     private:
         std::shared_ptr<VertexArray> m_VertexArray;
         std::shared_ptr<VertexBuffer> m_VertexBuffer;
         std::shared_ptr<IndexBuffer> m_IndexBuffer;
+        std::vector<Submesh> m_Submeshes;
     };
 }

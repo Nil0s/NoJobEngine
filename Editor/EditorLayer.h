@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <cstdint>
 #include <memory>
+#include <vector>
 #include <glm/glm.hpp>
 
 struct GLFWwindow;
@@ -82,8 +83,15 @@ namespace NoJob
         void DeleteSelectedEntity();
         void DuplicateSelectedEntity();
 
+        void PushUndoSnapshot(std::unique_ptr<Scene> snapshot);
+        void CaptureUndoSnapshot();
+        void Undo();
+        void Redo();
+        void ClearRedoHistory();
+
         Scene* m_Scene = nullptr;
         Entity m_SelectedEntity;
+        std::size_t m_SelectedMaterialSlot = 0;
 
         std::shared_ptr<Mesh> m_DefaultCubeMesh;
         std::shared_ptr<Material> m_DefaultCubeMaterial;
@@ -110,5 +118,11 @@ namespace NoJob
         bool m_GraphicsTestSceneRequested = false;
         bool m_ShowGraphicsSettings = true;
         FramebufferSpecification m_GraphicsSettings{};
+
+        static constexpr std::size_t MaxHistoryEntries = 64;
+        std::vector<std::unique_ptr<Scene>> m_UndoHistory;
+        std::vector<std::unique_ptr<Scene>> m_RedoHistory;
+        std::unique_ptr<Scene> m_TransformEditSnapshot;
+        bool m_GizmoWasUsing = false;
     };
 }

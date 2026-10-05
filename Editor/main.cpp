@@ -72,6 +72,8 @@ int main()
             uniform vec4 u_Color;
             uniform sampler2D u_Texture;
             uniform int u_UseTexture;
+            uniform int u_SurfaceMode;
+            uniform float u_AlphaCutoff;
             uniform sampler2D u_NormalMap; uniform int u_UseNormalMap; uniform float u_NormalStrength;
             uniform sampler2D u_MetallicMap; uniform int u_UseMetallicMap;
             uniform sampler2D u_RoughnessMap; uniform int u_UseRoughnessMap;
@@ -147,6 +149,7 @@ int main()
             }
             void main(){
                 vec4 base=u_Color; if(u_UseTexture==1) base*=texture(u_Texture,v_TexCoord);
+                if(u_SurfaceMode==1 && base.a<u_AlphaCutoff) discard;
                 vec3 albedo=max(base.rgb,vec3(0.0));
                 float metallic=clamp(u_Metallic*(u_UseMetallicMap==1?texture(u_MetallicMap,v_TexCoord).r:1.0),0.0,1.0);
                 float roughness=clamp(u_Roughness*(u_UseRoughnessMap==1?texture(u_RoughnessMap,v_TexCoord).r:1.0),0.04,1.0);
