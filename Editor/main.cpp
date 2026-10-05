@@ -12,6 +12,7 @@
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneRenderer.h"
+#include "Engine/Scene/SceneSerializer.h"
 
 #include "Editor/EditorCamera.h"
 #include "Editor/EditorLayer.h"
@@ -171,9 +172,9 @@ int main()
                 vec3 emissive=u_EmissiveColor*u_EmissiveStrength;
                 if(u_UseEmissiveMap==1) emissive*=texture(u_EmissiveMap,v_TexCoord).rgb;
 
+                // Keep scene output linear/HDR. Tone mapping, bloom, AO and
+                // anti-aliasing are handled by the framebuffer post-process chain.
                 vec3 color=ambient+Lo+emissive;
-                color=ACES(color);
-                color=pow(color,vec3(1.0/2.2));
                 o_Color=vec4(color,base.a);
             }
         )";
@@ -258,6 +259,14 @@ int main()
         NoJob::FramebufferSpecification framebufferSpecification;
         framebufferSpecification.Width = 1280;
         framebufferSpecification.Height = 720;
+        framebufferSpecification.HDR = true;
+        framebufferSpecification.Exposure = 0.72f;
+        framebufferSpecification.Bloom = true;
+        framebufferSpecification.BloomThreshold = 1.35f;
+        framebufferSpecification.BloomStrength = 0.08f;
+        framebufferSpecification.ScreenSpaceAO = true;
+        framebufferSpecification.AOIntensity = 0.18f;
+        framebufferSpecification.FXAA = true;
 
         auto framebuffer =
             NoJob::Framebuffer::Create(framebufferSpecification);
@@ -265,11 +274,20 @@ int main()
         NoJob::FramebufferSpecification cameraPreviewSpecification;
         cameraPreviewSpecification.Width = 320;
         cameraPreviewSpecification.Height = 180;
+        cameraPreviewSpecification.HDR = true;
+        cameraPreviewSpecification.Exposure = framebufferSpecification.Exposure;
+        cameraPreviewSpecification.Bloom = framebufferSpecification.Bloom;
+        cameraPreviewSpecification.BloomThreshold = framebufferSpecification.BloomThreshold;
+        cameraPreviewSpecification.BloomStrength = framebufferSpecification.BloomStrength;
+        cameraPreviewSpecification.ScreenSpaceAO = framebufferSpecification.ScreenSpaceAO;
+        cameraPreviewSpecification.AOIntensity = framebufferSpecification.AOIntensity;
+        cameraPreviewSpecification.FXAA = framebufferSpecification.FXAA;
         auto cameraPreviewFramebuffer =
             NoJob::Framebuffer::Create(cameraPreviewSpecification);
 
         NoJob::EditorLayer editor;
         editor.Init(window.GetNativeWindow(), &editorScene);
+        editor.SetGraphicsSettings(framebufferSpecification);
         editor.SetSelectedEntity(cube);
         editor.SetDefaultCubeAssets(cubeMesh, cubeMaterial);
         editor.SetViewportTexture(
@@ -403,6 +421,11 @@ int main()
                     deltaTime,
                     editor.IsViewportHovered());
             }
+
+            // Apply editor graphics settings live to both render targets.
+            const auto& graphicsSettings = editor.GetGraphicsSettings();
+            framebuffer->SetPostProcessSettings(graphicsSettings);
+            cameraPreviewFramebuffer->SetPostProcessSettings(graphicsSettings);
 
             framebuffer->Bind();
 
@@ -550,6 +573,69 @@ int main()
 
                 editor.SetScene(activeScene);
                 editor.SetRuntimeState(false, false);
+            }
+
+            if (!isPlaying && editor.ConsumeSaveSceneRequest())
+            {
+                std::filesystem::create_directories("Assets/Scenes");
+                NoJob::SceneSerializer::Save(editorScene, "Assets/Scenes/CurrentScene.nojobscene");
+                std::cout << "[Scene] Saved Assets/Scenes/CurrentScene.nojobscene\n";
+            }
+
+            if (!isPlaying && editor.ConsumeLoadSceneRequest())
+            {
+                if (NoJob::SceneSerializer::Load(editorScene, "Assets/Scenes/CurrentScene.nojobscene", cubeMesh, cubeMaterial))
+                {
+                    activeScene = &editorScene;
+                    editor.SetScene(activeScene);
+                    std::cout << "[Scene] Loaded Assets/Scenes/CurrentScene.nojobscene\n";
+                }
+            }
+
+            if (!isPlaying && editor.ConsumeGraphicsTestSceneRequest())
+            {
+                // Deterministic validation scene: each station isolates a major
+                // graphics feature so regressions are visible in one viewport.
+                for (auto e : editorScene.GetEntities())
+                    editorScene.DestroyEntity(e);
+
+                auto makeCube=[&](const char* name,glm::vec3 pos,glm::vec3 scale,glm::vec4 color,float metal,float rough,float emissive)
+                {
+                    auto mat=std::make_shared<NoJob::Material>(shader,color);
+                    mat->Metallic()=metal; mat->Roughness()=rough; mat->AmbientOcclusion()=1.0f;
+                    mat->EmissiveColor()=glm::vec3(color); mat->EmissiveStrength()=emissive;
+                    auto e=editorScene.CreateEntity(name);
+                    e.AddComponent<NoJob::MeshComponent>(cubeMesh);
+                    e.AddComponent<NoJob::MeshRendererComponent>(mat);
+                    auto& tr=e.GetComponent<NoJob::TransformComponent>(); tr.Position=pos; tr.Scale=scale;
+                    return e;
+                };
+
+                makeCube("PBR Dielectric",{-4.5f,0.0f,0.0f},{1,1,1},{0.72f,0.18f,0.08f,1},0.0f,0.35f,0.0f);
+                makeCube("PBR Metal",{-1.5f,0.0f,0.0f},{1,1,1},{0.75f,0.72f,0.62f,1},1.0f,0.16f,0.0f);
+                makeCube("Rough Surface",{1.5f,0.0f,0.0f},{1,1,1},{0.12f,0.35f,0.75f,1},0.25f,0.92f,0.0f);
+                makeCube("HDR Emissive",{4.5f,0.0f,0.0f},{1,1,1},{0.15f,0.8f,0.32f,1},0.0f,0.4f,8.0f);
+                makeCube("Shadow Receiver",{0.0f,-1.6f,0.0f},{7.0f,0.25f,3.0f},{0.18f,0.20f,0.23f,1},0.0f,0.75f,0.0f);
+
+                auto cam=editorScene.CreateEntity("Graphics Test Camera");
+                auto& ct=cam.GetComponent<NoJob::TransformComponent>();ct.Position={0.0f,3.5f,11.5f};ct.Rotation={glm::radians(-14.0f),0.0f,0.0f};
+                cam.AddComponent<NoJob::CameraComponent>();
+
+                auto sunE=editorScene.CreateEntity("Directional Shadow Test");
+                sunE.GetComponent<NoJob::TransformComponent>().Rotation={glm::radians(-52.0f),glm::radians(-28.0f),0.0f};
+                NoJob::DirectionalLightComponent dl;dl.Intensity=1.15f;dl.CastShadows=true;sunE.AddComponent<NoJob::DirectionalLightComponent>(dl);
+
+                auto pointE=editorScene.CreateEntity("Point Shadow Test");
+                pointE.GetComponent<NoJob::TransformComponent>().Position={-3.0f,2.8f,2.0f};
+                NoJob::PointLightComponent pl;pl.Intensity=1.4f;pl.Range=7.0f;pl.CastShadows=true;pointE.AddComponent<NoJob::PointLightComponent>(pl);
+
+                auto spotE=editorScene.CreateEntity("Spot Shadow Test");
+                auto& st=spotE.GetComponent<NoJob::TransformComponent>();st.Position={3.0f,4.0f,3.0f};st.Rotation={glm::radians(-55.0f),glm::radians(18.0f),0.0f};
+                NoJob::SpotLightComponent sl;sl.Intensity=4.0f;sl.Range=12.0f;sl.CastShadows=true;spotE.AddComponent<NoJob::SpotLightComponent>(sl);
+
+                activeScene=&editorScene; editor.SetScene(activeScene);
+                NoJob::SceneSerializer::Save(editorScene,"Assets/Scenes/GraphicsValidation.nojobscene");
+                std::cout<<"[Graphics] Validation scene generated and saved.\n";
             }
 
             editor.EndFrame();

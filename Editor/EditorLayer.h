@@ -1,5 +1,6 @@
 #pragma once
 #include "Engine/Scene/Entity.h"
+#include "Engine/Renderer/Framebuffer.h"
 
 #include <filesystem>
 #include <cstdint>
@@ -36,7 +37,19 @@ namespace NoJob
         bool ConsumePlayRequest();
         bool ConsumePauseRequest();
         bool ConsumeStopRequest();
+        bool ConsumeSaveSceneRequest();
+        bool ConsumeLoadSceneRequest();
+        bool ConsumeGraphicsTestSceneRequest();
         void SetRuntimeState(bool playing, bool paused);
+
+        void SetGraphicsSettings(const FramebufferSpecification& settings)
+        {
+            m_GraphicsSettings = settings;
+        }
+        const FramebufferSpecification& GetGraphicsSettings() const
+        {
+            return m_GraphicsSettings;
+        }
 
         void SetEditorCameraMatrices(
             const glm::mat4& view,
@@ -61,6 +74,7 @@ namespace NoJob
         void DrawViewport();
         void DrawConsole();
         void DrawProjectPanel();
+        void DrawGraphicsSettings();
 
         Entity CreateEmptyEntity();
         Entity CreateCubeEntity();
@@ -90,5 +104,10 @@ namespace NoJob
         bool m_PlayRequested = false;
         bool m_PauseRequested = false;
         bool m_StopRequested = false;
+        bool m_SaveSceneRequested = false;
+        bool m_LoadSceneRequested = false;
+        bool m_GraphicsTestSceneRequested = false;
+        bool m_ShowGraphicsSettings = true;
+        FramebufferSpecification m_GraphicsSettings{};
     };
 }

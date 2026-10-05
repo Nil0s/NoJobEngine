@@ -77,6 +77,9 @@ set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
 set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
 set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
 set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+# NoJobEngine uses the DLL MSVC runtime (/MD, /MDd). Jolt defaults to the
+# static runtime (/MT, /MTd), which causes LNK2038/LNK2005 when linked
+# into NoJobEditor. Force Jolt to use the same runtime as the engine.
 set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 set(CPP_EXCEPTIONS_ENABLED ON CACHE BOOL "" FORCE)
 
@@ -113,6 +116,7 @@ add_library(NoJobEngine STATIC
     Engine/Asset/AssetManager.cpp
     Engine/Physics/PhysicsSystem.cpp
     Engine/Scene/Scene.cpp
+    Engine/Scene/SceneSerializer.cpp
     Engine/Scene/SceneRenderer.cpp
 
     Engine/Renderer/Renderer.cpp

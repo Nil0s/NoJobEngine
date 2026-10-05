@@ -586,6 +586,8 @@ namespace NoJob
         DrawInspector();
         DrawConsole();
         DrawProjectPanel();
+        if (m_ShowGraphicsSettings)
+            DrawGraphicsSettings();
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
             DeleteSelectedEntity();
@@ -796,8 +798,13 @@ namespace NoJob
         {
             if (ImGui::BeginMenu("File"))
             {
-                ImGui::MenuItem("New Scene");
-                ImGui::MenuItem("Open Scene");
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+                    m_SaveSceneRequested = true;
+                if (ImGui::MenuItem("Load Scene", "Ctrl+O"))
+                    m_LoadSceneRequested = true;
+                ImGui::Separator();
+                if (ImGui::MenuItem("Load Graphics Test Scene"))
+                    m_GraphicsTestSceneRequested = true;
                 ImGui::Separator();
                 ImGui::MenuItem("Exit");
                 ImGui::EndMenu();
@@ -874,6 +881,7 @@ namespace NoJob
                 ImGui::MenuItem("Hierarchy");
                 ImGui::MenuItem("Inspector");
                 ImGui::MenuItem("Console");
+                ImGui::MenuItem("Graphics Settings", nullptr, &m_ShowGraphicsSettings);
                 ImGui::EndMenu();
             }
 
@@ -1922,6 +1930,57 @@ namespace NoJob
         }
 
         ImGui::End();
+    }
+
+    void EditorLayer::DrawGraphicsSettings()
+    {
+        if (!ImGui::Begin("Graphics Settings", &m_ShowGraphicsSettings))
+        {
+            ImGui::End();
+            return;
+        }
+
+        ImGui::TextUnformatted("NoJobEngine Rendering Pipeline");
+        ImGui::SeparatorText("HDR / Tone Mapping");
+        ImGui::Checkbox("HDR", &m_GraphicsSettings.HDR);
+        ImGui::SliderFloat("Exposure", &m_GraphicsSettings.Exposure, 0.1f, 3.0f);
+
+        ImGui::SeparatorText("Bloom");
+        ImGui::Checkbox("Bloom", &m_GraphicsSettings.Bloom);
+        ImGui::SliderFloat("Bloom Threshold", &m_GraphicsSettings.BloomThreshold, 0.1f, 5.0f);
+        ImGui::SliderFloat("Bloom Strength", &m_GraphicsSettings.BloomStrength, 0.0f, 1.0f);
+
+        ImGui::SeparatorText("Ambient Occlusion");
+        ImGui::Checkbox("Screen Space AO", &m_GraphicsSettings.ScreenSpaceAO);
+        ImGui::SliderFloat("AO Intensity", &m_GraphicsSettings.AOIntensity, 0.0f, 1.0f);
+
+        ImGui::SeparatorText("Anti-Aliasing");
+        ImGui::Checkbox("FXAA", &m_GraphicsSettings.FXAA);
+
+        ImGui::Separator();
+        ImGui::TextWrapped("ACES filmic tone mapping and final gamma conversion are applied once at the end of the HDR pipeline.");
+        ImGui::End();
+    }
+
+    bool EditorLayer::ConsumeSaveSceneRequest()
+    {
+        const bool requested = m_SaveSceneRequested;
+        m_SaveSceneRequested = false;
+        return requested;
+    }
+
+    bool EditorLayer::ConsumeLoadSceneRequest()
+    {
+        const bool requested = m_LoadSceneRequested;
+        m_LoadSceneRequested = false;
+        return requested;
+    }
+
+    bool EditorLayer::ConsumeGraphicsTestSceneRequest()
+    {
+        const bool requested = m_GraphicsTestSceneRequested;
+        m_GraphicsTestSceneRequested = false;
+        return requested;
     }
 
 }
