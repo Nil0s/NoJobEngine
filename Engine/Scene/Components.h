@@ -59,6 +59,12 @@ namespace NoJob
         std::vector<std::uint32_t> Children;
     };
 
+    struct NativeScriptComponent
+    {
+        bool Enabled = true;
+        float RotationSpeed = 1.0f; // radians per second
+    };
+
     struct MeshComponent
     {
         std::shared_ptr<Mesh> MeshAsset;

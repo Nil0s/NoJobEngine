@@ -14,12 +14,15 @@
 
 namespace NoJob
 {
+    class ScriptableEntity;
+
     class Scene
     {
     public:
-        Scene() = default;
-        Scene(const Scene&) = default;
-        Scene& operator=(const Scene&) = default;
+        Scene();
+        Scene(const Scene& other);
+        Scene& operator=(const Scene&) = delete;
+        ~Scene();
 
         std::unique_ptr<Scene> Copy() const;
 
@@ -29,6 +32,8 @@ namespace NoJob
         bool IsValid(std::uint32_t handle) const;
         std::vector<Entity> GetEntities();
 
+        void OnRuntimeStart();
+        void OnRuntimeStop();
         void OnUpdate(float deltaTime);
         float GetDeltaTime() const { return m_DeltaTime; }
 
@@ -60,6 +65,7 @@ namespace NoJob
 
             std::optional<MeshComponent> Mesh;
             std::optional<MeshRendererComponent> MeshRenderer;
+            std::optional<NativeScriptComponent> NativeScript;
         };
 
         template<typename T>
@@ -79,6 +85,8 @@ namespace NoJob
                 return data.Mesh.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.value();
+            else if constexpr (std::is_same_v<T, NativeScriptComponent>)
+                return data.NativeScript.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -100,6 +108,8 @@ namespace NoJob
                 return data.Mesh.value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.value();
+            else if constexpr (std::is_same_v<T, NativeScriptComponent>)
+                return data.NativeScript.value();
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -127,6 +137,11 @@ namespace NoJob
                 data.MeshRenderer.emplace(T{ std::forward<Args>(args)... });
                 return data.MeshRenderer.value();
             }
+            else if constexpr (std::is_same_v<T, NativeScriptComponent>)
+            {
+                data.NativeScript.emplace(T{ std::forward<Args>(args)... });
+                return data.NativeScript.value();
+            }
             else
                 static_assert(!sizeof(T), "Unsupported NoJob component type.");
         }
@@ -140,6 +155,8 @@ namespace NoJob
                 data.Mesh.reset();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 data.MeshRenderer.reset();
+            else if constexpr (std::is_same_v<T, NativeScriptComponent>)
+                data.NativeScript.reset();
             else
                 static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }
@@ -161,6 +178,8 @@ namespace NoJob
                 return data.Mesh.has_value();
             else if constexpr (std::is_same_v<T, MeshRendererComponent>)
                 return data.MeshRenderer.has_value();
+            else if constexpr (std::is_same_v<T, NativeScriptComponent>)
+                return data.NativeScript.has_value();
             else
                 return false;
         }
@@ -169,6 +188,10 @@ namespace NoJob
         std::uint32_t m_NextHandle = 1;
         std::uint64_t m_NextID = 1;
         float m_DeltaTime = 0.0f;
+        bool m_RuntimeRunning = false;
+        std::unordered_map<std::uint32_t, std::unique_ptr<ScriptableEntity>> m_ScriptInstances;
+        void CreateScriptInstance(std::uint32_t handle);
+        void DestroyScriptInstance(std::uint32_t handle);
 
         friend class Entity;
     };

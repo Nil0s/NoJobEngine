@@ -286,6 +286,7 @@ int main()
             if (editor.ConsumePlayRequest() && !isPlaying)
             {
                 runtimeScene = editorScene.Copy();
+                runtimeScene->OnRuntimeStart();
                 activeScene = runtimeScene.get();
                 isPlaying = true;
                 isPaused = false;
@@ -302,6 +303,7 @@ int main()
 
             if (editor.ConsumeStopRequest() && isPlaying)
             {
+                runtimeScene->OnRuntimeStop();
                 runtimeScene.reset();
                 activeScene = &editorScene;
                 isPlaying = false;

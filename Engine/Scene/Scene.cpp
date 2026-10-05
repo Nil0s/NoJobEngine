@@ -1,4 +1,5 @@
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/NativeScripts.h"
 
 #include <algorithm>
 #include <glm/gtc/matrix_inverse.hpp>
@@ -35,6 +36,21 @@ namespace NoJob
 
             return result;
         }
+    }
+
+    Scene::Scene() = default;
+
+    Scene::Scene(const Scene& other)
+        : m_Entities(other.m_Entities),
+          m_NextHandle(other.m_NextHandle),
+          m_NextID(other.m_NextID),
+          m_DeltaTime(other.m_DeltaTime)
+    {
+    }
+
+    Scene::~Scene()
+    {
+        OnRuntimeStop();
     }
 
     std::unique_ptr<Scene> Scene::Copy() const
@@ -78,6 +94,7 @@ namespace NoJob
             std::erase(siblings, entity.m_Handle);
         }
 
+        DestroyScriptInstance(entity.m_Handle);
         m_Entities.erase(entity.m_Handle);
     }
 
@@ -99,10 +116,73 @@ namespace NoJob
         return result;
     }
 
+    void Scene::CreateScriptInstance(std::uint32_t handle)
+    {
+        if (!IsValid(handle) || m_ScriptInstances.contains(handle))
+            return;
+        const auto& component = m_Entities.at(handle).NativeScript;
+        if (!component || !component->Enabled)
+            return;
+        auto instance = std::make_unique<Rotator>(component->RotationSpeed);
+        instance->m_Entity = Entity(handle, this);
+        m_ScriptInstances.emplace(handle, std::move(instance));
+        m_ScriptInstances.at(handle)->OnCreate();
+    }
+
+    void Scene::DestroyScriptInstance(std::uint32_t handle)
+    {
+        auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end())
+            return;
+        auto instance = std::move(it->second);
+        m_ScriptInstances.erase(it);
+        instance->OnDestroy();
+    }
+
+    void Scene::OnRuntimeStart()
+    {
+        if (m_RuntimeRunning) return;
+        m_RuntimeRunning = true;
+        for (const auto& [handle, data] : m_Entities)
+        {
+            (void)data;
+            CreateScriptInstance(handle);
+        }
+    }
+
+    void Scene::OnRuntimeStop()
+    {
+        m_RuntimeRunning = false;
+        while (!m_ScriptInstances.empty())
+            DestroyScriptInstance(m_ScriptInstances.begin()->first);
+    }
+
     void Scene::OnUpdate(float deltaTime)
     {
         m_DeltaTime = deltaTime;
-        // Runtime components/scripts/physics will be updated here later.
+        if (!m_RuntimeRunning) return;
+        // Snapshot handles: scripts can create/destroy entities during update.
+        std::vector<std::uint32_t> handles;
+        handles.reserve(m_Entities.size());
+        for (const auto& [handle, data] : m_Entities)
+        {
+            (void)data;
+            handles.push_back(handle);
+        }
+        for (const auto handle : handles)
+        {
+            if (!IsValid(handle)) continue;
+            if (!m_Entities.at(handle).NativeScript ||
+                !m_Entities.at(handle).NativeScript->Enabled)
+            {
+                DestroyScriptInstance(handle);
+                continue;
+            }
+            CreateScriptInstance(handle);
+            auto it = m_ScriptInstances.find(handle);
+            if (it != m_ScriptInstances.end())
+                it->second->OnUpdate(deltaTime);
+        }
     }
 
     Entity Scene::GetParent(Entity entity)

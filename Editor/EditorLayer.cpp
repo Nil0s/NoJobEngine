@@ -253,6 +253,10 @@ namespace NoJob
             }
         }
 
+        if (source.HasComponent<NativeScriptComponent>())
+            copy.AddComponent<NativeScriptComponent>(
+                source.GetComponent<NativeScriptComponent>());
+
         m_SelectedEntity = copy;
     }
 
@@ -597,6 +601,22 @@ namespace NoJob
                     ImGui::TextDisabled("Primitive Mesh");
                 }
             }
+
+            ImGui::Separator();
+            if (m_SelectedEntity.HasComponent<NativeScriptComponent>())
+            {
+                if (ImGui::CollapsingHeader("Native Script: Rotator",
+                    ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& script = m_SelectedEntity.GetComponent<NativeScriptComponent>();
+                    ImGui::Checkbox("Enabled##Rotator", &script.Enabled);
+                    ImGui::DragFloat("Speed (rad/s)", &script.RotationSpeed, 0.05f);
+                    if (ImGui::Button("Remove Rotator"))
+                        m_SelectedEntity.RemoveComponent<NativeScriptComponent>();
+                }
+            }
+            else if (ImGui::Button("Add Rotator Script"))
+                m_SelectedEntity.AddComponent<NativeScriptComponent>();
 
             if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
             {
