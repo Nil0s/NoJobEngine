@@ -10,7 +10,7 @@ namespace NoJob
 
     enum class AssetType : std::uint8_t
     {
-        Unknown = 0, Texture2D, Mesh, Material, Scene, Prefab
+        Unknown = 0, Texture2D, Mesh, Material, Scene, Prefab, Script
     };
 
     struct AssetMetadata
@@ -32,6 +32,7 @@ namespace NoJob
             case AssetType::Material: return "Material";
             case AssetType::Scene: return "Scene";
             case AssetType::Prefab: return "Prefab";
+            case AssetType::Script: return "Script";
             default: return "Unknown";
         }
     }

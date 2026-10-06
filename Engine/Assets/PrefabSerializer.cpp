@@ -56,6 +56,20 @@ void WriteEntity(std::ostream& o,Entity e,Scene& scene,int parentLocal,int& next
   o<<"ANIMATOR "<<std::quoted(source)<<' '<<a.ClipIndex<<' '<<a.Speed<<' '
    <<(a.Playing?1:0)<<' '<<(a.Loop?1:0)<<"\n";
  }
+ if(e.HasComponent<NativeScriptComponent>())
+ {
+  auto& script=e.GetComponent<NativeScriptComponent>();
+  o<<"SCRIPT_V2 "<<script.Enabled<<' '<<std::quoted(script.ScriptName)<<"\n";
+  for(const auto& [fieldName,value]:script.Fields)
+  {
+   o<<"SCRIPT_FIELD "<<std::quoted(fieldName)<<' '<<int(value.Type)<<' ';
+   if(value.Type==ScriptFieldType::Float)o<<value.Float;
+   else if(value.Type==ScriptFieldType::Int)o<<value.Int;
+   else if(value.Type==ScriptFieldType::Bool)o<<value.Bool;
+   else o<<value.Vec3.x<<' '<<value.Vec3.y<<' '<<value.Vec3.z;
+   o<<"\n";
+  }
+ }
  o<<"END_ENTITY\n";
  for(Entity child:scene.GetChildren(e)) WriteEntity(o,child,scene,local,nextLocal);
 }
@@ -129,6 +143,7 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
   glm::vec3 pos{},rot{},sc{1};std::string meshPath;size_t matCount=0;
   std::string animationPath; int animationClip=0; float animationSpeed=1.0f;
   bool animationPlaying=true,animationLoop=true;
+  bool hasScript=false; NativeScriptComponent nativeScript;
   while(i>>k && k!="END_ENTITY"){
    if(k=="TRANSFORM"){i>>pos.x>>pos.y>>pos.z>>rot.x>>rot.y>>rot.z>>sc.x>>sc.y>>sc.z;}
    else if(k=="MESH"){i>>std::quoted(meshPath);}
@@ -136,6 +151,18 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
     int playing=1,loop=1;
     i>>std::quoted(animationPath)>>animationClip>>animationSpeed>>playing>>loop;
     animationPlaying=playing!=0; animationLoop=loop!=0;
+   }
+   else if(k=="SCRIPT_V2"){
+    i>>nativeScript.Enabled>>std::quoted(nativeScript.ScriptName); hasScript=true;
+   }
+   else if(k=="SCRIPT_FIELD" && hasScript){
+    std::string fieldName; int type=0; i>>std::quoted(fieldName)>>type;
+    ScriptFieldValue value; value.Type=ScriptFieldType(type);
+    if(value.Type==ScriptFieldType::Float)i>>value.Float;
+    else if(value.Type==ScriptFieldType::Int)i>>value.Int;
+    else if(value.Type==ScriptFieldType::Bool)i>>value.Bool;
+    else i>>value.Vec3.x>>value.Vec3.y>>value.Vec3.z;
+    nativeScript.Fields[fieldName]=value;
    }
    else if(k=="MATERIALS"){
     i>>matCount; std::vector<std::shared_ptr<Material>> mats;
@@ -174,6 +201,7 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
     }
    }catch(...){}
   }
+  if(hasScript)e.AddComponent<NativeScriptComponent>(std::move(nativeScript));
   if(parent>=0&&made.contains(parent))s.SetParent(e,made[parent],false);
  }
  if(root)root.AddComponent<PrefabInstanceComponent>(PrefabInstanceComponent{p.generic_string(),true});

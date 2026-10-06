@@ -67,6 +67,7 @@ namespace NoJob
         if(e==".nojobmat") return AssetType::Material;
         if(e==".nojobscene") return AssetType::Scene;
         if(e==".nojobprefab") return AssetType::Prefab;
+        if(e==".cpp"||e==".h"||e==".hpp") return AssetType::Script;
         return AssetType::Unknown;
     }
 

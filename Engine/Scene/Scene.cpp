@@ -133,11 +133,17 @@ namespace NoJob
     {
         if (!IsValid(handle) || m_ScriptInstances.contains(handle))
             return;
-        const auto& component = m_Entities.at(handle).NativeScript;
+        auto& component = m_Entities.at(handle).NativeScript;
         if (!component || !component->Enabled)
             return;
-        auto instance = std::make_unique<Rotator>(component->RotationSpeed);
+        RegisterBuiltinScripts();
+        ScriptRegistry::ApplyDefaults(*component);
+        const auto* definition = ScriptRegistry::Find(component->ScriptName);
+        if (!definition || !definition->Factory)
+            return;
+        auto instance = definition->Factory();
         instance->m_Entity = Entity(handle, this);
+        ScriptRegistry::ApplyFieldsToInstance(*component, *instance);
         m_ScriptInstances.emplace(handle, std::move(instance));
         m_ScriptInstances.at(handle)->OnCreate();
     }
@@ -213,7 +219,12 @@ namespace NoJob
             CreateScriptInstance(handle);
             auto it = m_ScriptInstances.find(handle);
             if (it != m_ScriptInstances.end())
+            {
+                auto& component = *m_Entities.at(handle).NativeScript;
+                ScriptRegistry::ApplyFieldsToInstance(component, *it->second);
                 it->second->OnUpdate(deltaTime);
+                ScriptRegistry::ReadFieldsFromInstance(component, *it->second);
+            }
         }
     }
 

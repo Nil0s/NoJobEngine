@@ -6,6 +6,8 @@
 #include "Engine/Renderer/Texture.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/ScriptRegistry.h"
+#include "Engine/Scene/NativeScripts.h"
 #include "Engine/Assets/AssetRegistry.h"
 #include "Engine/Assets/MaterialSerializer.h"
 #include "Engine/Assets/PrefabSerializer.h"
@@ -29,6 +31,13 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <sstream>
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -45,6 +54,660 @@ namespace NoJob
     static bool s_BuildDefaultDockLayout = false;
     namespace
     {
+#ifdef _WIN32
+        HMODULE s_ProjectScriptsModule = nullptr;
+        std::vector<std::string> s_ProjectScriptNames;
+        std::vector<std::string> s_ScriptConsole;
+        std::mutex s_ScriptConsoleMutex;
+        std::atomic_bool s_ScriptCompileRunning{ false };
+        std::atomic_bool s_ProjectScriptsReloadPending{ false };
+        std::atomic_bool s_ScriptCompileSucceeded{ false };
+        std::thread s_ScriptCompileThread;
+        bool s_ScriptsCompiled = false;
+        std::uint64_t s_ProjectScriptReloadGeneration = 0;
+
+        void ScriptLog(std::string message)
+        {
+            std::lock_guard<std::mutex> lock(s_ScriptConsoleMutex);
+            s_ScriptConsole.push_back(std::move(message));
+        }
+
+        void ClearScriptLog()
+        {
+            std::lock_guard<std::mutex> lock(s_ScriptConsoleMutex);
+            s_ScriptConsole.clear();
+        }
+
+        using RegisterProjectScriptFn = void(*)(void(*)(ScriptDefinition));
+
+        void HostRegisterProjectScript(ScriptDefinition definition)
+        {
+            s_ProjectScriptNames.push_back(definition.Name);
+            ScriptRegistry::Register(std::move(definition));
+        }
+
+        void UnloadProjectScripts()
+        {
+            for (const auto& name : s_ProjectScriptNames)
+                ScriptRegistry::Unregister(name);
+            s_ProjectScriptNames.clear();
+
+            if (s_ProjectScriptsModule)
+            {
+                FreeLibrary(s_ProjectScriptsModule);
+                s_ProjectScriptsModule = nullptr;
+            }
+        }
+
+        bool LoadProjectScripts(const std::filesystem::path& root)
+        {
+            UnloadProjectScripts();
+
+            std::filesystem::path dll;
+            const auto outputDirectory = root / "out" / "ProjectScripts";
+            std::error_code dllEc;
+            std::filesystem::file_time_type newestTime{};
+
+            if (std::filesystem::exists(outputDirectory, dllEc))
+            {
+                for (auto it = std::filesystem::recursive_directory_iterator(
+                         outputDirectory,
+                         std::filesystem::directory_options::skip_permission_denied,
+                         dllEc);
+                     !dllEc && it != std::filesystem::recursive_directory_iterator();
+                     ++it)
+                {
+                    if (!it->is_regular_file(dllEc))
+                        continue;
+
+                    const auto candidate = it->path();
+                    if (candidate.extension() != ".dll")
+                        continue;
+
+                    // Accept Debug postfix too:
+                    // NoJobProjectScripts_12.dll / NoJobProjectScripts_12d.dll
+                    const std::string stem = candidate.stem().string();
+                    if (stem.rfind("NoJobProjectScripts_", 0) != 0)
+                        continue;
+
+                    const auto writeTime =
+                        std::filesystem::last_write_time(candidate, dllEc);
+                    if (dllEc)
+                    {
+                        dllEc.clear();
+                        continue;
+                    }
+
+                    if (dll.empty() || writeTime > newestTime)
+                    {
+                        dll = candidate;
+                        newestTime = writeTime;
+                    }
+                }
+            }
+
+            if (dll.empty())
+            {
+                ScriptLog(
+                    "[Scripts] Versioned ProjectScripts DLL not found under: " +
+                    outputDirectory.string());
+                return false;
+            }
+
+            ScriptLog("[Scripts] Loading versioned DLL: " + dll.string());
+
+            s_ProjectScriptsModule = LoadLibraryW(dll.wstring().c_str());
+            if (!s_ProjectScriptsModule)
+            {
+                ScriptLog(
+                    "[Scripts] LoadLibrary failed (Win32 error " +
+                    std::to_string(GetLastError()) + ").");
+                return false;
+            }
+
+            const auto scripts = AssetManager::GetAssetsDirectory() / "Scripts";
+            std::error_code ec;
+            if (std::filesystem::exists(scripts, ec))
+            {
+                for (const auto& entry : std::filesystem::directory_iterator(scripts, ec))
+                {
+                    if (entry.path().extension() != ".cpp") continue;
+                    const auto name = entry.path().stem().string();
+                    const auto symbol = "NoJobRegister_" + name;
+                    auto fn = reinterpret_cast<RegisterProjectScriptFn>(
+                        GetProcAddress(s_ProjectScriptsModule, symbol.c_str()));
+                    if (fn) fn(&HostRegisterProjectScript);
+                }
+            }
+
+            ScriptLog(
+                "[Scripts] Loaded " + std::to_string(s_ProjectScriptNames.size()) +
+                " project script(s).");
+            return true;
+        }
+
+        std::filesystem::path FindCMakeExecutable()
+        {
+#ifdef _WIN32
+            wchar_t pathBuffer[32768]{};
+            const DWORD found = SearchPathW(nullptr, L"cmake.exe", nullptr,
+                static_cast<DWORD>(std::size(pathBuffer)), pathBuffer, nullptr);
+            if (found > 0 && found < std::size(pathBuffer))
+                return std::filesystem::path(pathBuffer);
+
+            wchar_t* programFilesX86 = nullptr;
+            std::size_t envLength = 0;
+            if (_wdupenv_s(&programFilesX86, &envLength, L"ProgramFiles(x86)") == 0 &&
+                programFilesX86)
+            {
+                const std::filesystem::path vswhere =
+                    std::filesystem::path(programFilesX86) /
+                    "Microsoft Visual Studio" / "Installer" / "vswhere.exe";
+                free(programFilesX86);
+
+                if (std::filesystem::exists(vswhere))
+                {
+                    const std::wstring command =
+                        L"\"" + vswhere.wstring() +
+                        L"\" -latest -products * -property installationPath";
+                    FILE* pipe = _wpopen(command.c_str(), L"rt");
+                    if (pipe)
+                    {
+                        wchar_t buffer[4096]{};
+                        std::wstring installPath;
+                        if (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe))
+                            installPath = buffer;
+                        _pclose(pipe);
+                        while (!installPath.empty() &&
+                               (installPath.back()==L'\r' || installPath.back()==L'\n' ||
+                                installPath.back()==L' ' || installPath.back()==L'\t'))
+                            installPath.pop_back();
+
+                        if (!installPath.empty())
+                        {
+                            const auto bundled = std::filesystem::path(installPath) /
+                                "Common7" / "IDE" / "CommonExtensions" /
+                                "Microsoft" / "CMake" / "CMake" / "bin" / "cmake.exe";
+                            if (std::filesystem::exists(bundled)) return bundled;
+                        }
+                    }
+                }
+            }
+
+            wchar_t* programFiles = nullptr;
+            envLength = 0;
+            if (_wdupenv_s(&programFiles, &envLength, L"ProgramFiles") == 0 &&
+                programFiles)
+            {
+                const auto standalone = std::filesystem::path(programFiles) /
+                    "CMake" / "bin" / "cmake.exe";
+                free(programFiles);
+                if (std::filesystem::exists(standalone)) return standalone;
+            }
+#endif
+            return {};
+        }
+
+                int RunProcessToScriptConsole(
+            const std::filesystem::path& executable,
+            const std::vector<std::wstring>& arguments,
+            const std::string& prefix)
+        {
+#ifdef _WIN32
+            SECURITY_ATTRIBUTES security{};
+            security.nLength = sizeof(SECURITY_ATTRIBUTES);
+            security.bInheritHandle = TRUE;
+
+            HANDLE readPipe = nullptr;
+            HANDLE writePipe = nullptr;
+            if (!CreatePipe(&readPipe, &writePipe, &security, 0))
+            {
+                ScriptLog("[Scripts] CreatePipe failed.");
+                return -1;
+            }
+
+            SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+            std::wstring commandLine = L"\"" + executable.wstring() + L"\"";
+            for (const auto& arg : arguments)
+            {
+                commandLine += L" \"";
+                for (wchar_t c : arg)
+                {
+                    if (c == L'"')
+                        commandLine += L'\\';
+                    commandLine += c;
+                }
+                commandLine += L"\"";
+            }
+
+            STARTUPINFOW startup{};
+            startup.cb = sizeof(STARTUPINFOW);
+            startup.dwFlags = STARTF_USESTDHANDLES;
+            startup.hStdOutput = writePipe;
+            startup.hStdError = writePipe;
+            startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+            PROCESS_INFORMATION process{};
+            std::vector<wchar_t> mutableCommand(
+                commandLine.begin(), commandLine.end());
+            mutableCommand.push_back(L'\0');
+
+            const std::wstring workingDirectory =
+                AssetManager::GetProjectRoot().wstring();
+
+            const BOOL created = CreateProcessW(
+                executable.wstring().c_str(),
+                mutableCommand.data(),
+                nullptr,
+                nullptr,
+                TRUE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                workingDirectory.c_str(),
+                &startup,
+                &process);
+
+            CloseHandle(writePipe);
+
+            if (!created)
+            {
+                const DWORD error = GetLastError();
+                CloseHandle(readPipe);
+                ScriptLog(
+                    "[Scripts] CreateProcess failed (Win32 error " +
+                    std::to_string(error) + ").");
+                return -1;
+            }
+
+            std::string pending;
+            char buffer[2048];
+            DWORD bytesRead = 0;
+            while (ReadFile(
+                       readPipe,
+                       buffer,
+                       static_cast<DWORD>(sizeof(buffer)),
+                       &bytesRead,
+                       nullptr) &&
+                   bytesRead > 0)
+            {
+                pending.append(buffer, buffer + bytesRead);
+
+                std::size_t newline = 0;
+                while ((newline = pending.find('\n')) != std::string::npos)
+                {
+                    std::string line = pending.substr(0, newline);
+                    pending.erase(0, newline + 1);
+                    if (!line.empty() && line.back() == '\r')
+                        line.pop_back();
+                    if (!line.empty())
+                        ScriptLog(prefix + line);
+                }
+            }
+
+            if (!pending.empty())
+            {
+                if (!pending.empty() && pending.back() == '\r')
+                    pending.pop_back();
+                if (!pending.empty())
+                    ScriptLog(prefix + pending);
+            }
+
+            WaitForSingleObject(process.hProcess, INFINITE);
+
+            DWORD exitCode = 1;
+            GetExitCodeProcess(process.hProcess, &exitCode);
+
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            CloseHandle(readPipe);
+
+            return static_cast<int>(exitCode);
+#else
+            (void)executable;
+            (void)arguments;
+            (void)prefix;
+            return -1;
+#endif
+        }
+
+        bool CompileProjectScripts()
+        {
+            if (s_ScriptCompileRunning.exchange(true))
+            {
+                ScriptLog("[Scripts] Compilation is already running.");
+                return false;
+            }
+
+            // DLL unloading touches ScriptRegistry and therefore stays on the
+            // editor/main thread. The worker only runs external build tools.
+            UnloadProjectScripts();
+            ClearScriptLog();
+            ScriptLog("[Scripts] Starting asynchronous script compilation...");
+
+            const auto root = AssetManager::GetProjectRoot();
+            const auto cmake = FindCMakeExecutable();
+            if (cmake.empty())
+            {
+                ScriptLog("[Scripts] CMake was not found.");
+                ScriptLog("[Scripts] Install CMake or the Visual Studio C++/CMake tools.");
+                s_ScriptCompileRunning = false;
+                return false;
+            }
+
+            s_ScriptCompileSucceeded = false;
+            s_ProjectScriptsReloadPending = false;
+
+            const std::uint64_t generation =
+                ++s_ProjectScriptReloadGeneration;
+            ScriptLog(
+                "[Scripts] Hot reload generation: " +
+                std::to_string(generation));
+
+            s_ScriptCompileThread = std::thread([root, cmake, generation]()
+            {
+                ScriptLog("[Scripts] CMake: " + cmake.string());
+                ScriptLog("[Scripts] Configuring project...");
+
+                const auto out = root / "out";
+                const int configCode = RunProcessToScriptConsole(
+                    cmake,
+                    {
+                        L"-S", root.wstring(),
+                        L"-B", out.wstring(),
+                        L"-DNOJOB_HOT_RELOAD_GENERATION=" +
+                            std::to_wstring(generation)
+                    },
+                    "[CMake] ");
+
+                if (configCode != 0)
+                {
+                    ScriptLog("[Scripts] CMake configure FAILED (exit code " +
+                              std::to_string(configCode) + ").");
+                    s_ScriptCompileRunning = false;
+                    return;
+                }
+
+                ScriptLog("[Scripts] Incremental build: compiling changed scripts only...");
+                const int buildCode = RunProcessToScriptConsole(
+                    cmake,
+                    { L"--build", out.wstring(), L"--target",
+                      L"NoJobProjectScripts", L"--config", L"Debug" },
+                    "[Build] ");
+
+                if (buildCode != 0)
+                {
+                    ScriptLog("[Scripts] Build FAILED (exit code " +
+                              std::to_string(buildCode) + ").");
+                    s_ScriptCompileRunning = false;
+                    return;
+                }
+
+                ScriptLog("[Scripts] Build succeeded. DLL reload queued...");
+                s_ScriptCompileSucceeded = true;
+                s_ProjectScriptsReloadPending = true;
+                s_ScriptCompileRunning = false;
+            });
+            s_ScriptCompileThread.detach();
+
+            return true;
+        }
+#endif
+
+        std::filesystem::path FindNoJobProjectRoot()
+        {
+            auto containsProject = [](const std::filesystem::path& directory)
+            {
+                std::error_code ec;
+                if (!std::filesystem::exists(directory, ec))
+                    return false;
+
+                bool hasProjectFile = false;
+                for (const auto& entry :
+                     std::filesystem::directory_iterator(
+                         directory,
+                         std::filesystem::directory_options::skip_permission_denied,
+                         ec))
+                {
+                    if (ec) break;
+                    if (entry.is_regular_file() &&
+                        entry.path().extension() == ".nojobproject")
+                    {
+                        hasProjectFile = true;
+                        break;
+                    }
+                }
+
+                return hasProjectFile &&
+                       std::filesystem::exists(directory / "CMakeLists.txt", ec);
+            };
+
+            auto walkUp = [&](std::filesystem::path start)
+                -> std::filesystem::path
+            {
+                std::error_code ec;
+                start = std::filesystem::absolute(start, ec).lexically_normal();
+
+                while (!start.empty())
+                {
+                    if (containsProject(start))
+                        return start;
+
+                    const auto parent = start.parent_path();
+                    if (parent == start)
+                        break;
+                    start = parent;
+                }
+                return {};
+            };
+
+            // First try the process working directory.
+            if (auto root = walkUp(std::filesystem::current_path()); !root.empty())
+                return root;
+
+#ifdef _WIN32
+            // Then try the executable location. This makes the editor portable
+            // when launched from out/build/... instead of the repository root.
+            std::wstring executable(MAX_PATH, L'\0');
+            const DWORD length = GetModuleFileNameW(
+                nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+            if (length > 0)
+            {
+                executable.resize(length);
+                if (auto root =
+                        walkUp(std::filesystem::path(executable).parent_path());
+                    !root.empty())
+                    return root;
+            }
+#endif
+
+            return std::filesystem::current_path();
+        }
+
+#ifdef _WIN32
+        std::filesystem::path FindVisualStudioExecutable()
+        {
+            wchar_t* programFilesX86 = nullptr;
+            std::size_t length = 0;
+            if (_wdupenv_s(&programFilesX86, &length, L"ProgramFiles(x86)") != 0 ||
+                !programFilesX86)
+                return {};
+
+            const std::filesystem::path vswhere =
+                std::filesystem::path(programFilesX86) /
+                "Microsoft Visual Studio" / "Installer" / "vswhere.exe";
+            free(programFilesX86);
+
+            if (!std::filesystem::exists(vswhere))
+                return {};
+
+            const std::wstring command =
+                L"\"" + vswhere.wstring() +
+                L"\" -latest -products * -requires Microsoft.Component.MSBuild "
+                L"-property productPath";
+
+            FILE* pipe = _wpopen(command.c_str(), L"rt");
+            if (!pipe)
+                return {};
+
+            wchar_t buffer[2048]{};
+            std::wstring result;
+            if (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe))
+                result = buffer;
+            _pclose(pipe);
+
+            while (!result.empty() &&
+                   (result.back() == L'\r' || result.back() == L'\n' ||
+                    result.back() == L' ' || result.back() == L'\t'))
+                result.pop_back();
+
+            const std::filesystem::path devenv(result);
+            return std::filesystem::exists(devenv) ? devenv
+                                                    : std::filesystem::path{};
+        }
+
+        bool OpenScriptInVisualStudio(const std::filesystem::path& scriptPath)
+        {
+            const auto absoluteScript =
+                std::filesystem::absolute(scriptPath).lexically_normal();
+
+            if (!std::filesystem::exists(absoluteScript))
+            {
+                ScriptLog(
+                    "[Scripts] File not found: " + absoluteScript.string());
+                return false;
+            }
+
+            const auto visualStudio = FindVisualStudioExecutable();
+            if (!visualStudio.empty())
+            {
+                const auto result = reinterpret_cast<std::intptr_t>(
+                    ShellExecuteW(
+                        nullptr,
+                        L"open",
+                        visualStudio.wstring().c_str(),
+                        (L"\"" + absoluteScript.wstring() + L"\"").c_str(),
+                        AssetManager::GetProjectRoot().wstring().c_str(),
+                        SW_SHOWNORMAL));
+
+                if (result > 32)
+                {
+                    ScriptLog(
+                        "[Scripts] Opened in Visual Studio: " +
+                        absoluteScript.filename().string());
+                    return true;
+                }
+            }
+
+            // Portable fallback: use the Windows association for C++ files.
+            const auto result = reinterpret_cast<std::intptr_t>(
+                ShellExecuteW(
+                    nullptr,
+                    L"open",
+                    absoluteScript.wstring().c_str(),
+                    nullptr,
+                    AssetManager::GetProjectRoot().wstring().c_str(),
+                    SW_SHOWNORMAL));
+
+            if (result > 32)
+            {
+                ScriptLog(
+                    "[Scripts] Opened with Windows file association: " +
+                    absoluteScript.filename().string());
+                return true;
+            }
+
+            ScriptLog(
+                "[Scripts] Could not open " + absoluteScript.string());
+            return false;
+        }
+#endif
+
+        std::string SanitizeCppIdentifier(std::string name)
+        {
+            name.erase(std::remove_if(name.begin(), name.end(),
+                [](unsigned char c){ return !(std::isalnum(c) || c == '_'); }),
+                name.end());
+            if (name.empty()) name = "NewScript";
+            if (std::isdigit(static_cast<unsigned char>(name.front())))
+                name.insert(name.begin(), '_');
+            return name;
+        }
+
+        bool CreateCppScriptAsset(const std::filesystem::path& scriptsDirectory,
+                                  const std::string& requestedName)
+        {
+            const std::string name = SanitizeCppIdentifier(requestedName);
+            std::error_code ec;
+            std::filesystem::create_directories(scriptsDirectory, ec);
+            if (ec)
+            {
+#ifdef _WIN32
+                ScriptLog(
+                    "[Scripts] Could not create Assets/Scripts: " + ec.message());
+#endif
+                return false;
+            }
+
+            const auto headerPath = scriptsDirectory / (name + ".h");
+            const auto sourcePath = scriptsDirectory / (name + ".cpp");
+            if (std::filesystem::exists(headerPath) ||
+                std::filesystem::exists(sourcePath))
+                return false;
+
+            std::ofstream header(headerPath);
+            std::ofstream source(sourcePath);
+            if (!header || !source)
+            {
+#ifdef _WIN32
+                ScriptLog(
+                    "[Scripts] Could not write script files to: " +
+                    scriptsDirectory.string());
+#endif
+                return false;
+            }
+
+            header << "#pragma once\n"
+                   << "#include \"Engine/Scene/ScriptableEntity.h\"\n\n"
+                   << "namespace NoJob\n{\n"
+                   << "    class " << name << " final : public Script\n"
+                   << "    {\n    public:\n"
+                   << "        // Exposed fields: float, int, bool, glm::vec3\n"
+                   << "        float Speed = 5.0f;\n"
+                   << "        int Lives = 3;\n"
+                   << "        bool EnabledMovement = true;\n"
+                   << "        glm::vec3 Direction{ 1.0f, 0.0f, 0.0f };\n\n"
+                   << "        void OnCreate() override;\n"
+                   << "        void OnUpdate(float deltaTime) override;\n"
+                   << "        void OnDestroy() override;\n"
+                   << "    };\n}\n";
+
+            source << "#include \"" << name << ".h\"\n"
+                   << "#include \"Engine/Scene/ScriptRegistry.h\"\n\n"
+                   << "namespace NoJob\n{\n"
+                   << "    void " << name << "::OnCreate()\n    {\n    }\n\n"
+                   << "    void " << name << "::OnUpdate(float deltaTime)\n"
+                   << "    {\n        (void)deltaTime;\n    }\n\n"
+                   << "    void " << name << "::OnDestroy()\n    {\n    }\n\n"
+                   << "}\n\n"
+                   << "NOJOB_REGISTER_SCRIPT(" << name << ", \"Gameplay\",\n"
+                   << "    NOJOB_FIELD(" << name << ", Speed),\n"
+                   << "    NOJOB_FIELD(" << name << ", Lives),\n"
+                   << "    NOJOB_FIELD(" << name << ", EnabledMovement),\n"
+                   << "    NOJOB_FIELD(" << name << ", Direction))\n";
+
+            AssetRegistry registry(AssetManager::GetAssetsDirectory());
+            registry.Load();
+            registry.Register(headerPath, AssetType::Script);
+            registry.Register(sourcePath, AssetType::Script);
+            registry.Save();
+#ifdef _WIN32
+            ScriptLog(
+                "[Scripts] Created " + name + ".h / " + name +
+                ".cpp in Assets/Scripts.");
+#endif
+            return true;
+        }
         ImVec2 ProjectColliderPoint(
             const glm::vec3& point,
             const glm::mat4& viewProjection,
@@ -493,7 +1156,10 @@ return{};}
     {
         m_Scene = scene;
 
-        AssetManager::Init(std::filesystem::current_path());
+        const auto projectRoot = FindNoJobProjectRoot();
+        AssetManager::Init(projectRoot);
+        std::filesystem::create_directories(
+            AssetManager::GetAssetsDirectory() / "Scripts");
         m_ProjectDirectory = AssetManager::GetProjectRoot();
 
         IMGUI_CHECKVERSION();
@@ -506,7 +1172,7 @@ return{};}
         // Keep the editor layout in the repository root instead of out/build.
         // Deleting the CMake build directory will therefore not erase it.
         static std::string imguiIniPath =
-            (std::filesystem::current_path() / "NoJobEngineLayout.ini").string();
+            (AssetManager::GetProjectRoot() / "NoJobEngineLayout.ini").string();
         io.IniFilename = imguiIniPath.c_str();
 
         // A window-position-only ini is not enough: we need an actual docking
@@ -594,7 +1260,27 @@ return{};}
 
     void EditorLayer::Draw()
     {
+#ifdef _WIN32
+        if (s_ProjectScriptsReloadPending.exchange(false))
+        {
+            if (LoadProjectScripts(AssetManager::GetProjectRoot()))
+            {
+                s_ScriptsCompiled = true;
+                ScriptLog("[Scripts] Hot reload completed successfully.");
+            }
+            else
+            {
+                s_ScriptsCompiled = false;
+                ScriptLog("[Scripts] Build succeeded, but DLL reload failed.");
+            }
+        }
+#endif
         DrawPlayToolbar();
+#ifdef _WIN32
+        if (ImGui::GetIO().KeyCtrl && ImGui::GetIO().KeyShift &&
+            ImGui::IsKeyPressed(ImGuiKey_B, false))
+            CompileProjectScripts();
+#endif
         DrawMainMenu();
         DrawHierarchy();
         DrawViewport();
@@ -1101,6 +1787,29 @@ return{};}
                 if (ImGui::MenuItem("Redo", "Ctrl+Y"))
                     Redo();
                 ImGui::EndDisabled();
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Build"))
+            {
+#ifdef _WIN32
+                ImGui::BeginDisabled(s_ScriptCompileRunning.load());
+                if (ImGui::MenuItem("Compile Scripts", "Ctrl+Shift+B"))
+                    CompileProjectScripts();
+                ImGui::EndDisabled();
+                ImGui::BeginDisabled(s_ScriptCompileRunning.load());
+                if (ImGui::MenuItem("Reload Scripts"))
+                    LoadProjectScripts(AssetManager::GetProjectRoot());
+                ImGui::EndDisabled();
+                if (s_ScriptCompileRunning.load())
+                    ImGui::TextDisabled("Compiling scripts...");
+                ImGui::Separator();
+                ImGui::TextDisabled(s_ProjectScriptsModule
+                    ? "ProjectScripts.dll loaded"
+                    : "ProjectScripts.dll not loaded");
+#else
+                ImGui::TextDisabled("Script compilation is currently implemented for Windows.");
+#endif
                 ImGui::EndMenu();
             }
 
@@ -1649,17 +2358,74 @@ return{};}
             ImGui::Separator();
             if (m_SelectedEntity.HasComponent<NativeScriptComponent>())
             {
-                if (ImGui::CollapsingHeader("Native Script: Rotator",
-                    ImGuiTreeNodeFlags_DefaultOpen))
+                auto& script =
+                    m_SelectedEntity.GetComponent<NativeScriptComponent>();
+                RegisterBuiltinScripts();
+                ScriptRegistry::ApplyDefaults(script);
+
+                const std::string header =
+                    "Native Script: " + script.ScriptName;
+                if (ImGui::CollapsingHeader(
+                        header.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto& script = m_SelectedEntity.GetComponent<NativeScriptComponent>();
-                    ImGui::Checkbox("Enabled##Rotator", &script.Enabled);
-                    ImGui::DragFloat("Speed (rad/s)", &script.RotationSpeed, 0.05f);
-                    if (ImGui::Button("Remove Rotator"))
-                        m_SelectedEntity.RemoveComponent<NativeScriptComponent>();
+                    auto beginEdit = [&]()
+                    {
+                        if (ImGui::IsItemActivated() &&
+                            !m_ScriptFieldEditSnapshot)
+                            m_ScriptFieldEditSnapshot = m_Scene->Copy();
+                    };
+                    auto endEdit = [&]()
+                    {
+                        if (ImGui::IsItemDeactivatedAfterEdit() &&
+                            m_ScriptFieldEditSnapshot)
+                            PushUndoSnapshot(
+                                std::move(m_ScriptFieldEditSnapshot));
+                        else if (ImGui::IsItemDeactivated() &&
+                                 m_ScriptFieldEditSnapshot)
+                            m_ScriptFieldEditSnapshot.reset();
+                    };
+
+                    ImGui::Checkbox(
+                        "Enabled##NativeScript", &script.Enabled);
+                    beginEdit(); endEdit();
+                    ImGui::TextDisabled("C++ Native Script");
+
+                    const auto* definition =
+                        ScriptRegistry::Find(script.ScriptName);
+                    if (!definition)
+                    {
+                        ImGui::TextDisabled(
+                            "Script definition not loaded. Compile Scripts.");
+                    }
+                    else
+                    {
+                        for (const auto& fieldDef : definition->Fields)
+                        {
+                            auto it = script.Fields.find(fieldDef.Name);
+                            if (it == script.Fields.end()) continue;
+                            auto& field = it->second;
+
+                            ImGui::PushID(fieldDef.Name.c_str());
+                            if (field.Type == ScriptFieldType::Float)
+                                ImGui::DragFloat(
+                                    fieldDef.Name.c_str(), &field.Float, 0.05f);
+                            else if (field.Type == ScriptFieldType::Int)
+                                ImGui::DragInt(
+                                    fieldDef.Name.c_str(), &field.Int);
+                            else if (field.Type == ScriptFieldType::Bool)
+                                ImGui::Checkbox(
+                                    fieldDef.Name.c_str(), &field.Bool);
+                            else if (field.Type == ScriptFieldType::Vec3)
+                                ImGui::DragFloat3(
+                                    fieldDef.Name.c_str(), &field.Vec3.x, 0.05f);
+                            beginEdit(); endEdit();
+                            ImGui::PopID();
+                        }
+                        ImGui::TextDisabled(
+                            "Scene/Prefab persistent | Hot-reload safe");
+                    }
                 }
             }
-
 
             ImGui::Separator();
             if (m_SelectedEntity.HasComponent<RigidbodyComponent>())
@@ -2010,9 +2776,19 @@ return{};}
                 addItem("Animation", "Animator",
                     !m_SelectedEntity.HasComponent<AnimatorComponent>(),
                     [&]{ m_SelectedEntity.AddComponent<AnimatorComponent>(); });
-                addItem("Scripting", "Rotator Script",
-                    !m_SelectedEntity.HasComponent<NativeScriptComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<NativeScriptComponent>(); });
+                RegisterBuiltinScripts();
+                for(const auto* definition:ScriptRegistry::All())
+                {
+                    const std::string label=definition->Name+" Script";
+                    addItem("Scripting",label.c_str(),
+                        !m_SelectedEntity.HasComponent<NativeScriptComponent>(),
+                        [&,definition]{
+                            NativeScriptComponent component;
+                            component.ScriptName=definition->Name;
+                            ScriptRegistry::ApplyDefaults(component);
+                            m_SelectedEntity.AddComponent<NativeScriptComponent>(component);
+                        });
+                }
 
                 ImGui::EndPopup();
             }
@@ -2647,6 +3423,19 @@ return{};}
         ImGui::Text("[Info] Scene entity management active.");
         ImGui::Text(
             "[Info] Right click Hierarchy to create objects.");
+#ifdef _WIN32
+        std::vector<std::string> scriptConsoleSnapshot;
+        {
+            std::lock_guard<std::mutex> lock(s_ScriptConsoleMutex);
+            scriptConsoleSnapshot = s_ScriptConsole;
+        }
+        if (!scriptConsoleSnapshot.empty())
+        {
+            ImGui::SeparatorText("Native Scripting");
+            for (const auto& line : scriptConsoleSnapshot)
+                ImGui::TextUnformatted(line.c_str());
+        }
+#endif
         ImGui::End();
     }
     void EditorLayer::DrawComponentTools()
@@ -2659,7 +3448,7 @@ return{};}
         struct Entry { const char* Name; int Id; };
         std::vector<Entry> entries;
         entries.push_back({"Transform", 0});
-        if(m_SelectedEntity.HasComponent<NativeScriptComponent>()) entries.push_back({"Rotator Script",1});
+        if(m_SelectedEntity.HasComponent<NativeScriptComponent>()) entries.push_back({"Native Script",1});
         if(m_SelectedEntity.HasComponent<RigidbodyComponent>()) entries.push_back({"Rigidbody",2});
         if(m_SelectedEntity.HasComponent<BoxColliderComponent>()) entries.push_back({"Box Collider",3});
         if(m_SelectedEntity.HasComponent<SphereColliderComponent>()) entries.push_back({"Sphere Collider",4});
@@ -2875,6 +3664,12 @@ return{};}
                     projectFolderIsInsideAssets
                     && static_cast<bool>(m_SelectedEntity);
 
+                if (ImGui::MenuItem("C++ Script", nullptr, false,
+                        projectFolderIsInsideAssets))
+                {
+                    m_RequestCreateCppScript = true;
+                }
+
                 if (ImGui::MenuItem(
                         "Prefab From Selected",
                         nullptr,
@@ -2922,6 +3717,53 @@ return{};}
 
                 ImGui::EndMenu();
             }
+            ImGui::EndPopup();
+        }
+
+        // Open the script modal only after the Project context popup has
+        // completely ended. Opening it from inside the nested popup gives it
+        // the wrong ImGui popup parent and it silently disappears.
+        if (m_RequestCreateCppScript)
+        {
+            ImGui::OpenPopup("Create C++ Script");
+            m_RequestCreateCppScript = false;
+        }
+
+        // Native C++ script authoring. Scripts are always created under the
+        // project's Assets/Scripts tree so CMake can discover them reliably.
+        static char newScriptName[128] = "NewScript";
+        if (ImGui::BeginPopupModal("Create C++ Script", nullptr,
+                ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("Script name");
+            ImGui::SetNextItemWidth(280.0f);
+            const bool enter = ImGui::InputText("##CppScriptName",
+                newScriptName, sizeof(newScriptName),
+                ImGuiInputTextFlags_EnterReturnsTrue);
+
+            const auto scriptsRoot = assetsRoot / "Scripts";
+            std::string sanitized = SanitizeCppIdentifier(newScriptName);
+            const bool exists =
+                std::filesystem::exists(scriptsRoot / (sanitized + ".h")) ||
+                std::filesystem::exists(scriptsRoot / (sanitized + ".cpp"));
+            if (exists) ImGui::TextDisabled("A script with this name already exists.");
+            else ImGui::TextDisabled("Creates Assets/Scripts/%s.h and %s.cpp",
+                sanitized.c_str(), sanitized.c_str());
+
+            const bool create = (ImGui::Button("Create") || enter) && !exists;
+            ImGui::SameLine();
+            const bool cancel = ImGui::Button("Cancel");
+
+            if (create)
+            {
+                if (CreateCppScriptAsset(scriptsRoot, sanitized))
+                {
+                    m_ProjectDirectory = scriptsRoot;
+                    newScriptName[0] = '\0';
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            if (cancel) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
@@ -3047,7 +3889,37 @@ return{};}
                         extension == ".blend";
                     const bool isMaterial = extension == ".nojobmat";
                     const bool isPrefab = extension == ".nojobprefab";
-                    if(isModel){if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)&&ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))CreateModelEntity(AssetManager::ToProjectRelative(path));}
+                    const bool isScript = extension == ".cpp" || extension == ".h" || extension == ".hpp";
+                    if(isScript)
+                    {
+                        const bool clicked = ImGui::Selectable(
+                            ("[C++] " + name).c_str(),
+                            false,
+                            ImGuiSelectableFlags_AllowDoubleClick);
+
+#ifdef _WIN32
+                        if (clicked &&
+                            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        {
+                            OpenScriptInVisualStudio(path);
+                        }
+
+                        if (ImGui::BeginPopupContextItem())
+                        {
+                            if (ImGui::MenuItem("Open in Visual Studio"))
+                                OpenScriptInVisualStudio(path);
+
+                            ImGui::Separator();
+                            ImGui::TextDisabled(
+                                "%s",
+                                path.lexically_relative(
+                                    AssetManager::GetProjectRoot())
+                                    .generic_string().c_str());
+                            ImGui::EndPopup();
+                        }
+#endif
+                    }
+                    else if(isModel){if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)&&ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))CreateModelEntity(AssetManager::ToProjectRelative(path));}
                     else if(isPrefab)
                     {
                         if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)

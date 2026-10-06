@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace NoJob
 {
@@ -168,10 +169,27 @@ namespace NoJob
         PhysicsMaterial Material;
     };
 
+    enum class ScriptFieldType { Float = 0, Int, Bool, Vec3 };
+
+    struct ScriptFieldValue
+    {
+        ScriptFieldType Type = ScriptFieldType::Float;
+        float Float = 0.0f;
+        int Int = 0;
+        bool Bool = false;
+        glm::vec3 Vec3{ 0.0f };
+
+        static ScriptFieldValue MakeFloat(float value) { ScriptFieldValue v; v.Type=ScriptFieldType::Float; v.Float=value; return v; }
+        static ScriptFieldValue MakeInt(int value) { ScriptFieldValue v; v.Type=ScriptFieldType::Int; v.Int=value; return v; }
+        static ScriptFieldValue MakeBool(bool value) { ScriptFieldValue v; v.Type=ScriptFieldType::Bool; v.Bool=value; return v; }
+        static ScriptFieldValue MakeVec3(glm::vec3 value) { ScriptFieldValue v; v.Type=ScriptFieldType::Vec3; v.Vec3=value; return v; }
+    };
+
     struct NativeScriptComponent
     {
         bool Enabled = true;
-        float RotationSpeed = 1.0f; // radians per second
+        std::string ScriptName = "Rotator";
+        std::unordered_map<std::string, ScriptFieldValue> Fields;
     };
 
 

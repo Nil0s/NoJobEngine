@@ -10,9 +10,9 @@ a first triangle into a usable editor/runtime foundation with scenes,
 assets, prefabs, physics, PBR rendering, skeletal animation, GPU
 skinning and an evolving Unity-style component workflow.
 
-> **Current milestone: NoJobEngine V1.3 --- Complete and Validated**\
-> V1.0--V1.3 are complete and validated. The next development milestone
-> is V1.4 --- Native Scripting V2.
+> **Current milestone: NoJobEngine V1.4 --- Complete and Validated**\
+> V1.0--V1.4 are complete and validated. The next development milestone
+> is V1.5 --- Renderer V3.
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · CMake**
 
@@ -211,7 +211,13 @@ as a single action.
 -   Parent/child transforms
 -   Scene serialization and loading
 -   Editor/runtime scene separation
--   Native C++ scripting foundation
+-   Native C++ project scripting
+-   Script lifecycle (`OnCreate`, `OnUpdate`, `OnDestroy`)
+-   Script creation/opening from the editor
+-   Asynchronous incremental script compilation
+-   Versioned DLL/PDB hot reload
+-   Inspector-exposed native C++ fields
+-   Script field persistence and hot-reload migration
 -   Prefab creation and instantiation
 -   Prefab Apply/Revert
 -   Camera components
@@ -243,6 +249,7 @@ Powered by **Jolt Physics**:
   Gizmos                        ImGuizmo
   Physics                       Jolt Physics
   Model & animation importing   Assimp
+  Native scripting              C++ / ScriptRegistry / DLL hot reload
   Images                        stb_image
 
 ------------------------------------------------------------------------
@@ -292,7 +299,11 @@ Add components
         ↓
 Create prefab
         ↓
-Add physics / lights / camera / scripts
+Add physics / lights / camera
+        ↓
+Create / compile native C++ scripts
+        ↓
+Hot reload & configure script fields
         ↓
 Save scene
         ↓
@@ -307,20 +318,65 @@ underlying implementation to be understandable.
 
 ## Native C++ scripting
 
-NoJobEngine currently includes an **early native scripting foundation**.
+V1.4 introduces a complete **Native Scripting V2** workflow for writing
+gameplay code directly in C++ while keeping iteration inside the editor.
 
-A `NativeScriptComponent` can attach native C++ behaviour to an entity,
-and the current editor exposes the example **Rotator Script** through
-the Add Component workflow.
+Project scripts can be created from the Project panel, opened directly in
+Visual Studio, compiled from NoJobEngine and hot-reloaded without restarting
+the editor.
 
-This system is intentionally still early. Planned improvements include:
+The current workflow includes:
 
--   a reusable Script base class;
--   lifecycle methods such as `OnCreate`, `OnUpdate` and `OnDestroy`;
--   script registration;
--   multiple native script types in Add Component;
--   Inspector-exposed script properties;
--   investigation of a faster iteration / hot-reload workflow.
+-   reusable `Script` base class;
+-   `OnCreate`, `OnUpdate` and `OnDestroy` lifecycle methods;
+-   project-level C++ script assets under `Assets/Scripts`;
+-   automatic script registration through `ScriptRegistry`;
+-   **Create C++ Script** editor workflow;
+-   direct opening of scripts in Visual Studio;
+-   in-editor script compilation with `Ctrl+Shift+B`;
+-   asynchronous compilation with build output in the editor Console;
+-   CMake/MSBuild incremental builds that recompile changed scripts only;
+-   generation-versioned DLL/PDB outputs for reliable repeated hot reloads;
+-   DLL discovery, unloading and runtime reloading;
+-   Inspector-exposed native fields for `float`, `int`, `bool` and
+    `glm::vec3`;
+-   lightweight native field metadata through `NOJOB_FIELD`;
+-   real C++ member values synchronized with the Inspector;
+-   Scene/Prefab persistence for exposed script values;
+-   Undo/Redo integration for Inspector field editing;
+-   hot-reload field migration that preserves compatible values when script
+    definitions change.
+
+A typical project script can expose real C++ members directly to the editor:
+
+``` cpp
+class PlayerMovement final : public Script
+{
+public:
+    float Speed = 5.0f;
+    float JumpForce = 8.0f;
+    bool CanJump = true;
+    glm::vec3 Direction{ 1.0f, 0.0f, 0.0f };
+
+    void OnCreate() override;
+    void OnUpdate(float deltaTime) override;
+    void OnDestroy() override;
+};
+```
+
+The fields are registered with the native scripting metadata layer:
+
+``` cpp
+NOJOB_REGISTER_SCRIPT(PlayerMovement, "Gameplay",
+    NOJOB_FIELD(PlayerMovement, Speed),
+    NOJOB_FIELD(PlayerMovement, JumpForce),
+    NOJOB_FIELD(PlayerMovement, CanJump),
+    NOJOB_FIELD(PlayerMovement, Direction))
+```
+
+After compilation, these members appear in the Inspector and remain the actual
+C++ values used by the runtime script. Compatible Inspector values are
+preserved across recompilation and hot reload.
 
 ------------------------------------------------------------------------
 
@@ -393,16 +449,30 @@ Completed and validated.
 -   Duplicated hierarchies preserve child relationships, transforms and
     supported components.
 
+### ✅ V1.4 --- Native Scripting V2
+
+Completed and validated.
+
+-   Reusable native `Script` base class.
+-   `OnCreate`, `OnUpdate` and `OnDestroy` lifecycle.
+-   Project C++ scripts under `Assets/Scripts`.
+-   Script creation directly from the Project panel.
+-   Direct Visual Studio integration for script editing.
+-   Native script registration through `ScriptRegistry`.
+-   In-editor compilation with `Ctrl+Shift+B`.
+-   Asynchronous compilation and editor Console output.
+-   Incremental CMake/MSBuild script builds.
+-   Generation-versioned DLL/PDB hot reload.
+-   Repeated hot reload without restarting NoJobEngine.
+-   Inspector-exposed `float`, `int`, `bool` and `glm::vec3` fields.
+-   Lightweight `NOJOB_FIELD` native reflection metadata.
+-   Inspector values mapped to the real C++ script members.
+-   Scene/Prefab persistence and Undo/Redo support for script fields.
+-   Hot-reload schema migration preserving compatible Inspector values.
+
 ------------------------------------------------------------------------
 
 ## Roadmap
-
-### V1.4 --- Native Scripting V2
-
--   Script base class and `OnCreate`, `OnUpdate`, `OnDestroy`.
--   Native script registration and Add Component integration.
--   Inspector-exposed properties.
--   Improved iteration workflow / hot-reload investigation.
 
 ### V1.5 --- Renderer V3
 

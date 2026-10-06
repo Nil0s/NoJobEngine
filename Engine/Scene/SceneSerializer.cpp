@@ -39,7 +39,20 @@ namespace NoJob
             if(e.HasComponent<DirectionalLightComponent>()){auto& c=e.GetComponent<DirectionalLightComponent>();out<<"DIRECTIONAL ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
             if(e.HasComponent<PointLightComponent>()){auto& c=e.GetComponent<PointLightComponent>();out<<"POINT ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.Range<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
             if(e.HasComponent<SpotLightComponent>()){auto& c=e.GetComponent<SpotLightComponent>();out<<"SPOT ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.Range<<' '<<c.InnerAngle<<' '<<c.OuterAngle<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
-            if(e.HasComponent<NativeScriptComponent>()){auto& c=e.GetComponent<NativeScriptComponent>();out<<"SCRIPT "<<c.Enabled<<' '<<c.RotationSpeed<<'\n';}
+            if(e.HasComponent<NativeScriptComponent>())
+            {
+                auto& c=e.GetComponent<NativeScriptComponent>();
+                out<<"SCRIPT_V2 "<<c.Enabled<<' '<<std::quoted(c.ScriptName)<<' '<<c.Fields.size()<<'\n';
+                for(const auto& [name,value]:c.Fields)
+                {
+                    out<<"SCRIPT_FIELD "<<std::quoted(name)<<' '<<int(value.Type)<<' ';
+                    if(value.Type==ScriptFieldType::Float) out<<value.Float;
+                    else if(value.Type==ScriptFieldType::Int) out<<value.Int;
+                    else if(value.Type==ScriptFieldType::Bool) out<<value.Bool;
+                    else V3(out,value.Vec3);
+                    out<<'\n';
+                }
+            }
             if(e.HasComponent<RigidbodyComponent>()){auto& c=e.GetComponent<RigidbodyComponent>();out<<"RIGIDBODY "<<int(c.Type)<<' '<<c.Mass<<' '<<c.UseGravity<<'\n';}
             if(e.HasComponent<BoxColliderComponent>()){auto& c=e.GetComponent<BoxColliderComponent>();out<<"BOX ";V3(out,c.Size);out<<' '<<c.IsTrigger<<' '<<c.Material.Friction<<' '<<c.Material.Bounciness<<'\n';}
             if(e.HasComponent<SphereColliderComponent>()){auto& c=e.GetComponent<SphereColliderComponent>();out<<"SPHERE "<<c.Radius<<' '<<c.IsTrigger<<' '<<c.Material.Friction<<' '<<c.Material.Bounciness<<'\n';}
@@ -90,7 +103,30 @@ namespace NoJob
             else if(k=="DIRECTIONAL"){DirectionalLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.CastShadows>>c.ShadowBias;current.AddComponent<DirectionalLightComponent>(c);}
             else if(k=="POINT"){PointLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.Range>>c.CastShadows>>c.ShadowBias;current.AddComponent<PointLightComponent>(c);}
             else if(k=="SPOT"){SpotLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.Range>>c.InnerAngle>>c.OuterAngle>>c.CastShadows>>c.ShadowBias;current.AddComponent<SpotLightComponent>(c);}
-            else if(k=="SCRIPT"){NativeScriptComponent c;s>>c.Enabled>>c.RotationSpeed;current.AddComponent<NativeScriptComponent>(c);}
+            else if(k=="SCRIPT")
+            {
+                // V1.0-V1.3 compatibility: SCRIPT <enabled> <rotationSpeed>
+                NativeScriptComponent c; float legacySpeed=1.0f; s>>c.Enabled>>legacySpeed;
+                c.ScriptName="Rotator"; c.Fields["Speed"]=ScriptFieldValue::MakeFloat(legacySpeed);
+                c.Fields["Axis"]=ScriptFieldValue::MakeVec3({0.0f,1.0f,0.0f});
+                current.AddComponent<NativeScriptComponent>(c);
+            }
+            else if(k=="SCRIPT_V2")
+            {
+                NativeScriptComponent c; std::size_t fieldCount=0;
+                s>>c.Enabled>>std::quoted(c.ScriptName)>>fieldCount;
+                current.AddComponent<NativeScriptComponent>(c);
+            }
+            else if(k=="SCRIPT_FIELD" && current.HasComponent<NativeScriptComponent>())
+            {
+                std::string name; int type=0; s>>std::quoted(name)>>type;
+                ScriptFieldValue v; v.Type=ScriptFieldType(type);
+                if(v.Type==ScriptFieldType::Float) s>>v.Float;
+                else if(v.Type==ScriptFieldType::Int) s>>v.Int;
+                else if(v.Type==ScriptFieldType::Bool) s>>v.Bool;
+                else ReadV3(s,v.Vec3);
+                current.GetComponent<NativeScriptComponent>().Fields[name]=v;
+            }
             else if(k=="RIGIDBODY"){RigidbodyComponent c;int ty;s>>ty>>c.Mass>>c.UseGravity;c.Type=RigidbodyType(ty);current.AddComponent<RigidbodyComponent>(c);}
             else if(k=="BOX"){BoxColliderComponent c;ReadV3(s,c.Size);s>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<BoxColliderComponent>(c);}
             else if(k=="SPHERE"){SphereColliderComponent c;s>>c.Radius>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<SphereColliderComponent>(c);}

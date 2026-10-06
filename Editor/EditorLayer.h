@@ -102,6 +102,7 @@ namespace NoJob
         std::size_t m_SelectedMaterialSlot = 0;
         char m_HierarchySearch[128]{};
         char m_ProjectSearch[128]{};
+        bool m_RequestCreateCppScript = false;
         bool m_RenameSelectedRequested = false;
 
         using ComponentClipboard = std::variant<
@@ -149,6 +150,7 @@ namespace NoJob
         std::vector<std::unique_ptr<Scene>> m_UndoHistory;
         std::vector<std::unique_ptr<Scene>> m_RedoHistory;
         std::unique_ptr<Scene> m_TransformEditSnapshot;
+        std::unique_ptr<Scene> m_ScriptFieldEditSnapshot;
         bool m_GizmoWasUsing = false;
     };
 }

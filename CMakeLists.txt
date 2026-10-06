@@ -172,6 +172,38 @@ target_link_libraries(NoJobEngine PUBLIC
     Jolt::Jolt
     assimp::assimp)
 
+# Project-native gameplay scripts are compiled into a reloadable DLL.
+# The editor stays alive while this target is rebuilt.
+file(GLOB_RECURSE NOJOB_PROJECT_SCRIPTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Scripts/*.cpp")
+
+# Keep the target valid before the first user script exists.
+set(NOJOB_PROJECT_SCRIPT_STUB
+    "${CMAKE_CURRENT_BINARY_DIR}/NoJobProjectScriptsStub.cpp")
+file(WRITE "${NOJOB_PROJECT_SCRIPT_STUB}"
+    "extern \"C\" __declspec(dllexport) int NoJobProjectScriptsStub(){return 1;}\n")
+
+add_library(NoJobProjectScripts SHARED
+    ${NOJOB_PROJECT_SCRIPT_STUB}
+    ${NOJOB_PROJECT_SCRIPTS})
+target_include_directories(NoJobProjectScripts PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(NoJobProjectScripts PRIVATE NoJobEngine)
+set_target_properties(NoJobProjectScripts PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ProjectScripts"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ProjectScripts"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ProjectScripts")
+
+# V1.4 native hot reload:
+# version only the final linker artifacts. Object files keep stable paths so
+# MSBuild can reuse every unchanged script .obj between hot reload generations.
+set(NOJOB_HOT_RELOAD_GENERATION "0" CACHE STRING
+    "Generation number for NoJobProjectScripts hot reload")
+
+set_target_properties(NoJobProjectScripts PROPERTIES
+    OUTPUT_NAME "NoJobProjectScripts_${NOJOB_HOT_RELOAD_GENERATION}"
+    PDB_NAME "NoJobProjectScripts_${NOJOB_HOT_RELOAD_GENERATION}")
+
 add_executable(NoJobEditor
     Editor/main.cpp
     Editor/EditorLayer.cpp
@@ -184,6 +216,7 @@ target_link_libraries(NoJobEditor PRIVATE
 if(MSVC)
     target_compile_options(NoJobEngine PRIVATE /W4 /permissive-)
     target_compile_options(NoJobEditor PRIVATE /W4 /permissive-)
+    target_compile_options(NoJobProjectScripts PRIVATE /W4 /permissive-)
 
     set_property(
         DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
