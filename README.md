@@ -4,24 +4,37 @@
   <img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">
 </p>
 
+A custom **C++20 game engine and editor built from scratch as the foundation
+for experimenting with native, visual and inspectable Game AI.**
 
-A lightweight **C++20 game engine and Unity-inspired editor** built from
-scratch as a learning and engineering project.
+NoJobEngine started with a simple idea: if I wanted to explore game AI at
+a deeper level, I wanted control over the entire stack instead of treating
+the engine itself as a black box.
 
-NoJobEngine started with a simple goal: understand what sits underneath
-a modern game engine by building the important pieces myself instead of
-treating the engine as a black box. The project has grown from rendering
-a first triangle into a usable editor/runtime foundation with scenes,
-assets, prefabs, physics, PBR rendering, skeletal animation, GPU
-skinning and an evolving Unity-style component workflow.
+Before building the AI systems I had in mind, I needed the environment they
+would live in.
 
-> **Current milestone: NoJobEngine V1.7 --- Standalone Build ---
-> Complete and Validated**\
-> V1.0--V1.7 are complete and validated. The next development milestone
-> is V1.8 --- AI Navigation & Gameplay AI.
+That meant building the engine first.
 
-**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
-CMake**
+The project has grown from rendering its first triangle into a complete
+editor/runtime foundation with scenes, assets, prefabs, physics, PBR
+rendering, skeletal animation, GPU skinning, audio, VFX, native C++ scripting
+with hot reload and standalone builds.
+
+With the core engine foundation now complete, development is moving into the
+original goal of the project:
+
+**Game AI.**
+
+The next stage will explore navigation, perception, visual behavior authoring,
+AI debugging and, eventually, native neural networks, reinforcement learning
+and training directly inside NoJobEngine.
+
+> **Current milestone: NoJobEngine V1.7 — Standalone Build — Complete and Validated**
+>
+> **Next milestone: V1.8 — AI Navigation & Gameplay AI**
+
+**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio · CMake**
 
 ------------------------------------------------------------------------
 
