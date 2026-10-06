@@ -249,7 +249,11 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
   }
   if(!animationPath.empty()){
    try{
-    auto animation=AnimationAsset::Load(animationPath);
+    const std::filesystem::path animationFilePath(animationPath);
+    const auto resolvedAnimationPath=animationFilePath.is_absolute()
+     ?animationFilePath
+     :(AssetManager::GetProjectRoot()/animationFilePath);
+    auto animation=AnimationAsset::Load(std::filesystem::absolute(resolvedAnimationPath).lexically_normal());
     if(animation&&animation->HasAnimations()){
      AnimatorComponent animator;
      animator.Animation=std::move(animation);

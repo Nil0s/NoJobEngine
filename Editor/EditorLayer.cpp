@@ -2124,7 +2124,10 @@ return{};}
             // automatically attach an Animator so the clips are immediately visible.
             try
             {
-                auto animation = AnimationAsset::Load(p);
+                const auto animationPath =
+                    p.is_absolute() ? p : (AssetManager::GetProjectRoot() / p);
+                auto animation = AnimationAsset::Load(
+                    std::filesystem::absolute(animationPath).lexically_normal());
                 if (animation && animation->HasAnimations())
                 {
                     AnimatorComponent animator;

@@ -1,0 +1,6 @@
+NOJOB_MATERIAL 3
+COLOR 1 1 1 1
+PBR 0 0.18 1 1
+EMISSIVE 0 0 0 0
+SURFACE 0 0.5
+TEXTURES "Assets/Textures/Body Block_embedded_Boss_diffuse_34.png" "Assets/Textures/Body Block_embedded_Boss_normal_34.png" "" "" "" ""

@@ -1,0 +1,6 @@
+NOJOB_MATERIAL 3
+COLOR 1 1 1 1
+PBR 0 0.373878 1 1
+EMISSIVE 0 0 0 0
+SURFACE 0 0.5
+TEXTURES "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_2.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_2.png" "" "" "" ""
