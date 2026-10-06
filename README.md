@@ -1,12 +1,9 @@
 # NoJobEngine
 
-```{=html}
 <p align="center">
-```
-`<img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">`{=html}
-```{=html}
+  <img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">
 </p>
-```
+
 A custom **C++20 game engine and editor built from scratch as the
 foundation for experimenting with native, visual and inspectable Game
 AI.**
@@ -778,9 +775,9 @@ Completed and validated.
 
 ## AI Roadmap
 
-The roadmap below describes planned work. Items in this section are not
-presented as implemented until they move into the completed development
-milestones above.
+> **Planned development:** the milestones below describe the next stages
+> of NoJobEngine and are not presented as implemented until they move
+> into the completed development milestones above.
 
 ### V1.8 --- AI Navigation & Gameplay AI
 
@@ -859,9 +856,7 @@ trained directly inside the C++ engine.
 ## What this project demonstrates
 
 NoJobEngine is both a technical project and a record of my progression
-beyond using an existing engine API. The completed engine foundation
-demonstrates the systems listed below; the AI roadmap extends that
-foundation into the project's next area of experimentation.
+beyond using an existing engine API.
 
 It covers problems across:
 
