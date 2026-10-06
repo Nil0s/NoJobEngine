@@ -626,6 +626,12 @@ return{};}
         {
             DuplicateSelectedEntity();
         }
+
+        if (!io.WantTextInput && m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_F2))
+            m_RenameSelectedRequested = true;
+
+        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
+            ClearMultiSelection();
     }
 
     void EditorLayer::EndFrame()
@@ -848,9 +854,59 @@ return{};}
         if (!m_Scene || !m_SelectedEntity)
             return;
 
+        std::vector<Entity> selectedEntities;
+        for (Entity entity : m_Scene->GetEntities())
+        {
+            if (IsMultiSelected(entity))
+                selectedEntities.push_back(entity);
+        }
+
+        if (selectedEntities.empty())
+            selectedEntities.push_back(m_SelectedEntity);
+
+        // Keep only selected roots. If a child is also selected, its selected
+        // ancestor owns the operation for that whole branch.
+        std::vector<Entity> selectedRoots;
+        for (Entity candidate : selectedEntities)
+        {
+            bool hasSelectedAncestor = false;
+            Entity parent = m_Scene->GetParent(candidate);
+            while (parent)
+            {
+                if (IsMultiSelected(parent))
+                {
+                    hasSelectedAncestor = true;
+                    break;
+                }
+                parent = m_Scene->GetParent(parent);
+            }
+
+            if (!hasSelectedAncestor)
+                selectedRoots.push_back(candidate);
+        }
+
         CaptureUndoSnapshot();
-        m_Scene->DestroyEntity(m_SelectedEntity);
-        m_SelectedEntity = {};
+
+        // Destroy descendants first, then the root. This makes hierarchy
+        // deletion independent from whether Scene::DestroyEntity itself is
+        // recursive and prevents orphaned child entities.
+        auto destroyHierarchy = [&](auto&& self, Entity entity) -> void
+        {
+            if (!entity || !m_Scene->IsValid(entity.GetHandle()))
+                return;
+
+            const auto children = m_Scene->GetChildren(entity);
+            for (Entity child : children)
+                self(self, child);
+
+            if (m_Scene->IsValid(entity.GetHandle()))
+                m_Scene->DestroyEntity(entity);
+        };
+
+        for (Entity root : selectedRoots)
+            destroyHierarchy(destroyHierarchy, root);
+
+        ClearMultiSelection();
     }
 
     void EditorLayer::DuplicateSelectedEntity()
@@ -858,88 +914,137 @@ return{};}
         if (!m_Scene || !m_SelectedEntity)
             return;
 
+        std::vector<Entity> selectedEntities;
+        for (Entity entity : m_Scene->GetEntities())
+        {
+            if (IsMultiSelected(entity))
+                selectedEntities.push_back(entity);
+        }
+
+        if (selectedEntities.empty())
+            selectedEntities.push_back(m_SelectedEntity);
+
+        // Duplicate only selected roots. A selected descendant will already be
+        // duplicated recursively with its selected ancestor.
+        std::vector<Entity> selectedRoots;
+        for (Entity candidate : selectedEntities)
+        {
+            bool hasSelectedAncestor = false;
+            Entity parent = m_Scene->GetParent(candidate);
+            while (parent)
+            {
+                if (IsMultiSelected(parent))
+                {
+                    hasSelectedAncestor = true;
+                    break;
+                }
+                parent = m_Scene->GetParent(parent);
+            }
+
+            if (!hasSelectedAncestor)
+                selectedRoots.push_back(candidate);
+        }
+
         CaptureUndoSnapshot();
 
-        const Entity source = m_SelectedEntity;
-        const auto& sourceTag = source.GetComponent<TagComponent>().Tag;
-
-        Entity copy =
-            m_Scene->CreateEntity(sourceTag + " Copy");
-
-        copy.GetComponent<TransformComponent>() =
-            source.GetComponent<TransformComponent>();
-
-        if (source.HasComponent<MeshComponent>())
+        auto copyComponents = [&](Entity source, Entity copy)
         {
-            copy.AddComponent<MeshComponent>(
-                source.GetComponent<MeshComponent>().MeshAsset);
-        }
+            copy.GetComponent<TransformComponent>() =
+                source.GetComponent<TransformComponent>();
 
-        if (source.HasComponent<MeshRendererComponent>())
-        {
-            const auto& sourceRenderer =
-                source.GetComponent<MeshRendererComponent>();
+            if (source.HasComponent<MeshComponent>())
+                copy.AddComponent<MeshComponent>(
+                    source.GetComponent<MeshComponent>().MeshAsset);
 
-            if (sourceRenderer.MaterialAsset)
+            if (source.HasComponent<MeshRendererComponent>())
             {
-                auto material = std::make_shared<Material>(
-                    sourceRenderer.MaterialAsset->GetShader(),
-                    sourceRenderer.MaterialAsset->GetColor());
-
-                material->SetTexture(
-                    sourceRenderer.MaterialAsset->GetTexture());
-                material->UseTexture() =
-                    sourceRenderer.MaterialAsset->UseTexture();
-                material->Metallic() = sourceRenderer.MaterialAsset->Metallic();
-                material->Roughness() = sourceRenderer.MaterialAsset->Roughness();
-                material->AmbientOcclusion() = sourceRenderer.MaterialAsset->AmbientOcclusion();
-                material->NormalStrength() = sourceRenderer.MaterialAsset->NormalStrength();
-                material->EmissiveColor() = sourceRenderer.MaterialAsset->EmissiveColor();
-                material->EmissiveStrength() = sourceRenderer.MaterialAsset->EmissiveStrength();
-                material->SetNormalTexture(sourceRenderer.MaterialAsset->GetNormalTexture());
-                material->SetMetallicTexture(sourceRenderer.MaterialAsset->GetMetallicTexture());
-                material->SetRoughnessTexture(sourceRenderer.MaterialAsset->GetRoughnessTexture());
-                material->SetAOTexture(sourceRenderer.MaterialAsset->GetAOTexture());
-                material->SetEmissiveTexture(sourceRenderer.MaterialAsset->GetEmissiveTexture());
-
-                copy.AddComponent<MeshRendererComponent>(material);
+                const auto& src =
+                    source.GetComponent<MeshRendererComponent>();
+                auto& dst =
+                    copy.AddComponent<MeshRendererComponent>(src.MaterialAsset);
+                dst.MaterialAsset = src.MaterialAsset;
+                dst.Materials = src.Materials;
             }
+
+            if (source.HasComponent<NativeScriptComponent>())
+                copy.AddComponent<NativeScriptComponent>(
+                    source.GetComponent<NativeScriptComponent>());
+            if (source.HasComponent<RigidbodyComponent>())
+                copy.AddComponent<RigidbodyComponent>(
+                    source.GetComponent<RigidbodyComponent>());
+            if (source.HasComponent<BoxColliderComponent>())
+                copy.AddComponent<BoxColliderComponent>(
+                    source.GetComponent<BoxColliderComponent>());
+            if (source.HasComponent<SphereColliderComponent>())
+                copy.AddComponent<SphereColliderComponent>(
+                    source.GetComponent<SphereColliderComponent>());
+            if (source.HasComponent<CapsuleColliderComponent>())
+                copy.AddComponent<CapsuleColliderComponent>(
+                    source.GetComponent<CapsuleColliderComponent>());
+            if (source.HasComponent<CameraComponent>())
+                copy.AddComponent<CameraComponent>(
+                    source.GetComponent<CameraComponent>());
+            if (source.HasComponent<DirectionalLightComponent>())
+                copy.AddComponent<DirectionalLightComponent>(
+                    source.GetComponent<DirectionalLightComponent>());
+            if (source.HasComponent<PointLightComponent>())
+                copy.AddComponent<PointLightComponent>(
+                    source.GetComponent<PointLightComponent>());
+            if (source.HasComponent<SpotLightComponent>())
+                copy.AddComponent<SpotLightComponent>(
+                    source.GetComponent<SpotLightComponent>());
+            if (source.HasComponent<AnimatorComponent>())
+                copy.AddComponent<AnimatorComponent>(
+                    source.GetComponent<AnimatorComponent>());
+            if (source.HasComponent<PrefabInstanceComponent>())
+                copy.AddComponent<PrefabInstanceComponent>(
+                    source.GetComponent<PrefabInstanceComponent>());
+        };
+
+        // Recursively clone a complete hierarchy. Parenting uses
+        // keepWorldTransform=false because copied transforms are already local
+        // transforms from the original hierarchy.
+        auto duplicateHierarchy =
+            [&](auto&& self, Entity source, Entity newParent) -> Entity
+        {
+            const auto sourceTag =
+                source.GetComponent<TagComponent>().Tag;
+
+            Entity copy = m_Scene->CreateEntity(sourceTag + " Copy");
+            copyComponents(source, copy);
+
+            if (newParent)
+                m_Scene->SetParent(copy, newParent, false);
+
+            const auto children = m_Scene->GetChildren(source);
+            for (Entity child : children)
+                self(self, child, copy);
+
+            return copy;
+        };
+
+        std::vector<std::uint32_t> newSelection;
+        Entity lastCopy{};
+
+        for (Entity sourceRoot : selectedRoots)
+        {
+            if (!sourceRoot || !m_Scene->IsValid(sourceRoot.GetHandle()))
+                continue;
+
+            // Preserve the original external parent for a duplicated root.
+            Entity originalParent = m_Scene->GetParent(sourceRoot);
+            Entity rootCopy =
+                duplicateHierarchy(duplicateHierarchy, sourceRoot, Entity{});
+
+            if (originalParent)
+                m_Scene->SetParent(rootCopy, originalParent, false);
+
+            newSelection.push_back(rootCopy.GetHandle());
+            lastCopy = rootCopy;
         }
 
-        if (source.HasComponent<NativeScriptComponent>())
-            copy.AddComponent<NativeScriptComponent>(
-                source.GetComponent<NativeScriptComponent>());
-
-        if (source.HasComponent<RigidbodyComponent>())
-            copy.AddComponent<RigidbodyComponent>(
-                source.GetComponent<RigidbodyComponent>());
-
-        if (source.HasComponent<BoxColliderComponent>())
-            copy.AddComponent<BoxColliderComponent>(
-                source.GetComponent<BoxColliderComponent>());
-
-        if (source.HasComponent<SphereColliderComponent>())
-            copy.AddComponent<SphereColliderComponent>(
-                source.GetComponent<SphereColliderComponent>());
-
-        if (source.HasComponent<CapsuleColliderComponent>())
-            copy.AddComponent<CapsuleColliderComponent>(
-                source.GetComponent<CapsuleColliderComponent>());
-
-        if (source.HasComponent<CameraComponent>())
-            copy.AddComponent<CameraComponent>(
-                source.GetComponent<CameraComponent>());
-        if (source.HasComponent<DirectionalLightComponent>())
-            copy.AddComponent<DirectionalLightComponent>(
-                source.GetComponent<DirectionalLightComponent>());
-        if (source.HasComponent<PointLightComponent>())
-            copy.AddComponent<PointLightComponent>(
-                source.GetComponent<PointLightComponent>());
-        if (source.HasComponent<SpotLightComponent>())
-            copy.AddComponent<SpotLightComponent>(
-                source.GetComponent<SpotLightComponent>());
-
-        m_SelectedEntity = copy;
+        m_MultiSelection = std::move(newSelection);
+        m_SelectedEntity = lastCopy;
     }
 
     void EditorLayer::DrawMainMenu()
@@ -1164,9 +1269,55 @@ return{};}
         ImGui::End();
     }
 
+    bool EditorLayer::IsMultiSelected(Entity entity) const
+    {
+        return std::find(m_MultiSelection.begin(), m_MultiSelection.end(),
+            entity.GetHandle()) != m_MultiSelection.end();
+    }
+
+    void EditorLayer::ClearMultiSelection()
+    {
+        m_MultiSelection.clear();
+        m_SelectedEntity = {};
+    }
+
+    bool EditorLayer::HierarchyMatchesFilter(Entity entity) const
+    {
+        if (!entity) return false;
+        std::string filter = m_HierarchySearch;
+        if (filter.empty()) return true;
+        std::transform(filter.begin(), filter.end(), filter.begin(),
+            [](unsigned char c){ return (char)std::tolower(c); });
+
+        std::string name = entity.GetComponent<TagComponent>().Tag;
+        std::transform(name.begin(), name.end(), name.begin(),
+            [](unsigned char c){ return (char)std::tolower(c); });
+        if (name.find(filter) != std::string::npos) return true;
+
+        for (Entity child : m_Scene->GetChildren(entity))
+            if (HierarchyMatchesFilter(child)) return true;
+        return false;
+    }
+
     void EditorLayer::DrawHierarchy()
     {
         ImGui::Begin("Hierarchy");
+
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##HierarchySearch", "Search Hierarchy...",
+            m_HierarchySearch, sizeof(m_HierarchySearch));
+
+        if (m_MultiSelection.size() > 1)
+        {
+            ImGui::Text("%zu entities selected", m_MultiSelection.size());
+            if (ImGui::SmallButton("Duplicate Selected"))
+                DuplicateSelectedEntity();
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Delete Selected"))
+                DeleteSelectedEntity();
+        }
+
+        ImGui::Separator();
 
         if (ImGui::BeginPopupContextWindow(
                 "HierarchyContext",
@@ -1198,7 +1349,21 @@ return{};}
                 if (m_Scene->IsValid(handle))
                 {
                     CaptureUndoSnapshot();
-                    m_Scene->Unparent(Entity(handle, m_Scene), true);
+                    const bool dragIsMulti =
+                        std::find(m_MultiSelection.begin(), m_MultiSelection.end(), handle)
+                        != m_MultiSelection.end()
+                        && m_MultiSelection.size() > 1;
+
+                    if (dragIsMulti)
+                    {
+                        for (std::uint32_t selectedHandle : m_MultiSelection)
+                            if (m_Scene->IsValid(selectedHandle))
+                                m_Scene->Unparent(Entity(selectedHandle, m_Scene), true);
+                    }
+                    else
+                    {
+                        m_Scene->Unparent(Entity(handle, m_Scene), true);
+                    }
                 }
             }
             ImGui::EndDragDropTarget();
@@ -1208,7 +1373,8 @@ return{};}
         {
             for (Entity entity : m_Scene->GetEntities())
             {
-                if (entity.GetComponent<RelationshipComponent>().Parent == 0)
+                if (entity.GetComponent<RelationshipComponent>().Parent == 0
+                    && HierarchyMatchesFilter(entity))
                     DrawEntityNode(entity);
             }
         }
@@ -1233,7 +1399,7 @@ return{};}
         if (relationship.Children.empty())
             flags |= ImGuiTreeNodeFlags_Leaf;
 
-        if (entity == m_SelectedEntity)
+        if (entity == m_SelectedEntity || IsMultiSelected(entity))
             flags |= ImGuiTreeNodeFlags_Selected;
 
         ImGui::PushID(static_cast<int>(entity.GetHandle()));
@@ -1242,7 +1408,24 @@ return{};}
             ImGui::TreeNodeEx("EntityNode", flags, "%s", tag.c_str());
 
         if (ImGui::IsItemClicked())
+        {
+            const bool ctrl = ImGui::GetIO().KeyCtrl;
+            if (ctrl)
+            {
+                auto it = std::find(m_MultiSelection.begin(), m_MultiSelection.end(),
+                    entity.GetHandle());
+                if (it == m_MultiSelection.end())
+                    m_MultiSelection.push_back(entity.GetHandle());
+                else
+                    m_MultiSelection.erase(it);
+            }
+            else
+            {
+                m_MultiSelection.clear();
+                m_MultiSelection.push_back(entity.GetHandle());
+            }
             m_SelectedEntity = entity;
+        }
 
         if (ImGui::BeginDragDropSource())
         {
@@ -1265,9 +1448,37 @@ return{};}
 
                 if (m_Scene->IsValid(childHandle))
                 {
-                    Entity child(childHandle, m_Scene);
                     CaptureUndoSnapshot();
-                    m_Scene->SetParent(child, entity, true);
+
+                    const bool dragIsMulti =
+                        std::find(m_MultiSelection.begin(), m_MultiSelection.end(), childHandle)
+                        != m_MultiSelection.end()
+                        && m_MultiSelection.size() > 1;
+
+                    if (dragIsMulti)
+                    {
+                        // Parent every selected entity that can legally become
+                        // a child of the drop target. Scene::SetParent keeps the
+                        // world transform and rejects invalid cycles.
+                        for (std::uint32_t selectedHandle : m_MultiSelection)
+                        {
+                            if (!m_Scene->IsValid(selectedHandle)
+                                || selectedHandle == entity.GetHandle())
+                                continue;
+
+                            m_Scene->SetParent(
+                                Entity(selectedHandle, m_Scene),
+                                entity,
+                                true);
+                        }
+                    }
+                    else
+                    {
+                        m_Scene->SetParent(
+                            Entity(childHandle, m_Scene),
+                            entity,
+                            true);
+                    }
                 }
             }
             ImGui::EndDragDropTarget();
@@ -1276,6 +1487,9 @@ return{};}
         if (ImGui::BeginPopupContextItem("EntityContext"))
         {
             m_SelectedEntity = entity;
+
+            if (ImGui::MenuItem("Rename", "F2"))
+                m_RenameSelectedRequested = true;
 
             if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
                 DuplicateSelectedEntity();
@@ -1312,7 +1526,8 @@ return{};}
         {
             const auto children = m_Scene->GetChildren(entity);
             for (Entity child : children)
-                DrawEntityNode(child);
+                if (HierarchyMatchesFilter(child))
+                    DrawEntityNode(child);
 
             ImGui::TreePop();
         }
@@ -1335,12 +1550,23 @@ return{};}
                 tag.c_str(),
                 sizeof(tagBuffer) - 1);
 
+            if (m_RenameSelectedRequested)
+            {
+                ImGui::SetKeyboardFocusHere();
+                m_RenameSelectedRequested = false;
+            }
             if (ImGui::InputText(
                     "##EntityName",
                     tagBuffer,
-                    sizeof(tagBuffer)))
+                    sizeof(tagBuffer),
+                    ImGuiInputTextFlags_EnterReturnsTrue))
             {
                 tag = tagBuffer;
+            }
+            if (m_MultiSelection.size() > 1)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%zu selected", m_MultiSelection.size());
             }
 
             ImGui::Separator();
@@ -1707,6 +1933,8 @@ return{};}
                     else ImGui::TextDisabled("No animation asset loaded.");
                 }
             }
+
+            DrawComponentTools();
 
             ImGui::Separator();
             ImGui::Spacing();
@@ -2421,6 +2649,115 @@ return{};}
             "[Info] Right click Hierarchy to create objects.");
         ImGui::End();
     }
+    void EditorLayer::DrawComponentTools()
+    {
+        if (!m_SelectedEntity) return;
+
+        ImGui::SeparatorText("Component Actions");
+        static int componentIndex = 0;
+
+        struct Entry { const char* Name; int Id; };
+        std::vector<Entry> entries;
+        entries.push_back({"Transform", 0});
+        if(m_SelectedEntity.HasComponent<NativeScriptComponent>()) entries.push_back({"Rotator Script",1});
+        if(m_SelectedEntity.HasComponent<RigidbodyComponent>()) entries.push_back({"Rigidbody",2});
+        if(m_SelectedEntity.HasComponent<BoxColliderComponent>()) entries.push_back({"Box Collider",3});
+        if(m_SelectedEntity.HasComponent<SphereColliderComponent>()) entries.push_back({"Sphere Collider",4});
+        if(m_SelectedEntity.HasComponent<CapsuleColliderComponent>()) entries.push_back({"Capsule Collider",5});
+        if(m_SelectedEntity.HasComponent<CameraComponent>()) entries.push_back({"Camera",6});
+        if(m_SelectedEntity.HasComponent<DirectionalLightComponent>()) entries.push_back({"Directional Light",7});
+        if(m_SelectedEntity.HasComponent<PointLightComponent>()) entries.push_back({"Point Light",8});
+        if(m_SelectedEntity.HasComponent<SpotLightComponent>()) entries.push_back({"Spot Light",9});
+        if(m_SelectedEntity.HasComponent<AnimatorComponent>()) entries.push_back({"Animator",10});
+
+        componentIndex = std::clamp(componentIndex, 0, (int)entries.size()-1);
+        if(ImGui::BeginCombo("Component", entries[componentIndex].Name))
+        {
+            for(int i=0;i<(int)entries.size();++i)
+                if(ImGui::Selectable(entries[i].Name, i==componentIndex))
+                    componentIndex=i;
+            ImGui::EndCombo();
+        }
+
+        const int id=entries[componentIndex].Id;
+        auto copy=[&]{
+            switch(id){
+            case 0:m_ComponentClipboard=m_SelectedEntity.GetComponent<TransformComponent>();break;
+            case 1:m_ComponentClipboard=m_SelectedEntity.GetComponent<NativeScriptComponent>();break;
+            case 2:m_ComponentClipboard=m_SelectedEntity.GetComponent<RigidbodyComponent>();break;
+            case 3:m_ComponentClipboard=m_SelectedEntity.GetComponent<BoxColliderComponent>();break;
+            case 4:m_ComponentClipboard=m_SelectedEntity.GetComponent<SphereColliderComponent>();break;
+            case 5:m_ComponentClipboard=m_SelectedEntity.GetComponent<CapsuleColliderComponent>();break;
+            case 6:m_ComponentClipboard=m_SelectedEntity.GetComponent<CameraComponent>();break;
+            case 7:m_ComponentClipboard=m_SelectedEntity.GetComponent<DirectionalLightComponent>();break;
+            case 8:m_ComponentClipboard=m_SelectedEntity.GetComponent<PointLightComponent>();break;
+            case 9:m_ComponentClipboard=m_SelectedEntity.GetComponent<SpotLightComponent>();break;
+            case 10:m_ComponentClipboard=m_SelectedEntity.GetComponent<AnimatorComponent>();break;
+            }
+        };
+        auto reset=[&]{
+            CaptureUndoSnapshot();
+            switch(id){
+            case 0:m_SelectedEntity.GetComponent<TransformComponent>()={};break;
+            case 1:m_SelectedEntity.GetComponent<NativeScriptComponent>()={};break;
+            case 2:m_SelectedEntity.GetComponent<RigidbodyComponent>()={};break;
+            case 3:m_SelectedEntity.GetComponent<BoxColliderComponent>()={};break;
+            case 4:m_SelectedEntity.GetComponent<SphereColliderComponent>()={};break;
+            case 5:m_SelectedEntity.GetComponent<CapsuleColliderComponent>()={};break;
+            case 6:m_SelectedEntity.GetComponent<CameraComponent>()={};break;
+            case 7:m_SelectedEntity.GetComponent<DirectionalLightComponent>()={};break;
+            case 8:m_SelectedEntity.GetComponent<PointLightComponent>()={};break;
+            case 9:m_SelectedEntity.GetComponent<SpotLightComponent>()={};break;
+            case 10:m_SelectedEntity.GetComponent<AnimatorComponent>()={};break;
+            }
+        };
+        auto paste=[&]{
+            CaptureUndoSnapshot();
+            switch(id){
+            case 0:if(auto p=std::get_if<TransformComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<TransformComponent>()=*p;break;
+            case 1:if(auto p=std::get_if<NativeScriptComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<NativeScriptComponent>()=*p;break;
+            case 2:if(auto p=std::get_if<RigidbodyComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<RigidbodyComponent>()=*p;break;
+            case 3:if(auto p=std::get_if<BoxColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<BoxColliderComponent>()=*p;break;
+            case 4:if(auto p=std::get_if<SphereColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<SphereColliderComponent>()=*p;break;
+            case 5:if(auto p=std::get_if<CapsuleColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<CapsuleColliderComponent>()=*p;break;
+            case 6:if(auto p=std::get_if<CameraComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<CameraComponent>()=*p;break;
+            case 7:if(auto p=std::get_if<DirectionalLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<DirectionalLightComponent>()=*p;break;
+            case 8:if(auto p=std::get_if<PointLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<PointLightComponent>()=*p;break;
+            case 9:if(auto p=std::get_if<SpotLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<SpotLightComponent>()=*p;break;
+            case 10:if(auto p=std::get_if<AnimatorComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<AnimatorComponent>()=*p;break;
+            }
+        };
+
+        if(ImGui::SmallButton("Reset")) reset();
+        ImGui::SameLine();
+        if(ImGui::SmallButton("Copy")) copy();
+        ImGui::SameLine();
+        if(ImGui::SmallButton("Paste")) paste();
+        ImGui::SameLine();
+
+        const bool removable=id!=0;
+        if(!removable) ImGui::BeginDisabled();
+        if(ImGui::SmallButton("Remove") && removable)
+        {
+            CaptureUndoSnapshot();
+            switch(id){
+            case 1:m_SelectedEntity.RemoveComponent<NativeScriptComponent>();break;
+            case 2:m_SelectedEntity.RemoveComponent<RigidbodyComponent>();break;
+            case 3:m_SelectedEntity.RemoveComponent<BoxColliderComponent>();break;
+            case 4:m_SelectedEntity.RemoveComponent<SphereColliderComponent>();break;
+            case 5:m_SelectedEntity.RemoveComponent<CapsuleColliderComponent>();break;
+            case 6:m_SelectedEntity.RemoveComponent<CameraComponent>();break;
+            case 7:m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();break;
+            case 8:m_SelectedEntity.RemoveComponent<PointLightComponent>();break;
+            case 9:m_SelectedEntity.RemoveComponent<SpotLightComponent>();break;
+            case 10:m_SelectedEntity.RemoveComponent<AnimatorComponent>();break;
+            }
+            componentIndex=0;
+        }
+        if(!removable) ImGui::EndDisabled();
+        ImGui::TextDisabled("F2 Rename | Ctrl+D Duplicate | Delete | Ctrl+Z/Y Undo/Redo");
+    }
+
     void EditorLayer::DrawProjectPanel()
     {
         ImGui::Begin("Project");
@@ -2449,6 +2786,10 @@ return{};}
             m_ProjectDirectory.lexically_relative(
                 AssetManager::GetProjectRoot()).generic_string().c_str());
 
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##ProjectSearch", "Search current folder...",
+            m_ProjectSearch, sizeof(m_ProjectSearch));
         ImGui::Separator();
 
         // Unity-style prefab creation:
@@ -2596,6 +2937,18 @@ return{};}
                 const auto path = entry.path();
                 const std::string name =
                     path.filename().string();
+
+                if (m_ProjectSearch[0] != '\0')
+                {
+                    std::string filter = m_ProjectSearch;
+                    std::string lowerName = name;
+                    std::transform(filter.begin(), filter.end(), filter.begin(),
+                        [](unsigned char c){ return (char)std::tolower(c); });
+                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                        [](unsigned char c){ return (char)std::tolower(c); });
+                    if (lowerName.find(filter) == std::string::npos)
+                        continue;
+                }
 
                 // Unity-style root: Project shows the Assets folder first,
                 // instead of dumping CMake/source files into this panel.

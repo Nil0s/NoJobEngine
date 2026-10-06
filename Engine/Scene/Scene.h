@@ -274,6 +274,8 @@ namespace NoJob
                 data.PointLight.reset();
             else if constexpr (std::is_same_v<T, SpotLightComponent>)
                 data.SpotLight.reset();
+            else if constexpr (std::is_same_v<T, AnimatorComponent>)
+                data.Animator.reset();
             else
                 static_assert(!sizeof(T), "This NoJob component cannot be removed.");
         }

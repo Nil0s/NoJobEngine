@@ -1,11 +1,14 @@
 #pragma once
 #include "Engine/Scene/Entity.h"
+#include "Engine/Scene/Components.h"
 #include "Engine/Renderer/Framebuffer.h"
 
 #include <filesystem>
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <variant>
+#include <string>
 #include <glm/glm.hpp>
 
 struct GLFWwindow;
@@ -76,6 +79,10 @@ namespace NoJob
         void DrawConsole();
         void DrawProjectPanel();
         void DrawGraphicsSettings();
+        void DrawComponentTools();
+        bool HierarchyMatchesFilter(Entity entity) const;
+        bool IsMultiSelected(Entity entity) const;
+        void ClearMultiSelection();
 
         Entity CreateEmptyEntity();
         Entity CreateCubeEntity();
@@ -91,7 +98,26 @@ namespace NoJob
 
         Scene* m_Scene = nullptr;
         Entity m_SelectedEntity;
+        std::vector<std::uint32_t> m_MultiSelection;
         std::size_t m_SelectedMaterialSlot = 0;
+        char m_HierarchySearch[128]{};
+        char m_ProjectSearch[128]{};
+        bool m_RenameSelectedRequested = false;
+
+        using ComponentClipboard = std::variant<
+            std::monostate,
+            TransformComponent,
+            NativeScriptComponent,
+            RigidbodyComponent,
+            BoxColliderComponent,
+            SphereColliderComponent,
+            CapsuleColliderComponent,
+            CameraComponent,
+            DirectionalLightComponent,
+            PointLightComponent,
+            SpotLightComponent,
+            AnimatorComponent>;
+        ComponentClipboard m_ComponentClipboard;
 
         std::shared_ptr<Mesh> m_DefaultCubeMesh;
         std::shared_ptr<Material> m_DefaultCubeMaterial;

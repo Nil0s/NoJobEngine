@@ -10,9 +10,9 @@ a first triangle into a usable editor/runtime foundation with scenes,
 assets, prefabs, physics, PBR rendering, skeletal animation, GPU
 skinning and an evolving Unity-style component workflow.
 
-> **Current milestone: NoJobEngine V1.3 --- In Development**\
-> V1.0--V1.2 are complete and validated. Current development is focused
-> on Editor UX and a more scalable component-based workflow.
+> **Current milestone: NoJobEngine V1.3 --- Complete and Validated**\
+> V1.0--V1.3 are complete and validated. The next development milestone
+> is V1.4 --- Native Scripting V2.
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · CMake**
 
@@ -115,12 +115,16 @@ Prefab V2 supports:
 
 ### Inspector & Add Component
 
-V1.3 begins a more scalable Inspector workflow. Instead of exposing
-scattered component creation buttons, entities can use a centralized
-**Add Component** menu with search and categories.
+V1.3 introduces a more scalable Inspector and editor workflow. Instead
+of exposing scattered component creation buttons, entities use a
+centralized **Add Component** menu with search and categories.
 
-The current menu includes components for physics, rendering, animation
-and native scripting.
+The editor now also supports component actions (**Reset / Copy / Paste /
+Remove**), Hierarchy and Project search, rename and keyboard shortcuts,
+multi-selection, batch duplication/deletion and hierarchy-aware
+recursive operations. Duplicating or deleting a parent correctly
+processes its full child hierarchy, while Undo/Redo treats the operation
+as a single action.
 
 ------------------------------------------------------------------------
 
@@ -142,6 +146,12 @@ and native scripting.
 -   Undo/Redo history
 -   Material Slots
 -   Prefab Apply/Revert
+-   Hierarchy and Project search
+-   Entity rename and editor shortcuts
+-   Multi-selection
+-   Batch Duplicate/Delete
+-   Recursive hierarchy-aware duplication/deletion
+-   Component Reset / Copy / Paste / Remove
 
 ### Asset pipeline
 
@@ -363,52 +373,128 @@ Material Slots, alpha surfaces and editor Undo/Redo.
 Skeletal animation, GPU skinning, Mixamo workflow, Animator component
 and recursive prefabs with materials, animation data, Apply and Revert.
 
-### 🚧 V1.3 --- Editor UX
+### ✅ V1.3 --- Editor UX
 
-Current development milestone.
+Completed and validated.
 
-Already implemented:
-
--   centralized Add Component workflow;
--   component search;
--   component categories.
-
-Planned during this milestone:
-
--   component context menus;
--   Remove / Reset / Copy / Paste Component Values;
--   improved Hierarchy and Project search/workflows;
--   improved context menus;
--   more general drag & drop;
--   multi-selection;
--   additional editor shortcuts.
+-   Centralized searchable **Add Component** workflow with categories.
+-   Component **Reset / Copy / Paste / Remove** actions.
+-   Transform protected as a mandatory component.
+-   Hierarchy search and Project search/filtering.
+-   Entity rename workflow.
+-   Keyboard shortcuts including F2, Ctrl+D, Delete, Ctrl+Z/Ctrl+Y and
+    Escape.
+-   Multi-selection with active-entity Inspector editing.
+-   Batch Duplicate/Delete with single-step Undo/Redo.
+-   Multi-entity parenting and unparenting.
+-   Recursive hierarchy-aware duplication and deletion.
+-   Parent + child selections are handled without duplicating or
+    deleting a branch twice.
+-   Duplicated hierarchies preserve child relationships, transforms and
+    supported components.
 
 ------------------------------------------------------------------------
 
 ## Roadmap
 
-After the current Editor UX milestone, the planned direction is:
+### V1.4 --- Native Scripting V2
 
-1.  **Native Scripting V2** --- lifecycle, registration, Inspector
-    properties and improved gameplay-code workflow.
-2.  **Renderer V3** --- IBL/environment maps, HDRI workflow, improved
-    reflections, lighting/shadow improvements and renderer
-    profiling/optimization.
-3.  **Audio & VFX** --- AudioSource/AudioListener, 2D/3D audio and
-    particle/VFX systems.
-4.  **Standalone Build** --- package a project into a standalone
-    executable with its start scene, assets and runtime configuration.
+-   Script base class and `OnCreate`, `OnUpdate`, `OnDestroy`.
+-   Native script registration and Add Component integration.
+-   Inspector-exposed properties.
+-   Improved iteration workflow / hot-reload investigation.
 
-Longer-term areas of exploration include:
+### V1.5 --- Renderer V3
 
--   Vulkan backend;
--   NavMesh and AI;
--   terrain;
--   networking;
--   asset cooking;
--   profiling tools;
--   animation state machines, transitions and blend trees;
--   more advanced scripting/hot reload.
+-   IBL and environment maps.
+-   HDRI/skybox workflow and improved reflections.
+-   Lighting/shadow improvements.
+-   Renderer profiling and optimization.
+
+### V1.6 --- Audio & VFX
+
+-   AudioSource / AudioListener.
+-   2D and spatial 3D audio.
+-   Volume, pitch and looping.
+-   Particle/VFX component foundation.
+
+### V1.7 --- Standalone Build
+
+-   Start Scene and runtime-only executable.
+-   Asset packaging and runtime configuration.
+-   Standalone Windows build without the editor.
+
+### V1.8 --- AI Navigation & Gameplay AI
+
+Build the deterministic AI foundation directly into NoJobEngine:
+
+-   NavMesh generation and visualization.
+-   A\* pathfinding.
+-   NavAgent component.
+-   Perception system and Blackboard.
+-   Behavior Trees.
+-   Visual Behavior Tree editor.
+-   Native Scripting integration.
+
+### V1.9 --- Native Machine Learning
+
+Build the ML stack **natively in C++ without requiring Python for
+training**:
+
+-   Tensor/data representation and Dense layers.
+-   Activation functions and forward propagation.
+-   Backpropagation and loss functions.
+-   SGD and Adam optimizers.
+-   Model serialization.
+-   Native CPU inference and training.
+-   Neural-network editor/visualization tools.
+
+The objective is to understand and implement the ML pipeline inside the
+engine instead of treating an external framework as a black box.
+
+### V2.0 --- ML Agents & Reinforcement Learning
+
+Connect native ML to gameplay:
+
+-   MLAgent component.
+-   Observations, actions and rewards.
+-   Episodes and environment resets.
+-   Reinforcement-learning training loop.
+-   Runtime trained-policy inference.
+-   Parallel/headless simulation for faster training.
+
+Target AI architecture:
+
+``` text
+Behavior Tree        → high-level behaviour
+        ↓
+Neural Network       → learned decisions
+        ↓
+NavAgent / NavMesh   → movement and navigation
+        ↓
+Perception           → world sensing
+        ↓
+Blackboard           → shared AI state
+        ↓
+Native Scripting     → custom gameplay logic
+```
+
+This gives NoJobEngine both authored game AI and agents that can be
+trained directly inside the C++ engine.
+
+------------------------------------------------------------------------
+
+## Longer-term exploration
+
+-   Vulkan backend.
+-   Terrain.
+-   Networking.
+-   Asset cooking.
+-   Dedicated profiling tools.
+-   Animation state machines, transitions and blend trees.
+-   More advanced scripting/hot reload.
+-   AI-assisted editor tooling through a controlled Engine/Scene command
+    API.
 
 ------------------------------------------------------------------------
 
