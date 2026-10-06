@@ -74,8 +74,12 @@ namespace NoJob
             {
                 auto m=e.GetComponent<MeshRendererComponent>().MaterialAsset;
                 auto col=m->GetColor();
-                out<<"MATERIAL "<<col.r<<' '<<col.g<<' '<<col.b<<' '<<col.a<<' '<<m->Metallic()<<' '<<m->Roughness()<<' '<<m->AmbientOcclusion()<<' '<<m->NormalStrength()<<' ';
-                V3(out,m->EmissiveColor()); out<<' '<<m->EmissiveStrength()<<'\n';
+                out<<"MATERIAL_V2 "<<col.r<<' '<<col.g<<' '<<col.b<<' '<<col.a<<' '
+                   <<m->Metallic()<<' '<<m->Roughness()<<' '<<m->AmbientOcclusion()<<' '
+                   <<m->NormalStrength()<<' ';
+                V3(out,m->EmissiveColor());
+                out<<' '<<m->EmissiveStrength()<<' '<<m->UseTexture()<<' '
+                   <<static_cast<int>(m->SurfaceMode())<<' '<<m->AlphaCutoff()<<'\n';
 
                 const auto albedo = AssetManager::GetTexturePath(m->GetTexture()).generic_string();
                 const auto normal = AssetManager::GetTexturePath(m->GetNormalTexture()).generic_string();
@@ -99,6 +103,7 @@ namespace NoJob
         for(auto e:scene.GetEntities()) scene.DestroyEntity(e);
 
         Entity current{}; std::uint32_t parentHandle=0;
+        bool materialUseTextureExplicit=false;
         struct ParentRequest{Entity child;std::uint32_t oldParent;};
         std::vector<ParentRequest> parents;
         std::unordered_map<std::uint32_t,Entity> handleMap;
@@ -107,7 +112,7 @@ namespace NoJob
         while(std::getline(in,line))
         {
             std::istringstream s(line); std::string k; s>>k;
-            if(k=="ENTITY"){std::uint64_t id;std::string name;s>>id>>std::quoted(name);current=scene.CreateEntity(name);handleMap[static_cast<std::uint32_t>(id)]=current;}
+            if(k=="ENTITY"){std::uint64_t id;std::string name;s>>id>>std::quoted(name);current=scene.CreateEntity(name);materialUseTextureExplicit=false;handleMap[static_cast<std::uint32_t>(id)]=current;}
             else if(!current) continue;
             else if(k=="TRANSFORM"){auto& c=current.GetComponent<TransformComponent>();ReadV3(s,c.Position);ReadV3(s,c.Rotation);ReadV3(s,c.Scale);}
             else if(k=="PARENT"){s>>parentHandle;if(parentHandle)parents.push_back({current,parentHandle});}
@@ -175,6 +180,21 @@ namespace NoJob
                 // TEXTURES below explicitly restores a real albedo texture when one was saved.
                 m->UseTexture() = false;
                 current.AddComponent<MeshRendererComponent>(m);
+            } 
+            else if(k=="MATERIAL_V2"){
+                auto m=std::make_shared<Material>(*defaultMaterial);
+                glm::vec4 col; bool useTexture=false; int surfaceMode=0;
+                s>>col.r>>col.g>>col.b>>col.a
+                 >>m->Metallic()>>m->Roughness()>>m->AmbientOcclusion()>>m->NormalStrength();
+                ReadV3(s,m->EmissiveColor());
+                s>>m->EmissiveStrength()>>useTexture>>surfaceMode>>m->AlphaCutoff();
+                m->GetColor()=col;
+                m->UseTexture()=useTexture;
+                materialUseTextureExplicit=true;
+                m->SurfaceMode()=static_cast<MaterialSurfaceMode>(surfaceMode);
+                // TEXTURES restores the actual texture objects. The saved checkbox
+                // state remains authoritative instead of being guessed from the path.
+                current.AddComponent<MeshRendererComponent>(m);
             }
             else if(k=="TEXTURES" && current.HasComponent<MeshRendererComponent>()){
                 std::string albedo,normal,metallic,roughness,ao,emissive;
@@ -184,7 +204,10 @@ namespace NoJob
                 auto load=[](const std::string& path)->std::shared_ptr<Texture2D>{
                     return path.empty()?nullptr:AssetManager::LoadTexture(path);
                 };
-                if(!albedo.empty()){m->SetTexture(load(albedo));m->UseTexture()=true;}
+                if(!albedo.empty()){
+                    m->SetTexture(load(albedo));
+                    if(!materialUseTextureExplicit) m->UseTexture()=true;
+                }
                 m->SetNormalTexture(load(normal));
                 m->SetMetallicTexture(load(metallic));
                 m->SetRoughnessTexture(load(roughness));

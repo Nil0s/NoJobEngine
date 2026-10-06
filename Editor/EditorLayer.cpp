@@ -67,6 +67,9 @@ namespace NoJob
         std::thread s_ScriptCompileThread;
         bool s_ScriptsCompiled = false;
         std::uint64_t s_ProjectScriptReloadGeneration = 0;
+        std::atomic_bool s_StandaloneBuildRunning{ false };
+        std::atomic_bool s_StandaloneBuildSucceeded{ false };
+        std::filesystem::path s_LastStandaloneBuildDirectory;
 
         void ScriptLog(std::string message)
         {
@@ -371,6 +374,545 @@ namespace NoJob
             (void)prefix;
             return -1;
 #endif
+        }
+
+        std::string ReadProjectName(const std::filesystem::path& root)
+        {
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
+            {
+                if (entry.path().extension() != ".nojobproject")
+                    continue;
+
+                std::ifstream in(entry.path());
+                std::string header;
+                int version = 0;
+                std::string name;
+                if ((in >> header >> version) &&
+                    header == "NOJOB_PROJECT" &&
+                    (in >> std::quoted(name)) &&
+                    !name.empty())
+                {
+                    return name;
+                }
+            }
+            return root.filename().string().empty()
+                ? std::string("NoJobGame")
+                : root.filename().string();
+        }
+
+        bool CopyDirectoryContents(
+            const std::filesystem::path& source,
+            const std::filesystem::path& destination,
+            std::string& error)
+        {
+            std::error_code ec;
+            if (!std::filesystem::exists(source, ec))
+            {
+                error = "Source directory does not exist: " + source.string();
+                return false;
+            }
+            std::filesystem::create_directories(destination, ec);
+            if (ec) { error = ec.message(); return false; }
+
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     source, std::filesystem::directory_options::skip_permission_denied, ec);
+                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
+            {
+                const auto relative = std::filesystem::relative(it->path(), source, ec);
+                if (ec) break;
+                const auto target = destination / relative;
+                if (it->is_directory(ec))
+                    std::filesystem::create_directories(target, ec);
+                else if (it->is_regular_file(ec))
+                {
+                    std::filesystem::create_directories(target.parent_path(), ec);
+                    std::filesystem::copy_file(
+                        it->path(), target,
+                        std::filesystem::copy_options::overwrite_existing, ec);
+                }
+                if (ec) break;
+            }
+            if (ec) { error = ec.message(); return false; }
+            return true;
+        }
+
+        std::filesystem::path FindBuiltRuntimeExecutable(
+            const std::filesystem::path& buildRoot,
+            const std::wstring& configuration)
+        {
+            const std::vector<std::filesystem::path> candidates = {
+                buildRoot / configuration / "NoJobRuntime.exe",
+                buildRoot / "NoJobRuntime.exe",
+                buildRoot / "Runtime" / configuration / "NoJobRuntime.exe"
+            };
+            for (const auto& candidate : candidates)
+                if (std::filesystem::exists(candidate)) return candidate;
+
+            std::error_code ec;
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     buildRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
+                if (it->is_regular_file(ec) &&
+                    it->path().filename() == "NoJobRuntime.exe")
+                    return it->path();
+            return {};
+        }
+
+        bool IsRuntimeAssetExtension(const std::filesystem::path& path)
+        {
+            std::string ext = path.extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+            static const std::vector<std::string> extensions = {
+                ".nojobscene", ".nojobmat", ".nojobprefab",
+                ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr",
+                ".obj", ".fbx", ".gltf", ".glb", ".dae", ".stl", ".ply", ".3ds", ".blend",
+                ".wav", ".mp3", ".flac"
+            };
+            return std::find(extensions.begin(), extensions.end(), ext) != extensions.end();
+        }
+
+        bool CopyRuntimeAsset(
+            const std::filesystem::path& root,
+            const std::filesystem::path& source,
+            const std::filesystem::path& outputRoot,
+            std::vector<std::filesystem::path>& cooked,
+            std::string& error)
+        {
+            std::error_code ec;
+            if (!std::filesystem::exists(source, ec) || !std::filesystem::is_regular_file(source, ec))
+                return true;
+
+            auto relative = std::filesystem::relative(source, root, ec);
+            if (ec || relative.empty() || relative.native().find(L"..") == 0)
+                return true;
+
+            const auto destination = outputRoot / relative;
+            std::filesystem::create_directories(destination.parent_path(), ec);
+            if (ec) { error = ec.message(); return false; }
+            std::filesystem::copy_file(
+                source, destination,
+                std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) { error = ec.message(); return false; }
+            cooked.push_back(relative);
+            return true;
+        }
+
+        bool CookRuntimeAssets(
+            const std::filesystem::path& root,
+            const std::filesystem::path& outputRoot,
+            std::vector<std::filesystem::path>& cooked,
+            std::string& error)
+        {
+            // The Start Scene is the root of the runtime dependency graph.
+            std::filesystem::path projectFile;
+            std::filesystem::path startSceneRelative;
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
+            {
+                if (entry.path().extension() != ".nojobproject") continue;
+                projectFile = entry.path();
+                std::ifstream in(projectFile);
+                std::string line;
+                while (std::getline(in, line))
+                {
+                    // Current project format stores the StartScene as the third quoted value.
+                    // Prefer a path ending in .nojobscene so this remains tolerant of key names.
+                    const auto first = line.find('"');
+                    const auto last = line.rfind('"');
+                    if (first != std::string::npos && last > first)
+                    {
+                        std::filesystem::path value = line.substr(first + 1, last - first - 1);
+                        if (value.extension() == ".nojobscene")
+                            startSceneRelative = value;
+                    }
+                }
+                break;
+            }
+
+            if (projectFile.empty() || startSceneRelative.empty())
+            {
+                error = "Project file or Start Scene could not be resolved.";
+                return false;
+            }
+
+            const auto startScene = root / startSceneRelative;
+            if (!std::filesystem::exists(startScene))
+            {
+                error = "Start Scene does not exist: " + startScene.string();
+                return false;
+            }
+
+            if (!CopyRuntimeAsset(root, startScene, outputRoot, cooked, error))
+                return false;
+
+            // Scene serializers persist runtime resource paths as text. Resolve every
+            // token/path that points to a real runtime asset inside the project.
+            std::ifstream scene(startScene);
+            std::string contents((std::istreambuf_iterator<char>(scene)),
+                                  std::istreambuf_iterator<char>());
+
+            std::vector<std::filesystem::path> candidates;
+            std::string token;
+            auto flushToken = [&]()
+            {
+                if (token.empty()) return;
+                for (char& c : token) if (c == '\\') c = '/';
+                std::filesystem::path rel(token);
+                if (IsRuntimeAssetExtension(rel))
+                    candidates.push_back(rel);
+                token.clear();
+            };
+
+            bool quoted = false;
+            for (char c : contents)
+            {
+                if (c == '"') { quoted = !quoted; flushToken(); continue; }
+                if (quoted)
+                    token += c;
+                else if (std::isalnum(static_cast<unsigned char>(c)) ||
+                         c=='/' || c=='\\' || c=='.' || c=='_' || c=='-' || c==':' )
+                    token += c;
+                else
+                    flushToken();
+            }
+            flushToken();
+
+            for (const auto& candidate : candidates)
+            {
+                std::filesystem::path source =
+                    candidate.is_absolute() ? candidate : root / candidate;
+                if (!CopyRuntimeAsset(root, source, outputRoot, cooked, error))
+                    return false;
+
+                // Imported text model formats can reference sidecar material/texture
+                // files. Preserve their containing directory's runtime assets.
+                std::string ext = source.extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(),
+                    [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                if (ext == ".obj" || ext == ".gltf" || ext == ".dae")
+                {
+                    for (const auto& sibling :
+                         std::filesystem::directory_iterator(source.parent_path(), ec))
+                    {
+                        if (ec) break;
+                        if (!sibling.is_regular_file(ec)) continue;
+                        const auto siblingExt = sibling.path().extension().string();
+                        if (IsRuntimeAssetExtension(sibling.path()) || siblingExt == ".mtl" ||
+                            siblingExt == ".bin")
+                            if (!CopyRuntimeAsset(root, sibling.path(), outputRoot, cooked, error))
+                                return false;
+                    }
+                }
+            }
+
+            // Deduplicate manifest entries.
+            std::sort(cooked.begin(), cooked.end());
+            cooked.erase(std::unique(cooked.begin(), cooked.end()), cooked.end());
+
+            std::ofstream manifest(outputRoot / "NoJobRuntimeAssets.manifest");
+            manifest << "NOJOB_RUNTIME_ASSETS 1\n";
+            for (const auto& path : cooked)
+                manifest << path.generic_string() << '\n';
+            return true;
+        }
+
+        bool ValidateStandalonePackage(
+            const std::filesystem::path& outputRoot,
+            const std::string& projectName,
+            std::string& error)
+        {
+            const std::vector<std::filesystem::path> required = {
+                outputRoot / (projectName + ".exe"),
+                outputRoot / "NoJobRuntimeAssets.manifest",
+                outputRoot / "Assets"
+            };
+            for (const auto& path : required)
+            {
+                if (!std::filesystem::exists(path))
+                {
+                    error = "Missing runtime package item: " + path.string();
+                    return false;
+                }
+            }
+
+            // Development/source artifacts must never leak into a final package.
+            const std::vector<std::filesystem::path> forbiddenDirectories = {
+                outputRoot / "out",
+                outputRoot / "Editor",
+                outputRoot / "Engine",
+                outputRoot / ".git",
+                outputRoot / ".vs"
+            };
+            for (const auto& path : forbiddenDirectories)
+            {
+                if (std::filesystem::exists(path))
+                {
+                    error = "Development directory leaked into package: " + path.string();
+                    return false;
+                }
+            }
+
+            std::error_code ec;
+            bool hasProjectFile = false;
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     outputRoot,
+                     std::filesystem::directory_options::skip_permission_denied, ec);
+                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
+            {
+                if (!it->is_regular_file(ec)) continue;
+                const auto ext = it->path().extension().string();
+                if (ext == ".nojobproject") hasProjectFile = true;
+                if (ext == ".cpp" || ext == ".h" || ext == ".hpp" ||
+                    ext == ".pdb" || ext == ".ilk" || ext == ".obj")
+                {
+                    error = "Development/source file leaked into package: " +
+                        it->path().string();
+                    return false;
+                }
+            }
+            if (!hasProjectFile)
+            {
+                error = "No .nojobproject file found in package.";
+                return false;
+            }
+            return true;
+        }
+
+        bool BuildStandalone(const std::wstring& configuration)
+        {
+            if (s_StandaloneBuildRunning.exchange(true))
+            {
+                ScriptLog("[Build] Standalone build is already running.");
+                return false;
+            }
+
+            const auto root = AssetManager::GetProjectRoot();
+            const auto cmake = FindCMakeExecutable();
+            if (cmake.empty())
+            {
+                ScriptLog("[Build] CMake was not found.");
+                s_StandaloneBuildRunning = false;
+                return false;
+            }
+
+            const std::string projectName = ReadProjectName(root);
+            const auto buildRoot = root / "out" / "StandaloneBuild";
+            const auto outputRoot = root / "Builds" / projectName;
+            s_StandaloneBuildSucceeded = false;
+
+            if (s_ScriptCompileThread.joinable())
+                s_ScriptCompileThread.join();
+
+            s_ScriptCompileThread = std::thread(
+                [root, cmake, buildRoot, outputRoot, projectName, configuration]()
+                {
+                    ScriptLog("[Build] Building standalone " +
+                        std::string(configuration.begin(), configuration.end()) + "...");
+
+                    const int configureCode = RunProcessToScriptConsole(
+                        cmake, {L"-S", root.wstring(), L"-B", buildRoot.wstring()},
+                        "[Build/CMake] ");
+                    if (configureCode != 0)
+                    {
+                        ScriptLog("[Build] CMake configure failed.");
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    const int buildCode = RunProcessToScriptConsole(
+                        cmake,
+                        {L"--build", buildRoot.wstring(), L"--config", configuration,
+                         L"--target", L"NoJobRuntime"},
+                        "[Build/CMake] ");
+                    if (buildCode != 0)
+                    {
+                        ScriptLog("[Build] NoJobRuntime build failed.");
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    // Build the project scripts in the SAME configuration as the
+                    // standalone runtime. A previously compiled Debug DLL must not
+                    // be reused for Release, and a stale Release DLL must not be
+                    // silently packaged.
+                    const int scriptsBuildCode = RunProcessToScriptConsole(
+                        cmake,
+                        {L"--build", buildRoot.wstring(), L"--config", configuration,
+                         L"--target", L"NoJobProjectScripts"},
+                        "[Build/Scripts] ");
+                    if (scriptsBuildCode != 0)
+                    {
+                        ScriptLog("[Build] ProjectScripts " +
+                            std::string(configuration.begin(), configuration.end()) +
+                            " build failed.");
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    const auto runtimeExe =
+                        FindBuiltRuntimeExecutable(buildRoot, configuration);
+                    if (runtimeExe.empty())
+                    {
+                        ScriptLog("[Build] NoJobRuntime.exe was not found after build.");
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    std::error_code ec;
+                    if (std::filesystem::exists(outputRoot, ec))
+                    {
+                        ec.clear();
+                        std::filesystem::remove_all(outputRoot, ec);
+                        if (ec)
+                        {
+                            ScriptLog("[Build] Could not clean previous output: " + ec.message());
+                            ScriptLog("[Build] Close the previous game EXE/Explorer handles and retry.");
+                            s_StandaloneBuildRunning = false;
+                            return;
+                        }
+                    }
+
+                    std::filesystem::create_directories(outputRoot, ec);
+                    if (ec)
+                    {
+                        ScriptLog("[Build] Could not create output: " + ec.message());
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    const auto gameExe = outputRoot / (projectName + ".exe");
+                    std::filesystem::copy_file(
+                        runtimeExe, gameExe,
+                        std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec)
+                    {
+                        ScriptLog("[Build] Could not copy runtime executable: " + ec.message());
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    std::string copyError;
+                    std::vector<std::filesystem::path> cookedAssets;
+                    if (!CookRuntimeAssets(root, outputRoot, cookedAssets, copyError))
+                    {
+                        ScriptLog("[Build] Asset cooking failed: " + copyError);
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+                    ScriptLog("[Build] Cooked " +
+                        std::to_string(cookedAssets.size()) + " runtime asset(s).");
+
+                    // Copy the project file so Runtime can discover Name,
+                    // AssetDirectory and StartScene inside the standalone folder.
+                    for (const auto& entry : std::filesystem::directory_iterator(root, ec))
+                    {
+                        if (entry.path().extension() != ".nojobproject") continue;
+                        std::filesystem::copy_file(
+                            entry.path(), outputRoot / entry.path().filename(),
+                            std::filesystem::copy_options::overwrite_existing, ec);
+                        if (ec)
+                        {
+                            ScriptLog("[Build] Project config copy failed: " + ec.message());
+                            s_StandaloneBuildRunning = false;
+                            return;
+                        }
+                        break;
+                    }
+
+                    // Block 3 intentionally copies the currently compiled project
+                    // scripts. Block 4 will cook/package only required runtime assets.
+                    const auto scriptsSource = buildRoot;
+                    if (std::filesystem::exists(scriptsSource))
+                    {
+                        const auto scriptsDestination =
+                            outputRoot / "RuntimeData" / "ProjectScripts";
+                        std::filesystem::create_directories(scriptsDestination, ec);
+                        if (ec)
+                        {
+                            ScriptLog("[Build] ProjectScripts output failed: " + ec.message());
+                            s_StandaloneBuildRunning = false;
+                            return;
+                        }
+
+                        const bool releaseBuild = configuration == L"Release";
+                        std::filesystem::path selectedDll;
+                        std::filesystem::file_time_type selectedTime{};
+
+                        for (auto it = std::filesystem::recursive_directory_iterator(
+                                 scriptsSource,
+                                 std::filesystem::directory_options::skip_permission_denied,
+                                 ec);
+                             !ec && it != std::filesystem::recursive_directory_iterator();
+                             ++it)
+                        {
+                            if (!it->is_regular_file(ec) ||
+                                it->path().extension() != ".dll")
+                                continue;
+
+                            const std::string stem = it->path().stem().string();
+                            if (stem.rfind("NoJobProjectScripts_", 0) != 0)
+                                continue;
+
+                            // CMake DEBUG_POSTFIX is "d". Do not mix a Debug
+                            // ProjectScripts DLL with a Release runtime.
+                            const bool debugDll = !stem.empty() && stem.back() == 'd';
+                            if (releaseBuild == debugDll)
+                                continue;
+
+                            const auto time =
+                                std::filesystem::last_write_time(it->path(), ec);
+                            if (ec) { ec.clear(); continue; }
+                            if (selectedDll.empty() || time > selectedTime)
+                            {
+                                selectedDll = it->path();
+                                selectedTime = time;
+                            }
+                        }
+
+                        if (!selectedDll.empty())
+                        {
+                            std::filesystem::copy_file(
+                                selectedDll,
+                                scriptsDestination / selectedDll.filename(),
+                                std::filesystem::copy_options::overwrite_existing,
+                                ec);
+                            if (ec)
+                            {
+                                ScriptLog("[Build] ProjectScripts DLL copy failed: " +
+                                    ec.message());
+                                s_StandaloneBuildRunning = false;
+                                return;
+                            }
+                            ScriptLog("[Build] Packaged ProjectScripts: " +
+                                selectedDll.filename().string());
+                        }
+                        else
+                        {
+                            ScriptLog("[Build] No matching " +
+                                std::string(releaseBuild ? "Release" : "Debug") +
+                                " ProjectScripts DLL found; package will contain no project scripts.");
+                        }
+                    }
+
+                    std::string validationError;
+                    if (!ValidateStandalonePackage(
+                            outputRoot, projectName, validationError))
+                    {
+                        ScriptLog("[Build] Package validation FAILED: " + validationError);
+                        s_StandaloneBuildRunning = false;
+                        return;
+                    }
+
+                    s_LastStandaloneBuildDirectory = outputRoot;
+                    s_StandaloneBuildSucceeded = true;
+                    ScriptLog("[Build] Package validation passed.");
+                    ScriptLog("[Build] Package layout: Assets + RuntimeData + manifest (no development out folder).");
+                    ScriptLog("[Build] Standalone build completed: " + outputRoot.string());
+                    s_StandaloneBuildRunning = false;
+                });
+            return true;
         }
 
         bool CompileProjectScripts()
@@ -1322,6 +1864,10 @@ return{};}
 
     void EditorLayer::Shutdown()
     {
+#ifdef _WIN32
+        if (s_ScriptCompileThread.joinable())
+            s_ScriptCompileThread.join();
+#endif
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -1929,6 +2475,20 @@ return{};}
                 ImGui::EndDisabled();
                 if (s_ScriptCompileRunning.load())
                     ImGui::TextDisabled("Compiling scripts...");
+                ImGui::Separator();
+                ImGui::BeginDisabled(
+                    s_ScriptCompileRunning.load() || s_StandaloneBuildRunning.load());
+                if (ImGui::MenuItem("Build Standalone (Debug)"))
+                    BuildStandalone(L"Debug");
+                if (ImGui::MenuItem("Build Standalone (Release)"))
+                    BuildStandalone(L"Release");
+                ImGui::EndDisabled();
+                if (s_StandaloneBuildRunning.load())
+                    ImGui::TextDisabled("Building standalone...");
+                if (s_StandaloneBuildSucceeded.load() &&
+                    !s_LastStandaloneBuildDirectory.empty())
+                    ImGui::TextDisabled("Last build: %s",
+                        s_LastStandaloneBuildDirectory.string().c_str());
                 ImGui::Separator();
                 ImGui::TextDisabled(s_ProjectScriptsModule
                     ? "ProjectScripts.dll loaded"

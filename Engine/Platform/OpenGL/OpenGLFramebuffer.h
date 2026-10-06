@@ -13,6 +13,7 @@ namespace NoJob
         void Bind() override;
         void Unbind() override;
         void Resize(std::uint32_t width, std::uint32_t height) override;
+        void PresentToDefault(std::uint32_t width, std::uint32_t height) override;
 
         std::uint32_t GetColorAttachmentRendererID() const override
         {

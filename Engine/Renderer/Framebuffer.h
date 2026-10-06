@@ -44,6 +44,7 @@ namespace NoJob
         virtual void Bind() = 0;
         virtual void Unbind() = 0;
         virtual void Resize(std::uint32_t width, std::uint32_t height) = 0;
+        virtual void PresentToDefault(std::uint32_t width, std::uint32_t height) = 0;
 
         virtual std::uint32_t GetColorAttachmentRendererID() const = 0;
         virtual const FramebufferSpecification& GetSpecification() const = 0;

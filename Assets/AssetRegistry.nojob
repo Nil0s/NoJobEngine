@@ -2,6 +2,8 @@ NOJOB_ASSET_REGISTRY 2
 5294675793343382492 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Materials/.gitkeep" ".gitkeep"
 4698448656994319197 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Models/.gitkeep" ".gitkeep"
 18312952615067577229 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scenes/.gitkeep" ".gitkeep"
+303795708778912237 4 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scenes/CurrentScene.nojobscene" "CurrentScene"
+10295234719365922441 4 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scenes/GraphicsValidation.nojobscene" "GraphicsValidation"
 6538779658021439931 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/.gitkeep" ".gitkeep"
 4439929261355574800 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Textures/.gitkeep" ".gitkeep"
 8503199639174529275 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/PlayerMovement.cpp" "PlayerMovement"

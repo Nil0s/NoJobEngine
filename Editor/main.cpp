@@ -1,4 +1,5 @@
 #include "Engine/Core/Window.h"
+#include "Engine/Asset/AssetManager.h"
 #include "Engine/Physics/PhysicsSystem.h"
 #include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Framebuffer.h"
@@ -642,18 +643,20 @@ int main()
 
             if (!isPlaying && editor.ConsumeSaveSceneRequest())
             {
-                std::filesystem::create_directories("Assets/Scenes");
-                NoJob::SceneSerializer::Save(editorScene, "Assets/Scenes/CurrentScene.nojobscene");
-                std::cout << "[Scene] Saved Assets/Scenes/CurrentScene.nojobscene\n";
+                const auto scenePath = NoJob::AssetManager::GetProjectRoot() / "Assets/Scenes/CurrentScene.nojobscene";
+                std::filesystem::create_directories(scenePath.parent_path());
+                NoJob::SceneSerializer::Save(editorScene, scenePath);
+                std::cout << "[Scene] Saved " << scenePath.string() << "\n";
             }
 
             if (!isPlaying && editor.ConsumeLoadSceneRequest())
             {
-                if (NoJob::SceneSerializer::Load(editorScene, "Assets/Scenes/CurrentScene.nojobscene", cubeMesh, cubeMaterial))
+                const auto scenePath = NoJob::AssetManager::GetProjectRoot() / "Assets/Scenes/CurrentScene.nojobscene";
+                if (NoJob::SceneSerializer::Load(editorScene, scenePath, cubeMesh, cubeMaterial))
                 {
                     activeScene = &editorScene;
                     editor.SetScene(activeScene);
-                    std::cout << "[Scene] Loaded Assets/Scenes/CurrentScene.nojobscene\n";
+                    std::cout << "[Scene] Loaded " << scenePath.string() << "\n";
                 }
             }
 
@@ -699,7 +702,9 @@ int main()
                 NoJob::SpotLightComponent sl;sl.Intensity=4.0f;sl.Range=12.0f;sl.CastShadows=true;spotE.AddComponent<NoJob::SpotLightComponent>(sl);
 
                 activeScene=&editorScene; editor.SetScene(activeScene);
-                NoJob::SceneSerializer::Save(editorScene,"Assets/Scenes/GraphicsValidation.nojobscene");
+                const auto graphicsScenePath = NoJob::AssetManager::GetProjectRoot() / "Assets/Scenes/GraphicsValidation.nojobscene";
+                std::filesystem::create_directories(graphicsScenePath.parent_path());
+                NoJob::SceneSerializer::Save(editorScene, graphicsScenePath);
                 std::cout<<"[Graphics] Validation scene generated and saved.\n";
             }
 

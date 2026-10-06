@@ -10,11 +10,13 @@ a first triangle into a usable editor/runtime foundation with scenes,
 assets, prefabs, physics, PBR rendering, skeletal animation, GPU
 skinning and an evolving Unity-style component workflow.
 
-> **Current milestone: NoJobEngine V1.6 --- Audio & VFX — Complete and Validated**\
-> V1.0--V1.6 are complete and validated. The next development milestone
-> is V1.7 --- Standalone Build.
+> **Current milestone: NoJobEngine V1.7 --- Standalone Build ---
+> Complete and Validated**\
+> V1.0--V1.7 are complete and validated. The next development milestone
+> is V1.8 --- AI Navigation & Gameplay AI.
 
-**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio · CMake**
+**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
+CMake**
 
 ------------------------------------------------------------------------
 
@@ -52,17 +54,28 @@ editor.
 ### Rendering & graphics settings
 
 The graphics validation scene is used to test PBR surfaces, emissive
-rendering, multiple light types, configurable shadows, HDRI environments,
-image-based lighting and post-processing. V1.5 also introduces a dedicated
-Renderer Profiler for inspecting frame, CPU/GPU, geometry and shadow metrics.
+rendering, multiple light types, configurable shadows, HDRI
+environments, image-based lighting and post-processing. V1.5 also
+introduces a dedicated Renderer Profiler for inspecting frame, CPU/GPU,
+geometry and shadow metrics.
 
 ### Audio & VFX
 
-V1.6 adds an editor-integrated audio and particle workflow. Audio clips can
-be assigned from the Project panel, previewed from the Inspector and used as
-2D or spatial 3D sources. Particle systems expose emitter, lifetime,
-randomization, shape, color, size, texture and blending controls directly in
-the editor, with Scene gizmos for spatial authoring.
+V1.6 adds an editor-integrated audio and particle workflow. Audio clips
+can be assigned from the Project panel, previewed from the Inspector and
+used as 2D or spatial 3D sources. Particle systems expose emitter,
+lifetime, randomization, shape, color, size, texture and blending
+controls directly in the editor, with Scene gizmos for spatial
+authoring.
+
+### Standalone builds
+
+V1.7 turns the editor/runtime separation into a complete Windows
+standalone workflow. NoJobEditor can build Debug or Release games
+directly from the **Build** menu, compile the runtime and native project
+scripts in the same configuration, cook runtime assets and produce a
+clean distributable folder that runs independently from Visual Studio
+and NoJobEditor.
 
 ### 3D model & material import
 
@@ -165,6 +178,8 @@ as a single action.
 -   Audio clip drag & drop and Inspector preview
 -   Spatial-audio range/listener gizmos
 -   Particle-system authoring and emitter-shape gizmos
+-   Build Standalone (Debug / Release) directly from the editor
+-   asynchronous standalone build output in the editor Console
 
 ### Asset pipeline
 
@@ -183,6 +198,9 @@ as a single action.
 -   Multiple materials per mesh
 -   Embedded/external FBX texture handling
 -   Alpha clip and transparent materials
+-   runtime asset cooking from the configured Start Scene
+-   standalone runtime asset manifest generation
+-   clean packaged `RuntimeData` for native project scripts
 
 ### Animation
 
@@ -249,10 +267,17 @@ as a single action.
 -   Prefab Apply/Revert
 -   Camera components
 -   Directional, point and spot light components
+-   dedicated `NoJobRuntime` executable without editor/ImGui
+    dependencies
+-   project-relative Start Scene loading
+-   standalone native C++ script loading from packaged DLLs
+-   Debug and Release standalone builds
+-   final package validation against development/source artifacts
 
 ### Audio
 
-Powered by **miniaudio** behind NoJobEngine's own `AudioEngine` abstraction:
+Powered by **miniaudio** behind NoJobEngine's own `AudioEngine`
+abstraction:
 
 -   `AudioSourceComponent` and `AudioListenerComponent`;
 -   WAV, MP3 and FLAC playback;
@@ -281,7 +306,8 @@ Powered by **miniaudio** behind NoJobEngine's own `AudioEngine` abstraction:
 -   Alpha and Additive blending;
 -   Scene emitter-shape gizmos;
 -   hierarchy/world-transform aware emitters;
--   GPU-instanced rendering with approximately one draw call per active emitter;
+-   GPU-instanced rendering with approximately one draw call per active
+    emitter;
 -   particle triangle/draw-call integration with Renderer Profiler;
 -   explicit renderer resource shutdown;
 -   Scene and Prefab persistence.
@@ -302,7 +328,7 @@ Powered by **Jolt Physics**:
 ## Technology
 
   Area                          Technology
-  ----------------------------- -------------------
+  ----------------------------- ---------------------------------------
   Language                      C++20
   Build system                  CMake
   Graphics                      OpenGL 4.6 / GLAD
@@ -365,6 +391,40 @@ simply a collection of hard-coded file paths.
 
 ------------------------------------------------------------------------
 
+## Standalone build pipeline
+
+V1.7 introduces a dedicated runtime executable and a build pipeline
+owned by NoJobEditor:
+
+``` text
+NoJobEditor
+    ↓
+Build Standalone (Debug / Release)
+    ↓
+CMake builds NoJobRuntime
+    +
+NoJobProjectScripts
+    ↓
+Start Scene dependency cooking
+    ↓
+Package validation
+    ↓
+Builds/<ProjectName>/
+    ├── <ProjectName>.exe
+    ├── <Project>.nojobproject
+    ├── NoJobRuntimeAssets.manifest
+    ├── Assets/
+    └── RuntimeData/
+        └── ProjectScripts/
+```
+
+The generated game runs independently from Visual Studio and the editor.
+Development folders and C++ source files are excluded from the
+distributable, while native project scripts are shipped as the matching
+Debug/Release DLL.
+
+------------------------------------------------------------------------
+
 ## Typical workflow
 
 ``` text
@@ -391,6 +451,10 @@ Hot reload & configure script fields
 Save scene
         ↓
 Play / Pause / Stop
+        ↓
+Build Standalone
+        ↓
+Run packaged game
 ```
 
 The editor is designed to keep this workflow familiar to developers
@@ -404,9 +468,9 @@ underlying implementation to be understandable.
 V1.4 introduces a complete **Native Scripting V2** workflow for writing
 gameplay code directly in C++ while keeping iteration inside the editor.
 
-Project scripts can be created from the Project panel, opened directly in
-Visual Studio, compiled from NoJobEngine and hot-reloaded without restarting
-the editor.
+Project scripts can be created from the Project panel, opened directly
+in Visual Studio, compiled from NoJobEngine and hot-reloaded without
+restarting the editor.
 
 The current workflow includes:
 
@@ -418,8 +482,10 @@ The current workflow includes:
 -   direct opening of scripts in Visual Studio;
 -   in-editor script compilation with `Ctrl+Shift+B`;
 -   asynchronous compilation with build output in the editor Console;
--   CMake/MSBuild incremental builds that recompile changed scripts only;
--   generation-versioned DLL/PDB outputs for reliable repeated hot reloads;
+-   CMake/MSBuild incremental builds that recompile changed scripts
+    only;
+-   generation-versioned DLL/PDB outputs for reliable repeated hot
+    reloads;
 -   DLL discovery, unloading and runtime reloading;
 -   Inspector-exposed native fields for `float`, `int`, `bool` and
     `glm::vec3`;
@@ -427,10 +493,11 @@ The current workflow includes:
 -   real C++ member values synchronized with the Inspector;
 -   Scene/Prefab persistence for exposed script values;
 -   Undo/Redo integration for Inspector field editing;
--   hot-reload field migration that preserves compatible values when script
-    definitions change.
+-   hot-reload field migration that preserves compatible values when
+    script definitions change.
 
-A typical project script can expose real C++ members directly to the editor:
+A typical project script can expose real C++ members directly to the
+editor:
 
 ``` cpp
 class PlayerMovement final : public Script
@@ -457,9 +524,9 @@ NOJOB_REGISTER_SCRIPT(PlayerMovement, "Gameplay",
     NOJOB_FIELD(PlayerMovement, Direction))
 ```
 
-After compilation, these members appear in the Inspector and remain the actual
-C++ values used by the runtime script. Compatible Inspector values are
-preserved across recompilation and hot reload.
+After compilation, these members appear in the Inspector and remain the
+actual C++ values used by the runtime script. Compatible Inspector
+values are preserved across recompilation and hot reload.
 
 ------------------------------------------------------------------------
 
@@ -492,6 +559,26 @@ take longer than subsequent builds.
 
 > Generated folders such as `out/`, `.vs/` and IDE-specific build files
 > should not be committed.
+
+### Building a standalone game
+
+Once NoJobEditor is running, standalone builds are created from:
+
+``` text
+Build → Build Standalone (Debug)
+Build → Build Standalone (Release)
+```
+
+The resulting distributable is written to:
+
+``` text
+Builds/<ProjectName>/
+```
+
+The build pipeline compiles `NoJobRuntime` and `NoJobProjectScripts`
+using the same configuration, cooks the Start Scene runtime
+dependencies, packages only the required native script DLL and validates
+that development/source artifacts have not leaked into the distribution.
 
 ------------------------------------------------------------------------
 
@@ -558,22 +645,26 @@ Completed and validated.
 Completed and validated.
 
 -   HDRI environment loading and sky rendering.
--   Physical image-based lighting using irradiance, GGX prefiltering and a
-    BRDF integration LUT.
--   Improved PBR environment reflections driven by metallic and roughness.
--   Shared procedural/HDRI environment controls with intensity and rotation.
+-   Physical image-based lighting using irradiance, GGX prefiltering and
+    a BRDF integration LUT.
+-   Improved PBR environment reflections driven by metallic and
+    roughness.
+-   Shared procedural/HDRI environment controls with intensity and
+    rotation.
 -   Configurable IBL, diffuse IBL and specular IBL strengths.
 -   Directional, spot and point-light shadow improvements.
 -   Low / Medium / High shadow quality presets.
 -   Dedicated **Renderer Profiler** editor window.
--   FPS, frame time, Scene CPU/GPU time, draw-call and triangle statistics.
+-   FPS, frame time, Scene CPU/GPU time, draw-call and triangle
+    statistics.
 -   Shadow-pass, shadow draw-call and shadow-triangle statistics.
 -   Non-blocking OpenGL GPU timing queries.
 -   Cached HDRI environment resources.
--   Camera Preview shadow-map reuse to avoid rebuilding shadow maps twice in
-    the same frame.
+-   Camera Preview shadow-map reuse to avoid rebuilding shadow maps
+    twice in the same frame.
 -   Reduced redundant world-transform work during rendering.
--   Restored OpenGL framebuffer/viewport state after environment precomputation.
+-   Restored OpenGL framebuffer/viewport state after environment
+    precomputation.
 -   Safe `stb_image` vertical-flip state restoration after HDR loading.
 -   Project-relative HDRI paths for portable in-project environments.
 
@@ -588,32 +679,52 @@ Completed and validated.
 -   2D and spatial 3D audio with Spatial Blend.
 -   world-space AudioSource and AudioListener synchronization.
 -   Min / Max Distance attenuation and Doppler controls.
--   Project-panel audio assets, drag & drop assignment and Inspector preview.
+-   Project-panel audio assets, drag & drop assignment and Inspector
+    preview.
 -   spatial-audio range and listener-direction gizmos.
 -   Scene and Prefab persistence for audio.
 -   ParticleSystem component and runtime CPU simulation.
 -   Point, Sphere and Cone emitters with editor gizmos.
--   lifetime, speed, size, gravity, emission and maximum-particle controls.
+-   lifetime, speed, size, gravity, emission and maximum-particle
+    controls.
 -   randomized lifetime, speed and size.
 -   color and size evolution over particle lifetime.
 -   particle textures with Alpha / Additive blending.
 -   camera-facing particle billboards.
--   GPU-instanced particle rendering, reducing particle rendering to roughly
-    one draw call per active emitter.
+-   GPU-instanced particle rendering, reducing particle rendering to
+    roughly one draw call per active emitter.
 -   particle statistics integrated with Renderer Profiler.
--   explicit particle-renderer shutdown to safely release OpenGL resources.
+-   explicit particle-renderer shutdown to safely release OpenGL
+    resources.
 -   Scene and Prefab persistence for VFX.
 -   final Audio/VFX regression pass completed successfully.
+
+### ✅ V1.7 --- Standalone Build
+
+Completed and validated.
+
+-   dedicated `NoJobRuntime` executable separated from NoJobEditor;
+-   `.nojobproject` discovery and project-relative Start Scene loading;
+-   Primary Camera driven standalone rendering;
+-   standalone scene, physics, audio and particle/VFX runtime;
+-   material/texture state persistence through `MATERIAL_V2`;
+-   native C++ project scripts working in standalone builds;
+-   Build Standalone (Debug / Release) directly from NoJobEditor;
+-   asynchronous CMake build output in the editor Console;
+-   project-name based output under `Builds/<ProjectName>/`;
+-   Start Scene dependency-based runtime asset cooking;
+-   `NoJobRuntimeAssets.manifest` generation;
+-   clean `RuntimeData/ProjectScripts` packaging without C++ source
+    code;
+-   packaged script discovery from serialized `SCRIPT_V2` scene data;
+-   matching Debug/Release compilation for Runtime and ProjectScripts;
+-   exclusion of PDB/LIB/OBJ and other development artifacts;
+-   automatic standalone package validation;
+-   final Debug and Release regression passes completed successfully.
 
 ------------------------------------------------------------------------
 
 ## Roadmap
-
-### V1.7 --- Standalone Build
-
--   Start Scene and runtime-only executable.
--   Asset packaging and runtime configuration.
--   Standalone Windows build without the editor.
 
 ### V1.8 --- AI Navigation & Gameplay AI
 
@@ -680,7 +791,7 @@ trained directly inside the C++ engine.
 -   Vulkan backend.
 -   Terrain.
 -   Networking.
--   Asset cooking.
+-   More advanced asset cooking, compression and build profiles.
 -   Dedicated profiling tools.
 -   Animation state machines, transitions and blend trees.
 -   More advanced scripting/hot reload.
@@ -710,7 +821,9 @@ It covers problems across:
 -   audio-engine abstraction and spatial audio;
 -   particle simulation, VFX tooling and GPU instancing;
 -   engine architecture;
--   editor/runtime design.
+-   editor/runtime design;
+-   standalone runtime architecture, asset cooking and release
+    packaging.
 
 The development approach is intentionally iterative: **build a system,
 expose it through the editor, validate it end-to-end, and then improve

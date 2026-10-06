@@ -233,6 +233,18 @@ namespace NoJob
         glBindFramebuffer(GL_FRAMEBUFFER,0);
     }
 
+    void OpenGLFramebuffer::PresentToDefault(std::uint32_t width, std::uint32_t height)
+    {
+        if (!m_PostProcessFBO || width == 0 || height == 0) return;
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_PostProcessFBO);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(
+            0, 0, static_cast<GLint>(m_Specification.Width), static_cast<GLint>(m_Specification.Height),
+            0, 0, static_cast<GLint>(width), static_cast<GLint>(height),
+            GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     void OpenGLFramebuffer::Resize(std::uint32_t width,std::uint32_t height)
     {
         // Docking/minimize can briefly report invalid sizes. Never recreate GL

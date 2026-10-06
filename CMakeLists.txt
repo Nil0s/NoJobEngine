@@ -239,3 +239,14 @@ endif()
 
 set_target_properties(NoJobEditor PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# V1.7 Standalone Build foundation: runtime-only executable.
+# This target contains no Dear ImGui/editor code and boots the project's Start Scene.
+add_executable(NoJobRuntime
+    Runtime/main.cpp)
+target_link_libraries(NoJobRuntime PRIVATE NoJobEngine)
+set_target_properties(NoJobRuntime PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+if(MSVC)
+    target_compile_options(NoJobRuntime PRIVATE /W4 /permissive-)
+endif()
