@@ -79,6 +79,7 @@ namespace NoJob
         void DrawConsole();
         void DrawProjectPanel();
         void DrawGraphicsSettings();
+        void DrawRendererProfiler();
         void DrawComponentTools();
         bool HierarchyMatchesFilter(Entity entity) const;
         bool IsMultiSelected(Entity entity) const;
@@ -144,6 +145,7 @@ namespace NoJob
         bool m_LoadSceneRequested = false;
         bool m_GraphicsTestSceneRequested = false;
         bool m_ShowGraphicsSettings = true;
+        bool m_ShowRendererProfiler = true;
         FramebufferSpecification m_GraphicsSettings{};
 
         static constexpr std::size_t MaxHistoryEntries = 64;

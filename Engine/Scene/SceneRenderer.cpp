@@ -2,6 +2,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/VertexArray.h"
+#include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/Texture.h"
@@ -13,6 +15,10 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <filesystem>
+#include <iostream>
+#include <chrono>
+#include <stb_image.h>
 
 namespace NoJob
 {
@@ -27,6 +33,22 @@ namespace NoJob
             GLuint SkyVAO = 0;
             std::shared_ptr<Shader> DepthShader;
             std::shared_ptr<Shader> SkyShader;
+
+            // Renderer V3 environment resources.
+            GLuint Environment = 0;
+            GLuint Irradiance = 0;
+            GLuint Prefilter = 0;
+            GLuint BRDFLUT = 0;
+            GLuint CaptureFBO = 0;
+            GLuint CaptureRBO = 0;
+            std::string LoadedEnvironmentPath;
+            std::uint32_t LoadedEnvironmentResolution = 0;
+            bool EnvironmentReady = false;
+
+            int AllocatedShadowQuality = -1;
+            GLuint GPUQueries[3]{0,0,0};
+            std::uint32_t GPUQueryWrite = 0;
+            bool GPUQueryIssued[3]{false,false,false};
             glm::mat4 DirectionalMatrix{1.0f};
             glm::mat4 SpotMatrix{1.0f};
             glm::vec3 PointPosition{0.0f};
@@ -42,6 +64,63 @@ namespace NoJob
             return resources;
         }
 
+        FramebufferSpecification& RendererSettings()
+        {
+            static FramebufferSpecification settings;
+            return settings;
+        }
+
+
+        RendererStatistics& Statistics()
+        {
+            static RendererStatistics statistics;
+            return statistics;
+        }
+
+        std::uint64_t MeshIndexCount(const std::shared_ptr<Mesh>& mesh)
+        {
+            if (!mesh || !mesh->GetVertexArray() ||
+                !mesh->GetVertexArray()->GetIndexBuffer())
+                return 0;
+            return mesh->GetVertexArray()->GetIndexBuffer()->GetCount();
+        }
+
+        void BeginGPUFrameQuery()
+        {
+            auto& r = Shadows();
+            if (r.GPUQueries[0] == 0)
+                glGenQueries(3, r.GPUQueries);
+
+            // Read a result only when OpenGL says it is ready. This avoids
+            // stalling the CPU just to display profiler information.
+            const std::uint32_t read = (r.GPUQueryWrite + 1) % 3;
+            if (r.GPUQueryIssued[read])
+            {
+                GLint available = GL_FALSE;
+                glGetQueryObjectiv(
+                    r.GPUQueries[read], GL_QUERY_RESULT_AVAILABLE, &available);
+                if (available == GL_TRUE)
+                {
+                    GLuint64 nanoseconds = 0;
+                    glGetQueryObjectui64v(
+                        r.GPUQueries[read], GL_QUERY_RESULT, &nanoseconds);
+                    Statistics().GPUTimeMs =
+                        static_cast<float>(nanoseconds) / 1000000.0f;
+                    Statistics().GPUTimeValid = true;
+                    r.GPUQueryIssued[read] = false;
+                }
+            }
+            glBeginQuery(GL_TIME_ELAPSED, r.GPUQueries[r.GPUQueryWrite]);
+        }
+
+        void EndGPUFrameQuery()
+        {
+            auto& r = Shadows();
+            glEndQuery(GL_TIME_ELAPSED);
+            r.GPUQueryIssued[r.GPUQueryWrite] = true;
+            r.GPUQueryWrite = (r.GPUQueryWrite + 1) % 3;
+        }
+
         glm::vec3 WorldPosition(const glm::mat4& world)
         {
             return glm::vec3(world[3]);
@@ -55,36 +134,350 @@ namespace NoJob
                                     : glm::vec3(0.0f, 0.0f, -1.0f);
         }
 
+
+        GLuint CompileEnvironmentProgram(
+            const char* vertexSource, const char* fragmentSource)
+        {
+            auto compile=[](GLenum type,const char* source)->GLuint
+            {
+                GLuint shader=glCreateShader(type);
+                glShaderSource(shader,1,&source,nullptr);
+                glCompileShader(shader);
+                GLint ok=GL_FALSE;
+                glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
+                if(ok!=GL_TRUE)
+                {
+                    GLint length=0;
+                    glGetShaderiv(shader,GL_INFO_LOG_LENGTH,&length);
+                    std::string log(static_cast<std::size_t>(length),'\0');
+                    glGetShaderInfoLog(shader,length,nullptr,log.data());
+                    glDeleteShader(shader);
+                    throw std::runtime_error(
+                        "Renderer V3 environment shader compile failed: "+log);
+                }
+                return shader;
+            };
+            GLuint vs=compile(GL_VERTEX_SHADER,vertexSource);
+            GLuint fs=compile(GL_FRAGMENT_SHADER,fragmentSource);
+            GLuint program=glCreateProgram();
+            glAttachShader(program,vs);glAttachShader(program,fs);
+            glLinkProgram(program);
+            glDeleteShader(vs);glDeleteShader(fs);
+            GLint ok=GL_FALSE;glGetProgramiv(program,GL_LINK_STATUS,&ok);
+            if(ok!=GL_TRUE)
+            {
+                GLint length=0;glGetProgramiv(program,GL_INFO_LOG_LENGTH,&length);
+                std::string log(static_cast<std::size_t>(length),'\0');
+                glGetProgramInfoLog(program,length,nullptr,log.data());
+                glDeleteProgram(program);
+                throw std::runtime_error(
+                    "Renderer V3 environment shader link failed: "+log);
+            }
+            return program;
+        }
+
+        void DrawCaptureCube()
+        {
+            static GLuint vao=0;
+            if(!vao) glCreateVertexArrays(1,&vao);
+            glBindVertexArray(vao);
+            glDrawArrays(GL_TRIANGLES,0,36);
+        }
+
+        void DeleteEnvironmentTextures(ShadowResources& r)
+        {
+            if(r.Environment) glDeleteTextures(1,&r.Environment);
+            if(r.Irradiance) glDeleteTextures(1,&r.Irradiance);
+            if(r.Prefilter) glDeleteTextures(1,&r.Prefilter);
+            if(r.BRDFLUT) glDeleteTextures(1,&r.BRDFLUT);
+            r.Environment=r.Irradiance=r.Prefilter=r.BRDFLUT=0;
+            r.EnvironmentReady=false;
+        }
+
+        const char* CaptureCubeVS=R"(
+            #version 460 core
+            out vec3 v_Direction;
+            uniform mat4 u_ViewProjection;
+            const vec3 P[36]=vec3[](
+              vec3(-1,-1,-1),vec3(-1,-1, 1),vec3(-1, 1, 1),vec3(-1,-1,-1),vec3(-1, 1, 1),vec3(-1, 1,-1),
+              vec3( 1,-1, 1),vec3( 1,-1,-1),vec3( 1, 1,-1),vec3( 1,-1, 1),vec3( 1, 1,-1),vec3( 1, 1, 1),
+              vec3(-1,-1, 1),vec3( 1,-1, 1),vec3( 1, 1, 1),vec3(-1,-1, 1),vec3( 1, 1, 1),vec3(-1, 1, 1),
+              vec3( 1,-1,-1),vec3(-1,-1,-1),vec3(-1, 1,-1),vec3( 1,-1,-1),vec3(-1, 1,-1),vec3( 1, 1,-1),
+              vec3(-1, 1, 1),vec3( 1, 1, 1),vec3( 1, 1,-1),vec3(-1, 1, 1),vec3( 1, 1,-1),vec3(-1, 1,-1),
+              vec3(-1,-1,-1),vec3( 1,-1,-1),vec3( 1,-1, 1),vec3(-1,-1,-1),vec3( 1,-1, 1),vec3(-1,-1, 1));
+            void main(){v_Direction=P[gl_VertexID];gl_Position=u_ViewProjection*vec4(v_Direction,1.0);}
+        )";
+
+        void EnsureEnvironmentResources()
+        {
+            auto& r=Shadows();
+            const auto& settings=RendererSettings();
+            const std::string& configuredPath=settings.EnvironmentHDRIPath;
+            std::filesystem::path environmentPath(configuredPath);
+            if (!environmentPath.empty() && environmentPath.is_relative())
+                environmentPath = std::filesystem::absolute(environmentPath);
+            const std::string path = environmentPath.lexically_normal().string();
+
+            if(configuredPath.empty())
+            {
+                if(r.EnvironmentReady) DeleteEnvironmentTextures(r);
+                r.LoadedEnvironmentPath.clear();
+                return;
+            }
+            if(r.EnvironmentReady &&
+               r.LoadedEnvironmentPath==path &&
+               r.LoadedEnvironmentResolution==settings.EnvironmentResolution)
+                return;
+
+            int width=0,height=0,channels=0;
+            stbi_set_flip_vertically_on_load(1);
+            float* pixels=stbi_loadf(path.c_str(),&width,&height,&channels,3);
+            stbi_set_flip_vertically_on_load(0);
+            if(!pixels)
+            {
+                if(r.LoadedEnvironmentPath!=path)
+                    std::cerr<<"[Renderer V3] Could not load HDRI: "<<path<<"\n";
+                r.LoadedEnvironmentPath=path;
+                r.EnvironmentReady=false;
+                return;
+            }
+
+            GLint previousViewport[4]{};
+            GLint previousFramebuffer = 0;
+            glGetIntegerv(GL_VIEWPORT, previousViewport);
+            glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+
+            DeleteEnvironmentTextures(r);
+            if(!r.CaptureFBO) glCreateFramebuffers(1,&r.CaptureFBO);
+            if(!r.CaptureRBO) glCreateRenderbuffers(1,&r.CaptureRBO);
+
+            GLuint hdr=0;
+            glCreateTextures(GL_TEXTURE_2D,1,&hdr);
+            glTextureStorage2D(hdr,1,GL_RGB16F,width,height);
+            glTextureSubImage2D(
+                hdr,0,0,0,width,height,GL_RGB,GL_FLOAT,pixels);
+            glTextureParameteri(hdr,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+            glTextureParameteri(hdr,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+            glTextureParameteri(hdr,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+            glTextureParameteri(hdr,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+            stbi_image_free(pixels);
+
+            const std::uint32_t size=
+                std::clamp(settings.EnvironmentResolution,128u,1024u);
+            int mipLevels=1;
+            for(std::uint32_t v=size;v>1;v/=2) ++mipLevels;
+
+            auto makeCube=[](GLuint& id,int resolution,int levels)
+            {
+                glCreateTextures(GL_TEXTURE_CUBE_MAP,1,&id);
+                glTextureStorage2D(
+                    id,levels,GL_RGB16F,resolution,resolution);
+                glTextureParameteri(
+                    id,GL_TEXTURE_MIN_FILTER,
+                    levels>1?GL_LINEAR_MIPMAP_LINEAR:GL_LINEAR);
+                glTextureParameteri(id,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+                glTextureParameteri(id,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+                glTextureParameteri(id,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+                glTextureParameteri(id,GL_TEXTURE_WRAP_R,GL_CLAMP_TO_EDGE);
+            };
+            makeCube(r.Environment,size,mipLevels);
+            makeCube(r.Irradiance,32,1);
+            makeCube(r.Prefilter,128,5);
+
+            glCreateTextures(GL_TEXTURE_2D,1,&r.BRDFLUT);
+            glTextureStorage2D(r.BRDFLUT,1,GL_RG16F,512,512);
+            glTextureParameteri(r.BRDFLUT,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+            glTextureParameteri(r.BRDFLUT,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+            glTextureParameteri(r.BRDFLUT,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+            glTextureParameteri(r.BRDFLUT,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+
+            const glm::mat4 projection=glm::perspective(
+                glm::radians(90.0f),1.0f,0.1f,10.0f);
+            const glm::mat4 views[]={
+                glm::lookAt(glm::vec3(0),glm::vec3( 1,0,0),glm::vec3(0,-1,0)),
+                glm::lookAt(glm::vec3(0),glm::vec3(-1,0,0),glm::vec3(0,-1,0)),
+                glm::lookAt(glm::vec3(0),glm::vec3(0, 1,0),glm::vec3(0,0, 1)),
+                glm::lookAt(glm::vec3(0),glm::vec3(0,-1,0),glm::vec3(0,0,-1)),
+                glm::lookAt(glm::vec3(0),glm::vec3(0,0, 1),glm::vec3(0,-1,0)),
+                glm::lookAt(glm::vec3(0),glm::vec3(0,0,-1),glm::vec3(0,-1,0))};
+
+            const char* equirectFS=R"(
+              #version 460 core
+              in vec3 v_Direction;out vec4 o_Color;
+              uniform sampler2D u_HDR;
+              const vec2 invAtan=vec2(0.159154943,0.318309886);
+              void main(){vec3 d=normalize(v_Direction);vec2 uv=vec2(atan(d.z,d.x),asin(d.y));uv*=invAtan;uv+=0.5;o_Color=vec4(texture(u_HDR,uv).rgb,1);}
+            )";
+            GLuint program=CompileEnvironmentProgram(CaptureCubeVS,equirectFS);
+            glUseProgram(program);glBindTextureUnit(0,hdr);
+            glUniform1i(glGetUniformLocation(program,"u_HDR"),0);
+            glNamedRenderbufferStorage(
+                r.CaptureRBO,GL_DEPTH_COMPONENT24,size,size);
+            glNamedFramebufferRenderbuffer(
+                r.CaptureFBO,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,r.CaptureRBO);
+            glBindFramebuffer(GL_FRAMEBUFFER,r.CaptureFBO);
+            glViewport(0,0,size,size);
+            for(int face=0;face<6;++face)
+            {
+                glm::mat4 vp=projection*views[face];
+                glUniformMatrix4fv(
+                    glGetUniformLocation(program,"u_ViewProjection"),
+                    1,GL_FALSE,&vp[0][0]);
+                glNamedFramebufferTextureLayer(
+                    r.CaptureFBO,GL_COLOR_ATTACHMENT0,r.Environment,0,face);
+                glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+                DrawCaptureCube();
+            }
+            glGenerateTextureMipmap(r.Environment);
+            glDeleteProgram(program);glDeleteTextures(1,&hdr);
+
+            const char* irradianceFS=R"(
+              #version 460 core
+              in vec3 v_Direction;out vec4 o_Color;uniform samplerCube u_Environment;
+              const float PI=3.14159265359;
+              void main(){vec3 N=normalize(v_Direction);vec3 up=vec3(0,1,0);vec3 right=normalize(cross(up,N));up=normalize(cross(N,right));vec3 irradiance=vec3(0);float samples=0;
+                for(float phi=0;phi<2*PI;phi+=0.12)for(float theta=0;theta<0.5*PI;theta+=0.12){vec3 t=vec3(sin(theta)*cos(phi),sin(theta)*sin(phi),cos(theta));vec3 s=t.x*right+t.y*up+t.z*N;irradiance+=texture(u_Environment,s).rgb*cos(theta)*sin(theta);samples++;}
+                irradiance=PI*irradiance/max(samples,1.0);o_Color=vec4(irradiance,1);}
+            )";
+            program=CompileEnvironmentProgram(CaptureCubeVS,irradianceFS);
+            glUseProgram(program);glBindTextureUnit(0,r.Environment);
+            glUniform1i(glGetUniformLocation(program,"u_Environment"),0);
+            glNamedRenderbufferStorage(r.CaptureRBO,GL_DEPTH_COMPONENT24,32,32);
+            glViewport(0,0,32,32);
+            for(int face=0;face<6;++face)
+            {
+                glm::mat4 vp=projection*views[face];
+                glUniformMatrix4fv(glGetUniformLocation(program,"u_ViewProjection"),1,GL_FALSE,&vp[0][0]);
+                glNamedFramebufferTextureLayer(r.CaptureFBO,GL_COLOR_ATTACHMENT0,r.Irradiance,0,face);
+                glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);DrawCaptureCube();
+            }
+            glDeleteProgram(program);
+
+            const char* prefilterFS=R"(
+              #version 460 core
+              in vec3 v_Direction;out vec4 o_Color;uniform samplerCube u_Environment;uniform float u_Roughness;
+              const float PI=3.14159265359;
+              float RadicalInverse(uint bits){bits=(bits<<16u)|(bits>>16u);bits=((bits&0x55555555u)<<1u)|((bits&0xAAAAAAAAu)>>1u);bits=((bits&0x33333333u)<<2u)|((bits&0xCCCCCCCCu)>>2u);bits=((bits&0x0F0F0F0Fu)<<4u)|((bits&0xF0F0F0F0u)>>4u);bits=((bits&0x00FF00FFu)<<8u)|((bits&0xFF00FF00u)>>8u);return float(bits)*2.3283064365386963e-10;}
+              vec2 Hammersley(uint i,uint n){return vec2(float(i)/float(n),RadicalInverse(i));}
+              vec3 ImportanceGGX(vec2 Xi,vec3 N,float rough){float a=rough*rough;float phi=2*PI*Xi.x;float cosTheta=sqrt((1-Xi.y)/(1+(a*a-1)*Xi.y));float sinTheta=sqrt(max(0,1-cosTheta*cosTheta));vec3 H=vec3(cos(phi)*sinTheta,sin(phi)*sinTheta,cosTheta);vec3 up=abs(N.z)<0.999?vec3(0,0,1):vec3(1,0,0);vec3 tangent=normalize(cross(up,N));vec3 bitangent=cross(N,tangent);return normalize(tangent*H.x+bitangent*H.y+N*H.z);}
+              void main(){vec3 N=normalize(v_Direction),R=N,V=R;vec3 pre=vec3(0);float weight=0;const uint COUNT=256u;for(uint i=0u;i<COUNT;i++){vec3 H=ImportanceGGX(Hammersley(i,COUNT),N,u_Roughness);vec3 L=normalize(2*dot(V,H)*H-V);float NL=max(dot(N,L),0);if(NL>0){pre+=textureLod(u_Environment,L,u_Roughness*4.0).rgb*NL;weight+=NL;}}o_Color=vec4(pre/max(weight,0.001),1);}
+            )";
+            program=CompileEnvironmentProgram(CaptureCubeVS,prefilterFS);
+            glUseProgram(program);glBindTextureUnit(0,r.Environment);
+            glUniform1i(glGetUniformLocation(program,"u_Environment"),0);
+            for(int mip=0;mip<5;++mip)
+            {
+                int mipSize=128>>mip;
+                glNamedRenderbufferStorage(r.CaptureRBO,GL_DEPTH_COMPONENT24,mipSize,mipSize);
+                glViewport(0,0,mipSize,mipSize);
+                glUniform1f(glGetUniformLocation(program,"u_Roughness"),float(mip)/4.0f);
+                for(int face=0;face<6;++face)
+                {
+                    glm::mat4 vp=projection*views[face];
+                    glUniformMatrix4fv(glGetUniformLocation(program,"u_ViewProjection"),1,GL_FALSE,&vp[0][0]);
+                    glNamedFramebufferTextureLayer(r.CaptureFBO,GL_COLOR_ATTACHMENT0,r.Prefilter,mip,face);
+                    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);DrawCaptureCube();
+                }
+            }
+            glDeleteProgram(program);
+
+            const char* fullscreenVS=R"(
+              #version 460 core
+              out vec2 v_UV;
+              void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);v_UV=p;gl_Position=vec4(p*2.0-1.0,0,1);}
+            )";
+            const char* brdfFS=R"(
+              #version 460 core
+              in vec2 v_UV;out vec2 o_BRDF;const float PI=3.14159265359;
+              float RadicalInverse(uint bits){bits=(bits<<16u)|(bits>>16u);bits=((bits&0x55555555u)<<1u)|((bits&0xAAAAAAAAu)>>1u);bits=((bits&0x33333333u)<<2u)|((bits&0xCCCCCCCCu)>>2u);bits=((bits&0x0F0F0F0Fu)<<4u)|((bits&0xF0F0F0F0u)>>4u);bits=((bits&0x00FF00FFu)<<8u)|((bits&0xFF00FF00u)>>8u);return float(bits)*2.3283064365386963e-10;}
+              vec2 Hammersley(uint i,uint n){return vec2(float(i)/float(n),RadicalInverse(i));}
+              vec3 ImportanceGGX(vec2 Xi,vec3 N,float rough){float a=rough*rough;float phi=2*PI*Xi.x;float cosTheta=sqrt((1-Xi.y)/(1+(a*a-1)*Xi.y));float sinTheta=sqrt(max(0,1-cosTheta*cosTheta));vec3 H=vec3(cos(phi)*sinTheta,sin(phi)*sinTheta,cosTheta);return H;}
+              float G1(float NV,float rough){float k=(rough*rough)*0.5;return NV/(NV*(1-k)+k);}
+              vec2 Integrate(float NV,float rough){vec3 V=vec3(sqrt(max(0,1-NV*NV)),0,NV);float A=0,B=0;const uint COUNT=256u;for(uint i=0u;i<COUNT;i++){vec3 H=ImportanceGGX(Hammersley(i,COUNT),vec3(0,0,1),rough);vec3 L=normalize(2*dot(V,H)*H-V);float NL=max(L.z,0),NH=max(H.z,0),VH=max(dot(V,H),0);if(NL>0){float G=G1(NV,rough)*G1(NL,rough);float vis=(G*VH)/max(NH*NV,0.001);float Fc=pow(1-VH,5);A+=(1-Fc)*vis;B+=Fc*vis;}}return vec2(A,B)/float(COUNT);}
+              void main(){o_BRDF=Integrate(v_UV.x,v_UV.y);}
+            )";
+            program=CompileEnvironmentProgram(fullscreenVS,brdfFS);
+            glUseProgram(program);
+            glNamedFramebufferTexture(r.CaptureFBO,GL_COLOR_ATTACHMENT0,r.BRDFLUT,0);
+            glNamedRenderbufferStorage(r.CaptureRBO,GL_DEPTH_COMPONENT24,512,512);
+            glViewport(0,0,512,512);glClear(GL_COLOR_BUFFER_BIT);
+            static GLuint fsVao=0;if(!fsVao)glCreateVertexArrays(1,&fsVao);
+            glBindVertexArray(fsVao);glDrawArrays(GL_TRIANGLES,0,3);
+            glDeleteProgram(program);
+
+            glBindFramebuffer(
+                GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+            glViewport(
+                previousViewport[0], previousViewport[1],
+                previousViewport[2], previousViewport[3]);
+            r.LoadedEnvironmentPath=path;
+            r.LoadedEnvironmentResolution=size;
+            r.EnvironmentReady=true;
+            std::cout<<"[Renderer V3] HDRI ready: "<<path<<"\n";
+        }
+
         void EnsureShadowResources()
         {
             auto& s = Shadows();
-            if (s.FBO != 0)
-                return;
 
-            glCreateFramebuffers(1, &s.FBO);
+            if (s.FBO == 0)
+                glCreateFramebuffers(1, &s.FBO);
 
-            auto createDepth2D = [](GLuint& texture, int size)
+            const int quality = std::clamp(RendererSettings().ShadowQuality, 0, 2);
+            if (s.AllocatedShadowQuality != quality)
             {
-                glCreateTextures(GL_TEXTURE_2D, 1, &texture);
-                glTextureStorage2D(texture, 1, GL_DEPTH_COMPONENT32F, size, size);
-                glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTextureParameteri(texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-                glTextureParameteri(texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-                const float border[] = {1,1,1,1};
-                glTextureParameterfv(texture, GL_TEXTURE_BORDER_COLOR, border);
-            };
+                if (s.Directional) glDeleteTextures(1, &s.Directional);
+                if (s.Spot) glDeleteTextures(1, &s.Spot);
+                if (s.Point) glDeleteTextures(1, &s.Point);
+                s.Directional = s.Spot = s.Point = 0;
 
-            createDepth2D(s.Directional, 2048);
-            createDepth2D(s.Spot, 1024);
+                const int directionalSizes[] = {1024, 2048, 4096};
+                const int spotSizes[] = {512, 1024, 2048};
+                const int pointSizes[] = {256, 512, 1024};
 
-            glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &s.Point);
-            glTextureStorage2D(s.Point, 1, GL_DEPTH_COMPONENT32F, 512, 512);
-            glTextureParameteri(s.Point, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTextureParameteri(s.Point, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTextureParameteri(s.Point, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTextureParameteri(s.Point, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTextureParameteri(s.Point, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+                auto createDepth2D = [](GLuint& texture, int size)
+                {
+                    glCreateTextures(GL_TEXTURE_2D, 1, &texture);
+                    glTextureStorage2D(
+                        texture, 1, GL_DEPTH_COMPONENT32F, size, size);
+                    glTextureParameteri(
+                        texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTextureParameteri(
+                        texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTextureParameteri(
+                        texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+                    glTextureParameteri(
+                        texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+                    const float border[] = {1,1,1,1};
+                    glTextureParameterfv(
+                        texture, GL_TEXTURE_BORDER_COLOR, border);
+                };
+
+                createDepth2D(s.Directional, directionalSizes[quality]);
+                createDepth2D(s.Spot, spotSizes[quality]);
+
+                glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &s.Point);
+                glTextureStorage2D(
+                    s.Point, 1, GL_DEPTH_COMPONENT32F,
+                    pointSizes[quality], pointSizes[quality]);
+                glTextureParameteri(
+                    s.Point, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTextureParameteri(
+                    s.Point, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTextureParameteri(
+                    s.Point, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTextureParameteri(
+                    s.Point, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTextureParameteri(
+                    s.Point, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+                s.AllocatedShadowQuality = quality;
+            }
+
+            // Shader/VAO creation only happens once; texture resolution can be
+            // changed independently at runtime.
+            if (s.DepthShader)
+                return;
 
             const std::string depthVS = R"(
                 #version 460 core
@@ -146,17 +539,28 @@ namespace NoJob
                 uniform vec3 u_SunDirection;
                 uniform vec3 u_SunColor;
                 uniform vec3 u_CameraPosition;
+                uniform float u_EnvironmentIntensity;
+                uniform float u_EnvironmentRotation;
+                uniform int u_HasHDRI;
+                uniform samplerCube u_EnvironmentMap;
+                vec3 RotateY(vec3 d,float angle){
+                    float c=cos(angle),s=sin(angle);
+                    return vec3(c*d.x+s*d.z,d.y,-s*d.x+c*d.z);
+                }
                 void main(){
                     vec2 ndc=v_UV*2.0-1.0;
                     vec4 w=u_InverseViewProjection*vec4(ndc,1.0,1.0);
                     vec3 d=normalize(w.xyz/w.w-u_CameraPosition);
+                    d=RotateY(d,u_EnvironmentRotation);
                     float h=clamp(d.y*0.5+0.5,0.0,1.0);
                     vec3 horizon=vec3(0.62,0.72,0.86);
                     vec3 zenith=vec3(0.08,0.22,0.48);
                     vec3 c=mix(horizon,zenith,pow(h,0.7));
                     float sun=pow(max(dot(d,normalize(-u_SunDirection)),0.0),512.0);
                     c+=u_SunColor*sun*3.0;
-                    o_Color=vec4(c,1.0);
+                    if(u_HasHDRI==1)
+                        c=textureLod(u_EnvironmentMap,d,0.0).rgb;
+                    o_Color=vec4(c*u_EnvironmentIntensity,1.0);
                 })";
             s.SkyShader = Shader::Create(skyVS, skyFS);
             glCreateVertexArrays(1, &s.SkyVAO);
@@ -214,6 +618,11 @@ namespace NoJob
                     if (textured) material->GetTexture()->Bind(0);
 
                     UploadSkinning(entity, mesh.MeshAsset, s.DepthShader);
+                    auto& stats = Statistics();
+                    ++stats.ShadowDrawCalls;
+                    const std::uint64_t indexCount =
+                        count ? count : MeshIndexCount(mesh.MeshAsset);
+                    stats.ShadowTriangles += indexCount / 3;
                     if (count)
                         Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),
                             s.DepthShader, count, offset,
@@ -244,6 +653,15 @@ namespace NoJob
             EnsureShadowResources();
             auto& s = Shadows();
             s.HasDirectional = s.HasSpot = s.HasPoint = false;
+            if (!RendererSettings().Shadows)
+                return;
+
+            const int quality =
+                std::clamp(RendererSettings().ShadowQuality, 0, 2);
+            const int directionalSizes[] = {1024, 2048, 4096};
+            const int spotSizes[] = {512, 1024, 2048};
+            const int pointSizes[] = {256, 512, 1024};
+
             GLint oldViewport[4];
             GLint oldFramebuffer = 0;
             glGetIntegerv(GL_VIEWPORT, oldViewport);
@@ -310,7 +728,8 @@ namespace NoJob
                             0.1f, lightDistance + sceneRadius * 2.0f);
                         s.DirectionalMatrix = lightProjection * lightView;
                         glNamedFramebufferTexture(s.FBO,GL_DEPTH_ATTACHMENT,s.Directional,0);
-                        glViewport(0,0,2048,2048); glClear(GL_DEPTH_BUFFER_BIT);
+                        glViewport(0,0,directionalSizes[quality],directionalSizes[quality]); glClear(GL_DEPTH_BUFFER_BIT);
+                        ++Statistics().ShadowPasses;
                         RenderDepthScene(scene,s.DirectionalMatrix,false,pos,60.f);
                         s.HasDirectional=true;
                     }
@@ -324,7 +743,8 @@ namespace NoJob
                         glm::vec3 up=std::abs(glm::dot(dir,glm::vec3(0,1,0)))>0.95f?glm::vec3(0,0,1):glm::vec3(0,1,0);
                         s.SpotMatrix=glm::perspective(glm::radians(std::min(l.OuterAngle*2.f,175.f)),1.f,0.05f,std::max(l.Range,0.1f))*glm::lookAt(pos,pos+dir,up);
                         glNamedFramebufferTexture(s.FBO,GL_DEPTH_ATTACHMENT,s.Spot,0);
-                        glViewport(0,0,1024,1024); glClear(GL_DEPTH_BUFFER_BIT);
+                        glViewport(0,0,spotSizes[quality],spotSizes[quality]); glClear(GL_DEPTH_BUFFER_BIT);
+                        ++Statistics().ShadowPasses;
                         RenderDepthScene(scene,s.SpotMatrix,false,pos,l.Range);
                         s.HasSpot=true;
                     }
@@ -338,9 +758,10 @@ namespace NoJob
                         const glm::mat4 proj=glm::perspective(glm::radians(90.f),1.f,0.05f,s.PointFar);
                         const std::array<glm::vec3,6> dirs={glm::vec3(1,0,0),{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
                         const std::array<glm::vec3,6> ups={glm::vec3(0,-1,0),{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0}};
-                        glViewport(0,0,512,512);
+                        glViewport(0,0,pointSizes[quality],pointSizes[quality]);
                         for(int face=0;face<6;++face)
                         {
+                            ++Statistics().ShadowPasses;
                             glNamedFramebufferTextureLayer(s.FBO,GL_DEPTH_ATTACHMENT,s.Point,0,face);
                             glClear(GL_DEPTH_BUFFER_BIT);
                             RenderDepthScene(scene,proj*glm::lookAt(s.PointPosition,s.PointPosition+dirs[face],ups[face]),true,s.PointPosition,s.PointFar);
@@ -368,6 +789,17 @@ namespace NoJob
             s.SkyShader->SetFloat3("u_SunDirection",sunDir);
             s.SkyShader->SetFloat3("u_SunColor",sunColor);
             s.SkyShader->SetFloat3("u_CameraPosition",cameraPosition);
+            const auto& graphics = RendererSettings();
+            s.SkyShader->SetFloat(
+                "u_EnvironmentIntensity", graphics.EnvironmentIntensity);
+            s.SkyShader->SetFloat(
+                "u_EnvironmentRotation",
+                glm::radians(graphics.EnvironmentRotation));
+            s.SkyShader->SetInt(
+                "u_HasHDRI", s.EnvironmentReady ? 1 : 0);
+            s.SkyShader->SetInt("u_EnvironmentMap", 12);
+            if (s.EnvironmentReady)
+                glBindTextureUnit(12, s.Environment);
             glBindVertexArray(s.SkyVAO); glDrawArrays(GL_TRIANGLES,0,3); glBindVertexArray(0);
             glDepthMask(GL_TRUE);
             glDepthFunc(GL_LESS);
@@ -380,6 +812,29 @@ namespace NoJob
             shader->Bind();
             shader->SetFloat3("u_ViewPosition",cameraPosition);
             shader->SetFloat3("u_AmbientColor",{0.035f,0.045f,0.065f});
+            const auto& graphics = RendererSettings();
+            shader->SetInt("u_UseIBL", graphics.ImageBasedLighting ? 1 : 0);
+            shader->SetFloat(
+                "u_EnvironmentIntensity", graphics.EnvironmentIntensity);
+            shader->SetFloat(
+                "u_DiffuseIBLStrength", graphics.DiffuseIBLStrength);
+            shader->SetFloat(
+                "u_SpecularIBLStrength", graphics.SpecularIBLStrength);
+            shader->SetFloat(
+                "u_EnvironmentRotation",
+                glm::radians(graphics.EnvironmentRotation));
+            auto& environment = Shadows();
+            shader->SetInt(
+                "u_HasHDRI", environment.EnvironmentReady ? 1 : 0);
+            shader->SetInt("u_IrradianceMap", 9);
+            shader->SetInt("u_PrefilterMap", 10);
+            shader->SetInt("u_BRDFLUT", 11);
+            if (environment.EnvironmentReady)
+            {
+                glBindTextureUnit(9, environment.Irradiance);
+                glBindTextureUnit(10, environment.Prefilter);
+                glBindTextureUnit(11, environment.BRDFLUT);
+            }
             bool hasDirectional=false; int pointCount=0,spotCount=0;
             for(Entity e:scene.GetEntities())
             {
@@ -420,9 +875,21 @@ namespace NoJob
     }
 
     void SceneRenderer::Render(Scene& scene, const glm::mat4& viewProjection,
-                               const glm::vec3& cameraPosition)
+                               const glm::vec3& cameraPosition,
+                               bool rebuildShadowMaps)
     {
-        BuildShadowMaps(scene);
+        const auto cpuStart = std::chrono::steady_clock::now();
+        auto& stats = Statistics();
+        const float previousGPUTime = stats.GPUTimeMs;
+        const bool previousGPUValid = stats.GPUTimeValid;
+        stats = {};
+        stats.GPUTimeMs = previousGPUTime;
+        stats.GPUTimeValid = previousGPUValid;
+        BeginGPUFrameQuery();
+
+        EnsureEnvironmentResources();
+        if (rebuildShadowMaps)
+            BuildShadowMaps(scene);
         RenderSky(viewProjection,cameraPosition,scene);
 
         for(Entity entity:scene.GetEntities())
@@ -433,6 +900,7 @@ namespace NoJob
             const auto& mesh=entity.GetComponent<MeshComponent>();
             const auto& renderer=entity.GetComponent<MeshRendererComponent>();
             if(!mesh.MeshAsset || !renderer.MaterialAsset) continue;
+            const glm::mat4 entityWorld = scene.GetWorldTransform(entity);
 
             auto drawMaterial=[&](const std::shared_ptr<Material>& material,
                                   std::uint32_t count,std::uint32_t offset)
@@ -479,13 +947,17 @@ namespace NoJob
                 bindMap(material->GetEmissiveTexture(),"u_EmissiveMap","u_UseEmissiveMap",8);
 
                 UploadSkinning(entity, mesh.MeshAsset, shader);
+                ++stats.DrawCalls;
+                const std::uint64_t indexCount =
+                    count ? count : MeshIndexCount(mesh.MeshAsset);
+                stats.Triangles += indexCount / 3;
                 if(count)
                     Renderer::SubmitRange(mesh.MeshAsset->GetVertexArray(),shader,
-                        count,offset,scene.GetWorldTransform(entity),viewProjection,
+                        count,offset,entityWorld,viewProjection,
                         material->GetColor(),material->IsUsingTexture()?1:0);
                 else
                     Renderer::Submit(mesh.MeshAsset->GetVertexArray(),shader,
-                        scene.GetWorldTransform(entity),viewProjection,
+                        entityWorld,viewProjection,
                         material->GetColor(),material->IsUsingTexture()?1:0);
 
                 if (transparent)
@@ -507,5 +979,28 @@ namespace NoJob
             }
             else drawMaterial(renderer.MaterialAsset,0,0);
         }
+
+        EndGPUFrameQuery();
+        const auto cpuEnd = std::chrono::steady_clock::now();
+        stats.CPUTimeMs =
+            std::chrono::duration<float, std::milli>(
+                cpuEnd - cpuStart).count();
     }
+
+    void SceneRenderer::SetGraphicsSettings(
+        const FramebufferSpecification& settings)
+    {
+        RendererSettings() = settings;
+    }
+
+    const FramebufferSpecification& SceneRenderer::GetGraphicsSettings()
+    {
+        return RendererSettings();
+    }
+
+    const RendererStatistics& SceneRenderer::GetStatistics()
+    {
+        return Statistics();
+    }
+
 }

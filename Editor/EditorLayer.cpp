@@ -8,6 +8,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/ScriptRegistry.h"
 #include "Engine/Scene/NativeScripts.h"
+#include "Engine/Scene/SceneRenderer.h"
 #include "Engine/Assets/AssetRegistry.h"
 #include "Engine/Assets/MaterialSerializer.h"
 #include "Engine/Assets/PrefabSerializer.h"
@@ -1125,6 +1126,28 @@ char f[MAX_PATH]{};OPENFILENAMEA d{};d.lStructSize=sizeof(d);d.lpstrFile=f;d.nMa
 "All Files\0*.*\0";d.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;if(GetOpenFileNameA(&d)==TRUE)return f;
 #endif
 return{};}
+        std::string OpenHDRIFileDialog()
+        {
+#ifdef _WIN32
+            char fileName[MAX_PATH]{};
+            OPENFILENAMEA dialog{};
+            dialog.lStructSize = sizeof(dialog);
+            dialog.lpstrFile = fileName;
+            dialog.nMaxFile = MAX_PATH;
+            dialog.lpstrFilter =
+                "HDR Environment (*.hdr)\0*.hdr\0"
+                "All Files\0*.*\0";
+            dialog.nFilterIndex = 1;
+            dialog.Flags =
+                OFN_PATHMUSTEXIST |
+                OFN_FILEMUSTEXIST |
+                OFN_NOCHANGEDIR;
+            if (GetOpenFileNameA(&dialog) == TRUE)
+                return fileName;
+#endif
+            return {};
+        }
+
         std::string OpenTextureFileDialog()
         {
 #ifdef _WIN32
@@ -1289,6 +1312,7 @@ return{};}
         DrawProjectPanel();
         if (m_ShowGraphicsSettings)
             DrawGraphicsSettings();
+        DrawRendererProfiler();
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
             DeleteSelectedEntity();
@@ -1902,6 +1926,7 @@ return{};}
                 ImGui::MenuItem("Inspector");
                 ImGui::MenuItem("Console");
                 ImGui::MenuItem("Graphics Settings", nullptr, &m_ShowGraphicsSettings);
+                ImGui::MenuItem("Renderer Profiler", nullptr, &m_ShowRendererProfiler);
                 ImGui::EndMenu();
             }
 
@@ -4018,6 +4043,76 @@ return{};}
         ImGui::Checkbox("HDR", &m_GraphicsSettings.HDR);
         ImGui::SliderFloat("Exposure", &m_GraphicsSettings.Exposure, 0.1f, 3.0f);
 
+        ImGui::SeparatorText("Environment / IBL");
+        ImGui::Checkbox(
+            "Image Based Lighting", &m_GraphicsSettings.ImageBasedLighting);
+        ImGui::SliderFloat(
+            "Environment Intensity",
+            &m_GraphicsSettings.EnvironmentIntensity, 0.0f, 4.0f);
+        ImGui::SliderFloat(
+            "Diffuse IBL",
+            &m_GraphicsSettings.DiffuseIBLStrength, 0.0f, 1.0f);
+        ImGui::SliderFloat(
+            "Specular IBL",
+            &m_GraphicsSettings.SpecularIBLStrength, 0.0f, 1.0f);
+        ImGui::SliderFloat(
+            "Environment Rotation",
+            &m_GraphicsSettings.EnvironmentRotation, -180.0f, 180.0f,
+            "%.0f deg");
+
+        if (ImGui::Button("Load HDRI..."))
+        {
+            const std::string path = OpenHDRIFileDialog();
+            if (!path.empty())
+            {
+                std::filesystem::path selected(path);
+                std::error_code ec;
+                const auto relative = std::filesystem::relative(
+                    selected, m_ProjectDirectory, ec);
+                if (!ec && !relative.empty() &&
+                    relative.generic_string().rfind("..", 0) != 0)
+                {
+                    m_GraphicsSettings.EnvironmentHDRIPath =
+                        relative.generic_string();
+                }
+                else
+                {
+                    m_GraphicsSettings.EnvironmentHDRIPath =
+                        selected.lexically_normal().string();
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear HDRI"))
+            m_GraphicsSettings.EnvironmentHDRIPath.clear();
+
+        if (m_GraphicsSettings.EnvironmentHDRIPath.empty())
+            ImGui::TextDisabled("Environment: Procedural fallback");
+        else
+        {
+            const std::filesystem::path hdriPath(
+                m_GraphicsSettings.EnvironmentHDRIPath);
+            ImGui::TextWrapped(
+                "HDRI: %s", hdriPath.filename().string().c_str());
+        }
+
+        const char* environmentSizes[] = {"128", "256", "512", "1024"};
+        int environmentSizeIndex =
+            m_GraphicsSettings.EnvironmentResolution <= 128 ? 0 :
+            m_GraphicsSettings.EnvironmentResolution <= 256 ? 1 :
+            m_GraphicsSettings.EnvironmentResolution <= 512 ? 2 : 3;
+        if (ImGui::Combo(
+                "Environment Resolution", &environmentSizeIndex,
+                environmentSizes, 4))
+        {
+            const std::uint32_t sizes[] = {128, 256, 512, 1024};
+            m_GraphicsSettings.EnvironmentResolution =
+                sizes[environmentSizeIndex];
+        }
+
+        ImGui::TextDisabled(
+            "HDRI is converted to cubemaps and precomputed for real-time IBL.");
+
         ImGui::SeparatorText("Bloom");
         ImGui::Checkbox("Bloom", &m_GraphicsSettings.Bloom);
         ImGui::SliderFloat("Bloom Threshold", &m_GraphicsSettings.BloomThreshold, 0.1f, 5.0f);
@@ -4032,6 +4127,51 @@ return{};}
 
         ImGui::Separator();
         ImGui::TextWrapped("ACES filmic tone mapping and final gamma conversion are applied once at the end of the HDR pipeline.");
+        ImGui::End();
+    }
+
+    void EditorLayer::DrawRendererProfiler()
+    {
+        if (!m_ShowRendererProfiler)
+            return;
+
+        if (!ImGui::Begin("Renderer Profiler", &m_ShowRendererProfiler))
+        {
+            ImGui::End();
+            return;
+        }
+
+        const auto& rendererStats = SceneRenderer::GetStatistics();
+        const ImGuiIO& io = ImGui::GetIO();
+
+        ImGui::TextUnformatted("NoJobEngine Renderer V3");
+        ImGui::SeparatorText("Frame");
+        ImGui::Text("FPS: %.1f", io.Framerate);
+        ImGui::Text("Frame Time: %.2f ms",
+            io.Framerate > 0.0f ? 1000.0f / io.Framerate : 0.0f);
+
+        ImGui::SeparatorText("Scene Renderer");
+        ImGui::Text("CPU Time: %.3f ms", rendererStats.CPUTimeMs);
+        if (rendererStats.GPUTimeValid)
+            ImGui::Text("GPU Time: %.3f ms", rendererStats.GPUTimeMs);
+        else
+            ImGui::TextDisabled("GPU Time: warming up...");
+
+        ImGui::SeparatorText("Geometry");
+        ImGui::Text("Draw Calls: %u", rendererStats.DrawCalls);
+        ImGui::Text("Triangles: %llu",
+            static_cast<unsigned long long>(rendererStats.Triangles));
+
+        ImGui::SeparatorText("Shadows");
+        ImGui::Text("Shadow Passes: %u", rendererStats.ShadowPasses);
+        ImGui::Text("Shadow Draw Calls: %u",
+            rendererStats.ShadowDrawCalls);
+        ImGui::Text("Shadow Triangles: %llu",
+            static_cast<unsigned long long>(rendererStats.ShadowTriangles));
+
+        ImGui::Separator();
+        ImGui::TextDisabled(
+            "GPU timing uses non-blocking queries with a 3-frame ring.");
         ImGui::End();
     }
 

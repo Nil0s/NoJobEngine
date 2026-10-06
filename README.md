@@ -10,9 +10,9 @@ a first triangle into a usable editor/runtime foundation with scenes,
 assets, prefabs, physics, PBR rendering, skeletal animation, GPU
 skinning and an evolving Unity-style component workflow.
 
-> **Current milestone: NoJobEngine V1.4 --- Complete and Validated**\
-> V1.0--V1.4 are complete and validated. The next development milestone
-> is V1.5 --- Renderer V3.
+> **Current milestone: NoJobEngine V1.5 --- Renderer V3 — Complete and Validated**\
+> V1.0--V1.5 are complete and validated. The next development milestone
+> is V1.6 --- Audio & VFX.
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · CMake**
 
@@ -52,7 +52,9 @@ editor.
 ### Rendering & graphics settings
 
 The graphics validation scene is used to test PBR surfaces, emissive
-rendering, multiple light types, shadows and post-processing.
+rendering, multiple light types, configurable shadows, HDRI environments,
+image-based lighting and post-processing. V1.5 also introduces a dedicated
+Renderer Profiler for inspecting frame, CPU/GPU, geometry and shadow metrics.
 
 ### 3D model & material import
 
@@ -198,6 +200,19 @@ as a single action.
 -   Point-light cubemap shadows
 -   Skinned mesh rendering in the PBR and shadow passes
 -   Procedural sky
+-   HDRI environment workflow
+-   Equirectangular HDRI to cubemap conversion
+-   Image-based lighting (IBL)
+-   Irradiance maps for diffuse environment lighting
+-   GGX prefiltered environment maps for specular reflections
+-   BRDF integration LUT
+-   Environment intensity and rotation controls
+-   Configurable Low / Medium / High shadow quality
+-   Dedicated Renderer Profiler
+-   CPU and non-blocking GPU render timing
+-   Draw-call, triangle and shadow-pass statistics
+-   Cached environment precomputation
+-   Shadow-map reuse for secondary Camera Preview rendering
 -   Bloom
 -   Screen-space ambient/contact shading
 -   FXAA
@@ -470,16 +485,33 @@ Completed and validated.
 -   Scene/Prefab persistence and Undo/Redo support for script fields.
 -   Hot-reload schema migration preserving compatible Inspector values.
 
+### ✅ V1.5 --- Renderer V3
+
+Completed and validated.
+
+-   HDRI environment loading and sky rendering.
+-   Physical image-based lighting using irradiance, GGX prefiltering and a
+    BRDF integration LUT.
+-   Improved PBR environment reflections driven by metallic and roughness.
+-   Shared procedural/HDRI environment controls with intensity and rotation.
+-   Configurable IBL, diffuse IBL and specular IBL strengths.
+-   Directional, spot and point-light shadow improvements.
+-   Low / Medium / High shadow quality presets.
+-   Dedicated **Renderer Profiler** editor window.
+-   FPS, frame time, Scene CPU/GPU time, draw-call and triangle statistics.
+-   Shadow-pass, shadow draw-call and shadow-triangle statistics.
+-   Non-blocking OpenGL GPU timing queries.
+-   Cached HDRI environment resources.
+-   Camera Preview shadow-map reuse to avoid rebuilding shadow maps twice in
+    the same frame.
+-   Reduced redundant world-transform work during rendering.
+-   Restored OpenGL framebuffer/viewport state after environment precomputation.
+-   Safe `stb_image` vertical-flip state restoration after HDR loading.
+-   Project-relative HDRI paths for portable in-project environments.
+
 ------------------------------------------------------------------------
 
 ## Roadmap
-
-### V1.5 --- Renderer V3
-
--   IBL and environment maps.
--   HDRI/skybox workflow and improved reflections.
--   Lighting/shadow improvements.
--   Renderer profiling and optimization.
 
 ### V1.6 --- Audio & VFX
 
@@ -584,6 +616,8 @@ It covers problems across:
 -   GPU skinning;
 -   physics integration;
 -   native scripting;
+-   HDRI and image-based lighting;
+-   renderer profiling and optimization;
 -   engine architecture;
 -   editor/runtime design.
 

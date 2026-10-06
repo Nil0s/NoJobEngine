@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace NoJob
 {
@@ -19,6 +20,20 @@ namespace NoJob
         float BloomThreshold = 1.0f;
         float BloomStrength = 0.12f;
         float AOIntensity = 0.35f;
+
+        // Renderer V3 environment / IBL controls. Kept in the graphics
+        // settings structure so the editor and both scene render targets use
+        // exactly the same values.
+        bool ImageBasedLighting = true;
+        float EnvironmentIntensity = 1.0f;
+        float DiffuseIBLStrength = 0.18f;
+        float SpecularIBLStrength = 0.32f;
+        float EnvironmentRotation = 0.0f; // degrees around world Y
+        std::string EnvironmentHDRIPath;
+        std::uint32_t EnvironmentResolution = 512;
+        bool Shadows = true;
+        // 0 = Low, 1 = Medium, 2 = High
+        int ShadowQuality = 2;
     };
 
     class Framebuffer
