@@ -39,6 +39,18 @@ namespace NoJob
             if(e.HasComponent<DirectionalLightComponent>()){auto& c=e.GetComponent<DirectionalLightComponent>();out<<"DIRECTIONAL ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
             if(e.HasComponent<PointLightComponent>()){auto& c=e.GetComponent<PointLightComponent>();out<<"POINT ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.Range<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
             if(e.HasComponent<SpotLightComponent>()){auto& c=e.GetComponent<SpotLightComponent>();out<<"SPOT ";V3(out,c.Color);out<<' '<<c.Intensity<<' '<<c.Range<<' '<<c.InnerAngle<<' '<<c.OuterAngle<<' '<<c.CastShadows<<' '<<c.ShadowBias<<'\n';}
+            if(e.HasComponent<AudioSourceComponent>()){auto& c=e.GetComponent<AudioSourceComponent>();out<<"AUDIO_SOURCE_V2 "<<std::quoted(c.ClipPath)<<' '<<c.PlayOnAwake<<' '<<c.Loop<<' '<<c.Volume<<' '<<c.Pitch<<' '<<c.SpatialBlend<<' '<<c.MinDistance<<' '<<c.MaxDistance<<' '<<c.DopplerFactor<<'\n';}
+            if(e.HasComponent<AudioListenerComponent>()){auto& c=e.GetComponent<AudioListenerComponent>();out<<"AUDIO_LISTENER "<<c.Enabled<<'\n';}
+            if(e.HasComponent<ParticleSystemComponent>()){auto& c=e.GetComponent<ParticleSystemComponent>();
+                out<<"PARTICLE_SYSTEM_V2 "<<c.Playing<<' '<<c.Loop<<' '<<c.Duration<<' '<<c.StartLifetime<<' '
+                   <<c.LifetimeRandom<<' '<<c.StartSpeed<<' '<<c.SpeedRandom<<' '<<c.StartSize<<' '
+                   <<c.SizeRandom<<' '<<c.StartColor.r<<' '<<c.StartColor.g<<' '<<c.StartColor.b<<' '
+                   <<c.StartColor.a<<' '<<c.EndColor.r<<' '<<c.EndColor.g<<' '<<c.EndColor.b<<' '
+                   <<c.EndColor.a<<' '<<c.EndSizeMultiplier<<' '<<c.EmissionRate<<' '<<c.MaxParticles<<' '
+                   <<c.Direction.x<<' '<<c.Direction.y<<' '<<c.Direction.z<<' '
+                   <<c.Gravity.x<<' '<<c.Gravity.y<<' '<<c.Gravity.z<<' '
+                   <<static_cast<int>(c.Shape)<<' '<<c.ShapeRadius<<' '<<c.ConeAngle<<' '
+                   <<static_cast<int>(c.BlendMode)<<' '<<std::quoted(c.TexturePath)<<'\n';}
             if(e.HasComponent<NativeScriptComponent>())
             {
                 auto& c=e.GetComponent<NativeScriptComponent>();
@@ -103,6 +115,28 @@ namespace NoJob
             else if(k=="DIRECTIONAL"){DirectionalLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.CastShadows>>c.ShadowBias;current.AddComponent<DirectionalLightComponent>(c);}
             else if(k=="POINT"){PointLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.Range>>c.CastShadows>>c.ShadowBias;current.AddComponent<PointLightComponent>(c);}
             else if(k=="SPOT"){SpotLightComponent c;ReadV3(s,c.Color);s>>c.Intensity>>c.Range>>c.InnerAngle>>c.OuterAngle>>c.CastShadows>>c.ShadowBias;current.AddComponent<SpotLightComponent>(c);}
+            else if(k=="AUDIO_SOURCE"){AudioSourceComponent c;s>>std::quoted(c.ClipPath)>>c.PlayOnAwake>>c.Loop>>c.Volume>>c.Pitch;current.AddComponent<AudioSourceComponent>(c);}
+            else if(k=="AUDIO_SOURCE_V2"){AudioSourceComponent c;s>>std::quoted(c.ClipPath)>>c.PlayOnAwake>>c.Loop>>c.Volume>>c.Pitch>>c.SpatialBlend>>c.MinDistance>>c.MaxDistance>>c.DopplerFactor;current.AddComponent<AudioSourceComponent>(c);}
+            else if(k=="AUDIO_LISTENER"){AudioListenerComponent c;s>>c.Enabled;current.AddComponent<AudioListenerComponent>(c);}
+            else if(k=="PARTICLE_SYSTEM"){ParticleSystemComponent c;
+                s>>c.Playing>>c.Loop>>c.Duration>>c.StartLifetime>>c.StartSpeed>>c.StartSize
+                 >>c.StartColor.r>>c.StartColor.g>>c.StartColor.b>>c.StartColor.a
+                 >>c.EmissionRate>>c.MaxParticles
+                 >>c.Direction.x>>c.Direction.y>>c.Direction.z
+                 >>c.Gravity.x>>c.Gravity.y>>c.Gravity.z;
+                current.AddComponent<ParticleSystemComponent>(c);}
+            else if(k=="PARTICLE_SYSTEM_V2"){ParticleSystemComponent c; int shape=0,blend=0;
+                s>>c.Playing>>c.Loop>>c.Duration>>c.StartLifetime>>c.LifetimeRandom
+                 >>c.StartSpeed>>c.SpeedRandom>>c.StartSize>>c.SizeRandom
+                 >>c.StartColor.r>>c.StartColor.g>>c.StartColor.b>>c.StartColor.a
+                 >>c.EndColor.r>>c.EndColor.g>>c.EndColor.b>>c.EndColor.a
+                 >>c.EndSizeMultiplier>>c.EmissionRate>>c.MaxParticles
+                 >>c.Direction.x>>c.Direction.y>>c.Direction.z
+                 >>c.Gravity.x>>c.Gravity.y>>c.Gravity.z
+                 >>shape>>c.ShapeRadius>>c.ConeAngle>>blend>>std::quoted(c.TexturePath);
+                c.Shape=static_cast<ParticleShape>(shape);
+                c.BlendMode=static_cast<ParticleBlendMode>(blend);
+                current.AddComponent<ParticleSystemComponent>(c);}
             else if(k=="SCRIPT")
             {
                 // V1.0-V1.3 compatibility: SCRIPT <enabled> <rotationSpeed>

@@ -8,6 +8,7 @@
 #include "Engine/Renderer/Shader.h"
 #include "Engine/Renderer/Texture.h"
 #include "Engine/Animation/Animation.h"
+#include "Engine/Asset/AssetManager.h"
 
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -18,6 +19,9 @@
 #include <filesystem>
 #include <iostream>
 #include <chrono>
+#include <cstddef>
+#include <vector>
+#include <unordered_map>
 #include <stb_image.h>
 
 namespace NoJob
@@ -874,6 +878,180 @@ namespace NoJob
         }
     }
 
+
+    namespace
+    {
+        struct ParticleInstanceGPU
+        {
+            glm::vec3 Position;
+            float Size;
+            glm::vec4 Color;
+        };
+
+        struct ParticleRenderResources
+        {
+            GLuint VAO = 0;
+            GLuint VBO = 0;
+            GLuint InstanceVBO = 0;
+            std::shared_ptr<Shader> ShaderProgram;
+            std::unordered_map<std::string, std::shared_ptr<Texture2D>> Textures;
+        };
+
+        ParticleRenderResources& ParticleResources()
+        {
+            static ParticleRenderResources r;
+            return r;
+        }
+
+        void EnsureParticleResources()
+        {
+            auto& r = ParticleResources();
+            if (r.VAO != 0) return;
+
+            // XY + UV unit quad. Per-particle position/size/color live in an
+            // instanced buffer, reducing an emitter to one draw call.
+            const float vertices[] = {
+                -0.5f,-0.5f, 0,0,   0.5f,-0.5f, 1,0,   0.5f, 0.5f, 1,1,
+                -0.5f,-0.5f, 0,0,   0.5f, 0.5f, 1,1,  -0.5f, 0.5f, 0,1
+            };
+            glGenVertexArrays(1, &r.VAO);
+            glGenBuffers(1, &r.VBO);
+            glGenBuffers(1, &r.InstanceVBO);
+            glBindVertexArray(r.VAO);
+
+            glBindBuffer(GL_ARRAY_BUFFER, r.VBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float), nullptr);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float),
+                                  reinterpret_cast<void*>(2*sizeof(float)));
+
+            glBindBuffer(GL_ARRAY_BUFFER, r.InstanceVBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(ParticleInstanceGPU), nullptr, GL_STREAM_DRAW);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(ParticleInstanceGPU),
+                                  reinterpret_cast<void*>(offsetof(ParticleInstanceGPU, Position)));
+            glVertexAttribDivisor(2, 1);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(ParticleInstanceGPU),
+                                  reinterpret_cast<void*>(offsetof(ParticleInstanceGPU, Size)));
+            glVertexAttribDivisor(3, 1);
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(ParticleInstanceGPU),
+                                  reinterpret_cast<void*>(offsetof(ParticleInstanceGPU, Color)));
+            glVertexAttribDivisor(4, 1);
+            glBindVertexArray(0);
+
+            const std::string vs = R"(
+                #version 460 core
+                layout(location=0) in vec2 a_Position;
+                layout(location=1) in vec2 a_UV;
+                layout(location=2) in vec3 i_WorldPosition;
+                layout(location=3) in float i_Size;
+                layout(location=4) in vec4 i_Color;
+                uniform mat4 u_ViewProjection;
+                uniform vec3 u_CameraRight;
+                uniform vec3 u_CameraUp;
+                out vec2 v_UV;
+                out vec4 v_Color;
+                void main() {
+                    vec3 world = i_WorldPosition +
+                        u_CameraRight * a_Position.x * i_Size +
+                        u_CameraUp * a_Position.y * i_Size;
+                    gl_Position = u_ViewProjection * vec4(world,1.0);
+                    v_UV = a_UV;
+                    v_Color = i_Color;
+                })";
+            const std::string fs = R"(
+                #version 460 core
+                layout(location=0) out vec4 o_Color;
+                in vec2 v_UV;
+                in vec4 v_Color;
+                uniform sampler2D u_Texture;
+                uniform int u_UseTexture;
+                void main() {
+                    vec4 texel = u_UseTexture != 0 ? texture(u_Texture, v_UV) : vec4(1.0);
+                    o_Color = texel * v_Color;
+                    if (o_Color.a <= 0.003) discard;
+                })";
+            r.ShaderProgram = Shader::Create(vs, fs);
+        }
+
+        std::shared_ptr<Texture2D> ParticleTexture(const std::string& path)
+        {
+            if (path.empty()) return {};
+            auto& cache = ParticleResources().Textures;
+            auto it = cache.find(path);
+            if (it != cache.end()) return it->second;
+            try
+            {
+                auto texture = AssetManager::LoadTexture(path);
+                cache[path] = texture;
+                return texture;
+            }
+            catch (...) { return {}; }
+        }
+
+        void RenderParticles(Scene& scene, const glm::mat4& viewProjection,
+                             RendererStatistics& stats)
+        {
+            EnsureParticleResources();
+            auto& r = ParticleResources();
+            if (!r.ShaderProgram) return;
+
+            const glm::mat4 inverseVP = glm::inverse(viewProjection);
+            const glm::vec3 right = glm::normalize(glm::vec3(inverseVP[0]));
+            const glm::vec3 up = glm::normalize(glm::vec3(inverseVP[1]));
+
+            glEnable(GL_BLEND);
+            glDepthMask(GL_FALSE);
+            r.ShaderProgram->Bind();
+            r.ShaderProgram->SetMat4("u_ViewProjection", viewProjection);
+            r.ShaderProgram->SetFloat3("u_CameraRight", right);
+            r.ShaderProgram->SetFloat3("u_CameraUp", up);
+            r.ShaderProgram->SetInt("u_Texture", 0);
+            glBindVertexArray(r.VAO);
+
+            std::vector<ParticleInstanceGPU> instances;
+            for (Entity entity : scene.GetEntities())
+            {
+                if (!entity.HasComponent<ParticleSystemComponent>()) continue;
+                const auto& settings = entity.GetComponent<ParticleSystemComponent>();
+                const auto& particles = scene.GetParticles(entity.GetHandle());
+                if (particles.empty()) continue;
+
+                instances.clear();
+                instances.reserve(particles.size());
+                for (const auto& p : particles)
+                    instances.push_back({p.Position, p.Size, p.Color});
+
+                if (settings.BlendMode == ParticleBlendMode::Additive)
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+                else
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                auto texture = ParticleTexture(settings.TexturePath);
+                r.ShaderProgram->SetInt("u_UseTexture", texture ? 1 : 0);
+                if (texture) texture->Bind(0);
+
+                glBindBuffer(GL_ARRAY_BUFFER, r.InstanceVBO);
+                glBufferData(GL_ARRAY_BUFFER,
+                    static_cast<GLsizeiptr>(instances.size() * sizeof(ParticleInstanceGPU)),
+                    instances.data(), GL_STREAM_DRAW);
+                glDrawArraysInstanced(GL_TRIANGLES, 0, 6,
+                    static_cast<GLsizei>(instances.size()));
+
+                ++stats.DrawCalls;
+                stats.Triangles += static_cast<std::uint64_t>(instances.size()) * 2;
+            }
+
+            glBindVertexArray(0);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
+    }
+
     void SceneRenderer::Render(Scene& scene, const glm::mat4& viewProjection,
                                const glm::vec3& cameraPosition,
                                bool rebuildShadowMaps)
@@ -980,11 +1158,39 @@ namespace NoJob
             else drawMaterial(renderer.MaterialAsset,0,0);
         }
 
+        RenderParticles(scene, viewProjection, stats);
+
         EndGPUFrameQuery();
         const auto cpuEnd = std::chrono::steady_clock::now();
         stats.CPUTimeMs =
             std::chrono::duration<float, std::milli>(
                 cpuEnd - cpuStart).count();
+    }
+
+    void SceneRenderer::Shutdown()
+    {
+        // Explicitly release renderer-owned static GL resources before the
+        // GLFW window/context disappears. Leaving shared_ptr<Shader> objects
+        // in function statics until process teardown can invoke their OpenGL
+        // destructors after the context has already been destroyed.
+        auto& particles = ParticleResources();
+        particles.ShaderProgram.reset();
+        particles.Textures.clear();
+        if (particles.InstanceVBO != 0)
+        {
+            glDeleteBuffers(1, &particles.InstanceVBO);
+            particles.InstanceVBO = 0;
+        }
+        if (particles.VBO != 0)
+        {
+            glDeleteBuffers(1, &particles.VBO);
+            particles.VBO = 0;
+        }
+        if (particles.VAO != 0)
+        {
+            glDeleteVertexArrays(1, &particles.VAO);
+            particles.VAO = 0;
+        }
     }
 
     void SceneRenderer::SetGraphicsSettings(

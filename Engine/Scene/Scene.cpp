@@ -1,5 +1,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/NativeScripts.h"
+#include "Engine/Audio/AudioEngine.h"
+#include <random>
+#include <glm/gtc/constants.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -158,20 +161,36 @@ namespace NoJob
         instance->OnDestroy();
     }
 
+    const std::vector<Scene::RuntimeParticle>&
+    Scene::GetParticles(std::uint32_t handle) const
+    {
+        static const std::vector<RuntimeParticle> empty;
+        const auto it = m_ParticleStates.find(handle);
+        return it == m_ParticleStates.end() ? empty : it->second.Particles;
+    }
+
     void Scene::OnRuntimeStart()
     {
         if (m_RuntimeRunning) return;
         m_RuntimeRunning = true;
+        m_ParticleStates.clear();
+        AudioEngine::Init();
         for (const auto& [handle, data] : m_Entities)
         {
-            (void)data;
             CreateScriptInstance(handle);
+            if (data.AudioSource && data.AudioSource->PlayOnAwake)
+                {
+                const glm::mat4 world = GetWorldTransform(Entity(handle, this));
+                AudioEngine::Play(handle, *data.AudioSource, glm::vec3(world[3]));
+            }
         }
     }
 
     void Scene::OnRuntimeStop()
     {
         m_RuntimeRunning = false;
+        m_ParticleStates.clear();
+        AudioEngine::StopAll();
         while (!m_ScriptInstances.empty())
             DestroyScriptInstance(m_ScriptInstances.begin()->first);
     }
@@ -197,6 +216,134 @@ namespace NoJob
             animator.TimeSeconds += deltaTime * animator.Speed;
             if (duration > 0.0f && animator.TimeSeconds > duration)
                 animator.TimeSeconds = animator.Loop ? std::fmod(animator.TimeSeconds, duration) : duration;
+        }
+
+        // V1.6 Block 4 CPU particle simulation. Rendering remains isolated in
+        // SceneRenderer so gameplay state does not depend on OpenGL.
+        for (auto& [handle, data] : m_Entities)
+        {
+            if (!data.ParticleSystem)
+                continue;
+            auto& settings = *data.ParticleSystem;
+            auto& state = m_ParticleStates[handle];
+
+            for (auto& p : state.Particles)
+            {
+                p.Age += deltaTime;
+                p.Velocity += settings.Gravity * deltaTime;
+                p.Position += p.Velocity * deltaTime;
+                const float t = glm::clamp(p.Age / std::max(p.Lifetime, 0.01f), 0.0f, 1.0f);
+                p.Color = glm::mix(p.StartColor, p.EndColor, t);
+                p.Size = glm::mix(p.StartSize,
+                    p.StartSize * std::max(settings.EndSizeMultiplier, 0.0f), t);
+            }
+            std::erase_if(state.Particles,
+                [](const RuntimeParticle& p){ return p.Age >= p.Lifetime; });
+
+            if (!settings.Playing)
+                continue;
+
+            state.Elapsed += deltaTime;
+            const bool emitting = settings.Loop ||
+                state.Elapsed <= std::max(settings.Duration, 0.0f);
+            if (!emitting)
+                continue;
+
+            const float rate = std::max(settings.EmissionRate, 0.0f);
+            state.SpawnAccumulator += rate * deltaTime;
+            std::uint32_t spawnCount =
+                static_cast<std::uint32_t>(state.SpawnAccumulator);
+            state.SpawnAccumulator -= static_cast<float>(spawnCount);
+
+            const glm::mat4 world = GetWorldTransform(Entity(handle, this));
+            const glm::vec3 origin(world[3]);
+            glm::vec3 direction = settings.Direction;
+            if (glm::length(direction) < 0.0001f)
+                direction = {0.0f, 1.0f, 0.0f};
+            direction = glm::normalize(glm::mat3(world) * glm::normalize(direction));
+
+            while (spawnCount-- > 0 &&
+                   state.Particles.size() < settings.MaxParticles)
+            {
+                // Tiny deterministic LCG keeps particle variation cheap and
+                // reproducible without coupling Scene to a global RNG.
+                auto random01 = [&state]()
+                {
+                    state.Seed = state.Seed * 1664525u + 1013904223u;
+                    return static_cast<float>((state.Seed >> 8) & 0x00FFFFFFu) /
+                           static_cast<float>(0x01000000u);
+                };
+                auto signedRandom = [&]() { return random01() * 2.0f - 1.0f; };
+
+                RuntimeParticle p;
+                glm::vec3 spawnOffset{0.0f};
+                glm::vec3 spawnDirection = direction;
+
+                if (settings.Shape == ParticleShape::Sphere)
+                {
+                    glm::vec3 r{signedRandom(), signedRandom(), signedRandom()};
+                    if (glm::length(r) < 0.0001f) r = {0.0f, 1.0f, 0.0f};
+                    r = glm::normalize(r);
+                    const float radius = std::max(settings.ShapeRadius, 0.0f) *
+                                         std::cbrt(random01());
+                    spawnOffset = r * radius;
+                    spawnDirection = r;
+                }
+                else if (settings.Shape == ParticleShape::Cone)
+                {
+                    glm::vec3 tangent =
+                        std::abs(direction.y) < 0.99f
+                            ? glm::normalize(glm::cross(direction, glm::vec3(0,1,0)))
+                            : glm::vec3(1,0,0);
+                    const glm::vec3 bitangent = glm::normalize(glm::cross(direction, tangent));
+                    const float angle = glm::radians(
+                        glm::clamp(settings.ConeAngle, 0.0f, 89.0f));
+                    const float radial = std::tan(angle) * std::sqrt(random01());
+                    const float phi = random01() * glm::two_pi<float>();
+                    spawnDirection = glm::normalize(
+                        direction + tangent * (std::cos(phi) * radial) +
+                        bitangent * (std::sin(phi) * radial));
+                }
+
+                const float lifetimeScale =
+                    1.0f + signedRandom() * glm::clamp(settings.LifetimeRandom, 0.0f, 1.0f);
+                const float speedScale =
+                    1.0f + signedRandom() * glm::clamp(settings.SpeedRandom, 0.0f, 1.0f);
+                const float sizeScale =
+                    1.0f + signedRandom() * glm::clamp(settings.SizeRandom, 0.0f, 1.0f);
+
+                p.Position = origin + spawnOffset;
+                p.Velocity = spawnDirection * settings.StartSpeed * speedScale;
+                p.Lifetime = std::max(settings.StartLifetime * lifetimeScale, 0.01f);
+                p.StartSize = std::max(settings.StartSize * sizeScale, 0.001f);
+                p.Size = p.StartSize;
+                p.StartColor = settings.StartColor;
+                p.EndColor = settings.EndColor;
+                p.Color = p.StartColor;
+                state.Particles.push_back(p);
+            }
+        }
+
+        // Spatial audio follows world transforms, including parented entities.
+        // The first enabled AudioListener is authoritative for this scene.
+        for (auto& [handle, data] : m_Entities)
+        {
+            if (!data.AudioListener || !data.AudioListener->Enabled)
+                continue;
+            const glm::mat4 world = GetWorldTransform(Entity(handle, this));
+            const glm::vec3 position(world[3]);
+            const glm::vec3 forward = glm::normalize(-glm::vec3(world[2]));
+            const glm::vec3 up = glm::normalize(glm::vec3(world[1]));
+            AudioEngine::SetListener(position, forward, up);
+            break;
+        }
+
+        for (auto& [handle, data] : m_Entities)
+        {
+            if (!data.AudioSource)
+                continue;
+            const glm::mat4 world = GetWorldTransform(Entity(handle, this));
+            AudioEngine::Update(handle, *data.AudioSource, glm::vec3(world[3]));
         }
 
         // Snapshot handles: scripts can create/destroy entities during update.

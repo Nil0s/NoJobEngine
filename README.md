@@ -10,11 +10,11 @@ a first triangle into a usable editor/runtime foundation with scenes,
 assets, prefabs, physics, PBR rendering, skeletal animation, GPU
 skinning and an evolving Unity-style component workflow.
 
-> **Current milestone: NoJobEngine V1.5 --- Renderer V3 — Complete and Validated**\
-> V1.0--V1.5 are complete and validated. The next development milestone
-> is V1.6 --- Audio & VFX.
+> **Current milestone: NoJobEngine V1.6 --- Audio & VFX — Complete and Validated**\
+> V1.0--V1.6 are complete and validated. The next development milestone
+> is V1.7 --- Standalone Build.
 
-**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · CMake**
+**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio · CMake**
 
 ------------------------------------------------------------------------
 
@@ -55,6 +55,14 @@ The graphics validation scene is used to test PBR surfaces, emissive
 rendering, multiple light types, configurable shadows, HDRI environments,
 image-based lighting and post-processing. V1.5 also introduces a dedicated
 Renderer Profiler for inspecting frame, CPU/GPU, geometry and shadow metrics.
+
+### Audio & VFX
+
+V1.6 adds an editor-integrated audio and particle workflow. Audio clips can
+be assigned from the Project panel, previewed from the Inspector and used as
+2D or spatial 3D sources. Particle systems expose emitter, lifetime,
+randomization, shape, color, size, texture and blending controls directly in
+the editor, with Scene gizmos for spatial authoring.
 
 ### 3D model & material import
 
@@ -154,12 +162,16 @@ as a single action.
 -   Batch Duplicate/Delete
 -   Recursive hierarchy-aware duplication/deletion
 -   Component Reset / Copy / Paste / Remove
+-   Audio clip drag & drop and Inspector preview
+-   Spatial-audio range/listener gizmos
+-   Particle-system authoring and emitter-shape gizmos
 
 ### Asset pipeline
 
 -   Asset registry
 -   Persistent `.meta` files and asset GUIDs
 -   Texture assets
+-   Audio assets (`WAV`, `MP3`, `FLAC`)
 -   Material assets (`.nojobmat`)
 -   Prefab assets (`.nojobprefab`)
 -   Scene assets (`.nojobscene`)
@@ -238,6 +250,42 @@ as a single action.
 -   Camera components
 -   Directional, point and spot light components
 
+### Audio
+
+Powered by **miniaudio** behind NoJobEngine's own `AudioEngine` abstraction:
+
+-   `AudioSourceComponent` and `AudioListenerComponent`;
+-   WAV, MP3 and FLAC playback;
+-   Play On Awake, Loop, Volume and Pitch;
+-   2D / spatial 3D audio;
+-   Unity-style Spatial Blend;
+-   world-transform synchronized sources and listeners;
+-   Min / Max Distance attenuation;
+-   Doppler factor;
+-   editor audio preview;
+-   audio assets in the Project panel;
+-   drag & drop clip assignment;
+-   spatial source/listener gizmos;
+-   Scene and Prefab persistence.
+
+### Particle VFX
+
+-   `ParticleSystemComponent`;
+-   CPU particle simulation separated from rendering;
+-   Point, Sphere and Cone emitter shapes;
+-   lifetime, speed, size, gravity and emission controls;
+-   random lifetime, speed and size variation;
+-   Start → End color over lifetime;
+-   Start → End size scaling;
+-   textured camera-facing billboards;
+-   Alpha and Additive blending;
+-   Scene emitter-shape gizmos;
+-   hierarchy/world-transform aware emitters;
+-   GPU-instanced rendering with approximately one draw call per active emitter;
+-   particle triangle/draw-call integration with Renderer Profiler;
+-   explicit renderer resource shutdown;
+-   Scene and Prefab persistence.
+
 ### Physics
 
 Powered by **Jolt Physics**:
@@ -264,6 +312,8 @@ Powered by **Jolt Physics**:
   Gizmos                        ImGuizmo
   Physics                       Jolt Physics
   Model & animation importing   Assimp
+  Audio                         miniaudio / AudioEngine
+  Particle VFX                  CPU simulation / OpenGL instancing
   Native scripting              C++ / ScriptRegistry / DLL hot reload
   Images                        stb_image
 
@@ -288,6 +338,22 @@ OpenGLRendererAPI
 
 This architecture leaves room for another rendering backend in the
 future.
+
+Audio follows the same abstraction principle:
+
+``` text
+AudioSource / AudioListener
+        ↓
+AudioEngine
+        ↓
+miniaudio
+        ↓
+Platform audio backend
+```
+
+Particle simulation lives in `Scene`, while `SceneRenderer` consumes the
+runtime particle data and renders camera-facing billboards using GPU
+instancing. This keeps gameplay state independent from OpenGL.
 
 The project also separates the **editor scene** from the **runtime
 scene**. Entering Play Mode creates a runtime copy, allowing gameplay,
@@ -315,6 +381,8 @@ Add components
 Create prefab
         ↓
 Add physics / lights / camera
+        ↓
+Configure audio / particle VFX
         ↓
 Create / compile native C++ scripts
         ↓
@@ -509,16 +577,37 @@ Completed and validated.
 -   Safe `stb_image` vertical-flip state restoration after HDR loading.
 -   Project-relative HDRI paths for portable in-project environments.
 
+### ✅ V1.6 --- Audio & VFX
+
+Completed and validated.
+
+-   `AudioEngine` abstraction using miniaudio as the internal backend.
+-   AudioSource and AudioListener components.
+-   WAV, MP3 and FLAC asset playback.
+-   Play On Awake, Loop, Volume and Pitch.
+-   2D and spatial 3D audio with Spatial Blend.
+-   world-space AudioSource and AudioListener synchronization.
+-   Min / Max Distance attenuation and Doppler controls.
+-   Project-panel audio assets, drag & drop assignment and Inspector preview.
+-   spatial-audio range and listener-direction gizmos.
+-   Scene and Prefab persistence for audio.
+-   ParticleSystem component and runtime CPU simulation.
+-   Point, Sphere and Cone emitters with editor gizmos.
+-   lifetime, speed, size, gravity, emission and maximum-particle controls.
+-   randomized lifetime, speed and size.
+-   color and size evolution over particle lifetime.
+-   particle textures with Alpha / Additive blending.
+-   camera-facing particle billboards.
+-   GPU-instanced particle rendering, reducing particle rendering to roughly
+    one draw call per active emitter.
+-   particle statistics integrated with Renderer Profiler.
+-   explicit particle-renderer shutdown to safely release OpenGL resources.
+-   Scene and Prefab persistence for VFX.
+-   final Audio/VFX regression pass completed successfully.
+
 ------------------------------------------------------------------------
 
 ## Roadmap
-
-### V1.6 --- Audio & VFX
-
--   AudioSource / AudioListener.
--   2D and spatial 3D audio.
--   Volume, pitch and looping.
--   Particle/VFX component foundation.
 
 ### V1.7 --- Standalone Build
 
@@ -618,6 +707,8 @@ It covers problems across:
 -   native scripting;
 -   HDRI and image-based lighting;
 -   renderer profiling and optimization;
+-   audio-engine abstraction and spatial audio;
+-   particle simulation, VFX tooling and GPU instancing;
 -   engine architecture;
 -   editor/runtime design.
 

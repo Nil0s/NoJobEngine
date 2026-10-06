@@ -98,6 +98,58 @@ namespace NoJob
         }
     };
 
+    struct AudioSourceComponent
+    {
+        std::string ClipPath;
+        bool PlayOnAwake = true;
+        bool Loop = false;
+        float Volume = 1.0f;
+        float Pitch = 1.0f;
+
+        // V1.6 Block 2 spatial audio. SpatialBlend is intentionally Unity-like:
+        // 0 = fully 2D, 1 = fully 3D, intermediate values crossfade between both.
+        float SpatialBlend = 0.0f;
+        float MinDistance = 1.0f;
+        float MaxDistance = 50.0f;
+        float DopplerFactor = 1.0f;
+    };
+
+    struct AudioListenerComponent
+    {
+        bool Enabled = true;
+    };
+
+
+    enum class ParticleShape : std::uint8_t { Point = 0, Sphere = 1, Cone = 2 };
+    enum class ParticleBlendMode : std::uint8_t { Alpha = 0, Additive = 1 };
+
+    struct ParticleSystemComponent
+    {
+        bool Playing = true;
+        bool Loop = true;
+        float Duration = 5.0f;
+        float StartLifetime = 2.0f;
+        float LifetimeRandom = 0.0f;
+        float StartSpeed = 2.0f;
+        float SpeedRandom = 0.0f;
+        float StartSize = 0.2f;
+        float SizeRandom = 0.0f;
+        glm::vec4 StartColor{ 1.0f, 0.65f, 0.15f, 1.0f };
+        glm::vec4 EndColor{ 1.0f, 0.15f, 0.02f, 0.0f };
+        float EndSizeMultiplier = 0.25f;
+        float EmissionRate = 20.0f;
+        std::uint32_t MaxParticles = 500;
+        glm::vec3 Direction{ 0.0f, 1.0f, 0.0f };
+        glm::vec3 Gravity{ 0.0f, -1.0f, 0.0f };
+
+        ParticleShape Shape = ParticleShape::Point;
+        float ShapeRadius = 0.5f;
+        float ConeAngle = 25.0f;
+
+        ParticleBlendMode BlendMode = ParticleBlendMode::Alpha;
+        std::string TexturePath;
+    };
+
     struct DirectionalLightComponent
     {
         glm::vec3 Color{ 1.0f, 1.0f, 1.0f };

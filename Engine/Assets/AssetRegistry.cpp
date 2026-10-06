@@ -68,6 +68,7 @@ namespace NoJob
         if(e==".nojobscene") return AssetType::Scene;
         if(e==".nojobprefab") return AssetType::Prefab;
         if(e==".cpp"||e==".h"||e==".hpp") return AssetType::Script;
+        if(e==".wav"||e==".mp3"||e==".flac") return AssetType::Audio;
         return AssetType::Unknown;
     }
 

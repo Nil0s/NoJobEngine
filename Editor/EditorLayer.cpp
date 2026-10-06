@@ -13,6 +13,7 @@
 #include "Engine/Assets/MaterialSerializer.h"
 #include "Engine/Assets/PrefabSerializer.h"
 #include "Engine/Animation/Animation.h"
+#include "Engine/Audio/AudioEngine.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -1083,6 +1084,86 @@ namespace NoJob
                         lightColor, thickness);
                 }
 
+                if (entity.HasComponent<ParticleSystemComponent>())
+                {
+                    const auto& particles =
+                        entity.GetComponent<ParticleSystemComponent>();
+                    const ImU32 particleColor = selected
+                        ? IM_COL32(255, 120, 210, 255)
+                        : IM_COL32(220, 90, 185, 155);
+                    if (particles.Shape == ParticleShape::Sphere)
+                    {
+                        DrawSphereColliderWire(
+                            drawList,
+                            glm::translate(glm::mat4(1.0f), origin),
+                            std::max(particles.ShapeRadius, 0.01f),
+                            viewProjection, viewportMin, viewportSize,
+                            particleColor, thickness);
+                    }
+                    else if (particles.Shape == ParticleShape::Cone)
+                    {
+                        glm::vec3 dir = particles.Direction;
+                        if (glm::length(dir) < 0.0001f) dir = {0,1,0};
+                        dir = glm::normalize(glm::mat3(world) * glm::normalize(dir));
+                        const float length = 1.25f;
+                        const float radius = std::tan(glm::radians(
+                            glm::clamp(particles.ConeAngle,0.0f,89.0f))) * length;
+                        glm::vec3 tangent = std::abs(dir.y) < 0.99f
+                            ? glm::normalize(glm::cross(dir,glm::vec3(0,1,0)))
+                            : glm::vec3(1,0,0);
+                        glm::vec3 bitangent = glm::normalize(glm::cross(dir,tangent));
+                        const glm::vec3 center = origin + dir * length;
+                        for (int i=0;i<4;++i)
+                        {
+                            const float a = glm::half_pi<float>() * float(i);
+                            const glm::vec3 edge = center +
+                                tangent * std::cos(a)*radius +
+                                bitangent * std::sin(a)*radius;
+                            DrawColliderLine(drawList, origin, edge,
+                                viewProjection, viewportMin, viewportSize,
+                                particleColor, thickness);
+                        }
+                    }
+                }
+
+                if (entity.HasComponent<AudioSourceComponent>())
+                {
+                    const auto& audio = entity.GetComponent<AudioSourceComponent>();
+                    if (audio.SpatialBlend > 0.001f)
+                    {
+                        const ImU32 minColor = selected
+                            ? IM_COL32(100, 220, 255, 255)
+                            : IM_COL32(80, 180, 235, 175);
+                        const ImU32 maxColor = selected
+                            ? IM_COL32(185, 120, 255, 255)
+                            : IM_COL32(150, 90, 220, 145);
+                        const glm::mat4 audioWorld =
+                            glm::translate(glm::mat4(1.0f), origin);
+                        DrawSphereColliderWire(
+                            drawList, audioWorld, std::max(audio.MinDistance, 0.01f),
+                            viewProjection, viewportMin, viewportSize,
+                            minColor, thickness);
+                        if (selected)
+                            DrawSphereColliderWire(
+                                drawList, audioWorld,
+                                std::max(audio.MaxDistance, audio.MinDistance + 0.01f),
+                                viewProjection, viewportMin, viewportSize,
+                                maxColor, 1.25f);
+                    }
+                }
+
+                if (entity.HasComponent<AudioListenerComponent>() &&
+                    entity.GetComponent<AudioListenerComponent>().Enabled)
+                {
+                    const ImU32 listenerColor = selected
+                        ? IM_COL32(255, 150, 90, 255)
+                        : IM_COL32(235, 125, 70, 180);
+                    DrawColliderLine(
+                        drawList, origin, origin + forward * 0.8f,
+                        viewProjection, viewportMin, viewportSize,
+                        listenerColor, thickness);
+                }
+
                 if (entity.HasComponent<SpotLightComponent>())
                 {
                     const auto& light =
@@ -1144,6 +1225,27 @@ return{};}
                 OFN_NOCHANGEDIR;
             if (GetOpenFileNameA(&dialog) == TRUE)
                 return fileName;
+#endif
+            return {};
+        }
+
+        std::string OpenAudioFileDialog()
+        {
+#ifdef _WIN32
+            char fileName[MAX_PATH]{};
+            OPENFILENAMEA dialog{};
+            dialog.lStructSize = sizeof(dialog);
+            dialog.lpstrFile = fileName;
+            dialog.nMaxFile = MAX_PATH;
+            dialog.lpstrFilter =
+                "Audio Files (*.wav;*.mp3;*.flac)\0*.wav;*.mp3;*.flac\0"
+                "WAV (*.wav)\0*.wav\0"
+                "MP3 (*.mp3)\0*.mp3\0"
+                "FLAC (*.flac)\0*.flac\0"
+                "All Files\0*.*\0";
+            dialog.nFilterIndex = 1;
+            dialog.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+            if (GetOpenFileNameA(&dialog) == TRUE) return fileName;
 #endif
             return {};
         }
@@ -2556,6 +2658,145 @@ return{};}
 
             ImGui::Separator();
 
+            if (m_SelectedEntity.HasComponent<ParticleSystemComponent>())
+            {
+                if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& p = m_SelectedEntity.GetComponent<ParticleSystemComponent>();
+                    ImGui::Checkbox("Playing##Particles", &p.Playing);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Loop##Particles", &p.Loop);
+                    ImGui::DragFloat("Duration##Particles", &p.Duration, 0.1f, 0.0f, 120.0f);
+                    ImGui::SeparatorText("Main");
+                    ImGui::DragFloat("Start Lifetime##Particles", &p.StartLifetime, 0.05f, 0.01f, 60.0f);
+                    ImGui::SliderFloat("Lifetime Random##Particles", &p.LifetimeRandom, 0.0f, 1.0f);
+                    ImGui::DragFloat("Start Speed##Particles", &p.StartSpeed, 0.05f, -100.0f, 100.0f);
+                    ImGui::SliderFloat("Speed Random##Particles", &p.SpeedRandom, 0.0f, 1.0f);
+                    ImGui::DragFloat("Start Size##Particles", &p.StartSize, 0.01f, 0.001f, 20.0f);
+                    ImGui::SliderFloat("Size Random##Particles", &p.SizeRandom, 0.0f, 1.0f);
+                    ImGui::ColorEdit4("Start Color##Particles", &p.StartColor.x);
+                    ImGui::ColorEdit4("End Color##Particles", &p.EndColor.x);
+                    ImGui::SliderFloat("End Size Multiplier##Particles", &p.EndSizeMultiplier, 0.0f, 4.0f);
+                    ImGui::DragFloat3("Gravity##Particles", &p.Gravity.x, 0.02f);
+
+                    ImGui::SeparatorText("Emission");
+                    ImGui::DragFloat("Emission Rate##Particles", &p.EmissionRate, 0.5f, 0.0f, 10000.0f);
+                    int maxParticles = static_cast<int>(p.MaxParticles);
+                    if (ImGui::DragInt("Max Particles##Particles", &maxParticles, 1.0f, 1, 100000))
+                        p.MaxParticles = static_cast<std::uint32_t>(std::max(maxParticles, 1));
+
+                    ImGui::SeparatorText("Shape");
+                    const char* shapes[] = {"Point", "Sphere", "Cone"};
+                    int shape = static_cast<int>(p.Shape);
+                    if (ImGui::Combo("Emitter Shape##Particles", &shape, shapes, 3))
+                        p.Shape = static_cast<ParticleShape>(shape);
+                    ImGui::DragFloat3("Direction##Particles", &p.Direction.x, 0.02f);
+                    if (p.Shape == ParticleShape::Sphere)
+                        ImGui::DragFloat("Sphere Radius##Particles", &p.ShapeRadius, 0.02f, 0.0f, 100.0f);
+                    if (p.Shape == ParticleShape::Cone)
+                        ImGui::SliderFloat("Cone Angle##Particles", &p.ConeAngle, 0.0f, 89.0f);
+
+                    ImGui::SeparatorText("Renderer");
+                    const char* blends[] = {"Alpha", "Additive"};
+                    int blend = static_cast<int>(p.BlendMode);
+                    if (ImGui::Combo("Blend Mode##Particles", &blend, blends, 2))
+                        p.BlendMode = static_cast<ParticleBlendMode>(blend);
+                    ImGui::TextWrapped("Texture: %s", p.TexturePath.empty() ? "<none>" : p.TexturePath.c_str());
+                    ImGui::Button(p.TexturePath.empty() ? "Drop Texture Here##Particles" : "Texture Assigned##Particles", ImVec2(-1.0f,0.0f));
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("NOJOB_TEXTURE_ASSET"))
+                            p.TexturePath = static_cast<const char*>(payload->Data);
+                        ImGui::EndDragDropTarget();
+                    }
+                    if (!p.TexturePath.empty())
+                    {
+                        if (ImGui::Button("Clear Texture##Particles")) p.TexturePath.clear();
+                    }
+                    ImGui::TextDisabled("Simulation runs in Play Mode. Rendering is instanced per emitter.");
+                    if (ImGui::Button("Remove Particle System"))
+                        m_SelectedEntity.RemoveComponent<ParticleSystemComponent>();
+                }
+            }
+
+            ImGui::Separator();
+
+            if (m_SelectedEntity.HasComponent<AudioSourceComponent>())
+            {
+                if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& audio = m_SelectedEntity.GetComponent<AudioSourceComponent>();
+                    ImGui::TextWrapped("Clip: %s", audio.ClipPath.empty() ? "<none>" : audio.ClipPath.c_str());
+                    ImGui::Button(audio.ClipPath.empty() ? "Drop Audio Clip Here" : "Audio Clip Assigned", ImVec2(-1.0f, 0.0f));
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("NOJOB_AUDIO_ASSET"))
+                        {
+                            audio.ClipPath = static_cast<const char*>(payload->Data);
+                            AudioEngine::Stop(m_SelectedEntity.GetHandle());
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                    if (ImGui::Button("Load Audio Clip"))
+                    {
+                        const std::string path = OpenAudioFileDialog();
+                        if (!path.empty())
+                        {
+                            std::filesystem::path selected(path);
+                            std::error_code ec;
+                            const auto relative = std::filesystem::relative(selected, m_ProjectDirectory, ec);
+                            audio.ClipPath = (!ec && !relative.empty() && relative.generic_string().rfind("..", 0) != 0)
+                                ? relative.generic_string() : selected.lexically_normal().string();
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Clear##AudioClip")) audio.ClipPath.clear();
+                    ImGui::Checkbox("Play On Awake", &audio.PlayOnAwake);
+                    ImGui::Checkbox("Loop##Audio", &audio.Loop);
+                    ImGui::SliderFloat("Volume##Audio", &audio.Volume, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Pitch##Audio", &audio.Pitch, 0.1f, 3.0f);
+                    ImGui::SeparatorText("Spatial Audio");
+                    ImGui::SliderFloat("Spatial Blend##Audio", &audio.SpatialBlend, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Min Distance##Audio", &audio.MinDistance, 0.1f, 0.01f, 10000.0f);
+                    ImGui::DragFloat("Max Distance##Audio", &audio.MaxDistance, 0.25f, 0.02f, 100000.0f);
+                    ImGui::SliderFloat("Doppler Factor##Audio", &audio.DopplerFactor, 0.0f, 5.0f);
+                    audio.MinDistance = std::max(0.01f, audio.MinDistance);
+                    audio.MaxDistance = std::max(audio.MinDistance + 0.01f, audio.MaxDistance);
+                    audio.SpatialBlend = std::clamp(audio.SpatialBlend, 0.0f, 1.0f);
+                    if (audio.SpatialBlend <= 0.001f)
+                        ImGui::TextDisabled("2D: position and distance attenuation are disabled.");
+                    else
+                        ImGui::TextDisabled("3D: source follows the entity world Transform.");
+                    if (ImGui::Button("Preview Play"))
+                    {
+                        const glm::mat4 world = m_Scene->GetWorldTransform(m_SelectedEntity);
+                        AudioEngine::Play(m_SelectedEntity.GetHandle(), audio, glm::vec3(world[3]));
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Preview Stop")) AudioEngine::Stop(m_SelectedEntity.GetHandle());
+                    if (!AudioEngine::GetLastError().empty())
+                        ImGui::TextWrapped("Audio: %s", AudioEngine::GetLastError().c_str());
+                    if (ImGui::Button("Remove Audio Source"))
+                    {
+                        AudioEngine::Stop(m_SelectedEntity.GetHandle());
+                        m_SelectedEntity.RemoveComponent<AudioSourceComponent>();
+                    }
+                }
+            }
+
+            if (m_SelectedEntity.HasComponent<AudioListenerComponent>())
+            {
+                if (ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& listener = m_SelectedEntity.GetComponent<AudioListenerComponent>();
+                    ImGui::Checkbox("Enabled##AudioListener", &listener.Enabled);
+                    ImGui::TextDisabled("Uses this entity's world position and orientation.");
+                    ImGui::TextDisabled("The first enabled listener in the runtime scene is active.");
+                    if (ImGui::Button("Remove Audio Listener"))
+                        m_SelectedEntity.RemoveComponent<AudioListenerComponent>();
+                }
+            }
+
             if (m_SelectedEntity.HasComponent<CameraComponent>())
             {
                 if (ImGui::CollapsingHeader(
@@ -2797,6 +3038,17 @@ return{};}
                     [&]{ m_SelectedEntity.AddComponent<PointLightComponent>(); });
                 addItem("Rendering", "Spot Light", noViewLight,
                     [&]{ m_SelectedEntity.AddComponent<SpotLightComponent>(); });
+
+                addItem("Effects", "Particle System",
+                    !m_SelectedEntity.HasComponent<ParticleSystemComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<ParticleSystemComponent>(); });
+
+                addItem("Audio", "Audio Source",
+                    !m_SelectedEntity.HasComponent<AudioSourceComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<AudioSourceComponent>(); });
+                addItem("Audio", "Audio Listener",
+                    !m_SelectedEntity.HasComponent<AudioListenerComponent>(),
+                    [&]{ m_SelectedEntity.AddComponent<AudioListenerComponent>(); });
 
                 addItem("Animation", "Animator",
                     !m_SelectedEntity.HasComponent<AnimatorComponent>(),
@@ -3915,7 +4167,22 @@ return{};}
                     const bool isMaterial = extension == ".nojobmat";
                     const bool isPrefab = extension == ".nojobprefab";
                     const bool isScript = extension == ".cpp" || extension == ".h" || extension == ".hpp";
-                    if(isScript)
+                    const bool isAudio = extension == ".wav" || extension == ".mp3" || extension == ".flac";
+                    if(isAudio)
+                    {
+                        ImGui::Selectable(("[Audio] " + name).c_str());
+                        const std::string relative =
+                            AssetManager::ToProjectRelative(path).generic_string();
+                        if (ImGui::BeginDragDropSource())
+                        {
+                            ImGui::SetDragDropPayload(
+                                "NOJOB_AUDIO_ASSET",
+                                relative.c_str(), relative.size() + 1);
+                            ImGui::Text("Audio: %s", name.c_str());
+                            ImGui::EndDragDropSource();
+                        }
+                    }
+                    else if(isScript)
                     {
                         const bool clicked = ImGui::Selectable(
                             ("[C++] " + name).c_str(),

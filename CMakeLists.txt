@@ -60,6 +60,17 @@ FetchContent_Declare(stb
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(stb)
 
+# miniaudio 0.11.25 - low-level audio backend used behind NoJobEngine's AudioEngine.
+# Pinned release for reproducible builds.
+FetchContent_Declare(miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG 0.11.25
+    GIT_SHALLOW TRUE)
+FetchContent_GetProperties(miniaudio)
+if(NOT miniaudio_POPULATED)
+    FetchContent_Populate(miniaudio)
+endif()
+
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG v1.92.5-docking
@@ -130,6 +141,8 @@ add_library(NoJobEngine STATIC
     Engine/Assets/MaterialSerializer.cpp
     Engine/Assets/PrefabSerializer.cpp
     Engine/Physics/PhysicsSystem.cpp
+    Engine/Audio/AudioEngine.cpp
+    ${miniaudio_SOURCE_DIR}/miniaudio.c
     Engine/Animation/Animation.cpp
     Engine/Scene/Scene.cpp
     Engine/Scene/SceneSerializer.cpp
@@ -160,7 +173,8 @@ target_include_directories(NoJobEngine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
     PRIVATE
-        ${stb_SOURCE_DIR})
+        ${stb_SOURCE_DIR}
+        ${miniaudio_SOURCE_DIR})
 
 target_compile_definitions(NoJobEngine PUBLIC
     GLFW_INCLUDE_NONE)

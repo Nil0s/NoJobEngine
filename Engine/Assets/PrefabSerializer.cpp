@@ -56,6 +56,30 @@ void WriteEntity(std::ostream& o,Entity e,Scene& scene,int parentLocal,int& next
   o<<"ANIMATOR "<<std::quoted(source)<<' '<<a.ClipIndex<<' '<<a.Speed<<' '
    <<(a.Playing?1:0)<<' '<<(a.Loop?1:0)<<"\n";
  }
+ if(e.HasComponent<AudioSourceComponent>())
+ {
+  auto& a=e.GetComponent<AudioSourceComponent>();
+  o<<"AUDIO_SOURCE "<<std::quoted(a.ClipPath)<<' '<<a.PlayOnAwake<<' '<<a.Loop<<' '
+   <<a.Volume<<' '<<a.Pitch<<' '<<a.SpatialBlend<<' '<<a.MinDistance<<' '
+   <<a.MaxDistance<<' '<<a.DopplerFactor<<"\n";
+ }
+ if(e.HasComponent<AudioListenerComponent>())
+ {
+  o<<"AUDIO_LISTENER "<<e.GetComponent<AudioListenerComponent>().Enabled<<"\n";
+ }
+ if(e.HasComponent<ParticleSystemComponent>())
+ {
+  auto& v=e.GetComponent<ParticleSystemComponent>();
+  o<<"PARTICLE_SYSTEM_V2 "<<v.Playing<<' '<<v.Loop<<' '<<v.Duration<<' '<<v.StartLifetime<<' '
+   <<v.LifetimeRandom<<' '<<v.StartSpeed<<' '<<v.SpeedRandom<<' '<<v.StartSize<<' '<<v.SizeRandom<<' '
+   <<v.StartColor.r<<' '<<v.StartColor.g<<' '<<v.StartColor.b<<' '<<v.StartColor.a<<' '
+   <<v.EndColor.r<<' '<<v.EndColor.g<<' '<<v.EndColor.b<<' '<<v.EndColor.a<<' '
+   <<v.EndSizeMultiplier<<' '<<v.EmissionRate<<' '<<v.MaxParticles<<' '
+   <<v.Direction.x<<' '<<v.Direction.y<<' '<<v.Direction.z<<' '
+   <<v.Gravity.x<<' '<<v.Gravity.y<<' '<<v.Gravity.z<<' '
+   <<static_cast<int>(v.Shape)<<' '<<v.ShapeRadius<<' '<<v.ConeAngle<<' '
+   <<static_cast<int>(v.BlendMode)<<' '<<std::quoted(v.TexturePath)<<"\n";
+ }
  if(e.HasComponent<NativeScriptComponent>())
  {
   auto& script=e.GetComponent<NativeScriptComponent>();
@@ -96,7 +120,7 @@ std::shared_ptr<Texture2D> LoadTex(const std::string& p,const std::filesystem::p
 bool PrefabSerializer::Save(Entity root,const std::filesystem::path& p)
 {
  if(!root)return false; std::filesystem::create_directories(p.parent_path()); std::ofstream o(p); if(!o)return false;
- o<<"NOJOB_PREFAB 4\n"; int next=0;
+ o<<"NOJOB_PREFAB 6\n"; int next=0;
  // Entity keeps its Scene private; derive hierarchy through the root's relationship is not enough.
  // PrefabSerializer is intentionally a Scene friend via Entity access is unavailable, so V4 Save is
  // rooted by recursively following handles through a lightweight local lambda in the public Scene API.
@@ -144,6 +168,9 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
   std::string animationPath; int animationClip=0; float animationSpeed=1.0f;
   bool animationPlaying=true,animationLoop=true;
   bool hasScript=false; NativeScriptComponent nativeScript;
+  bool hasAudioSource=false; AudioSourceComponent audioSource;
+  bool hasAudioListener=false; AudioListenerComponent audioListener;
+  bool hasParticleSystem=false; ParticleSystemComponent particleSystem;
   while(i>>k && k!="END_ENTITY"){
    if(k=="TRANSFORM"){i>>pos.x>>pos.y>>pos.z>>rot.x>>rot.y>>rot.z>>sc.x>>sc.y>>sc.z;}
    else if(k=="MESH"){i>>std::quoted(meshPath);}
@@ -151,6 +178,40 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
     int playing=1,loop=1;
     i>>std::quoted(animationPath)>>animationClip>>animationSpeed>>playing>>loop;
     animationPlaying=playing!=0; animationLoop=loop!=0;
+   }
+   else if(k=="AUDIO_SOURCE"){
+    i>>std::quoted(audioSource.ClipPath)>>audioSource.PlayOnAwake>>audioSource.Loop
+     >>audioSource.Volume>>audioSource.Pitch>>audioSource.SpatialBlend
+     >>audioSource.MinDistance>>audioSource.MaxDistance>>audioSource.DopplerFactor;
+    hasAudioSource=true;
+   }
+   else if(k=="AUDIO_LISTENER"){
+    i>>audioListener.Enabled; hasAudioListener=true;
+   }
+   else if(k=="PARTICLE_SYSTEM"){
+    i>>particleSystem.Playing>>particleSystem.Loop>>particleSystem.Duration
+     >>particleSystem.StartLifetime>>particleSystem.StartSpeed>>particleSystem.StartSize
+     >>particleSystem.StartColor.r>>particleSystem.StartColor.g>>particleSystem.StartColor.b>>particleSystem.StartColor.a
+     >>particleSystem.EmissionRate>>particleSystem.MaxParticles
+     >>particleSystem.Direction.x>>particleSystem.Direction.y>>particleSystem.Direction.z
+     >>particleSystem.Gravity.x>>particleSystem.Gravity.y>>particleSystem.Gravity.z;
+    hasParticleSystem=true;
+   }
+   else if(k=="PARTICLE_SYSTEM_V2"){
+    int shape=0,blend=0;
+    i>>particleSystem.Playing>>particleSystem.Loop>>particleSystem.Duration
+     >>particleSystem.StartLifetime>>particleSystem.LifetimeRandom
+     >>particleSystem.StartSpeed>>particleSystem.SpeedRandom
+     >>particleSystem.StartSize>>particleSystem.SizeRandom
+     >>particleSystem.StartColor.r>>particleSystem.StartColor.g>>particleSystem.StartColor.b>>particleSystem.StartColor.a
+     >>particleSystem.EndColor.r>>particleSystem.EndColor.g>>particleSystem.EndColor.b>>particleSystem.EndColor.a
+     >>particleSystem.EndSizeMultiplier>>particleSystem.EmissionRate>>particleSystem.MaxParticles
+     >>particleSystem.Direction.x>>particleSystem.Direction.y>>particleSystem.Direction.z
+     >>particleSystem.Gravity.x>>particleSystem.Gravity.y>>particleSystem.Gravity.z
+     >>shape>>particleSystem.ShapeRadius>>particleSystem.ConeAngle>>blend>>std::quoted(particleSystem.TexturePath);
+    particleSystem.Shape=static_cast<ParticleShape>(shape);
+    particleSystem.BlendMode=static_cast<ParticleBlendMode>(blend);
+    hasParticleSystem=true;
    }
    else if(k=="SCRIPT_V2"){
     i>>nativeScript.Enabled>>std::quoted(nativeScript.ScriptName); hasScript=true;
@@ -201,6 +262,9 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
     }
    }catch(...){}
   }
+  if(hasAudioSource)e.AddComponent<AudioSourceComponent>(std::move(audioSource));
+  if(hasAudioListener)e.AddComponent<AudioListenerComponent>(audioListener);
+  if(hasParticleSystem)e.AddComponent<ParticleSystemComponent>(particleSystem);
   if(hasScript)e.AddComponent<NativeScriptComponent>(std::move(nativeScript));
   if(parent>=0&&made.contains(parent))s.SetParent(e,made[parent],false);
  }

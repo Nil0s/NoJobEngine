@@ -33,5 +33,6 @@ namespace NoJob
             const FramebufferSpecification& settings);
         static const FramebufferSpecification& GetGraphicsSettings();
         static const RendererStatistics& GetStatistics();
+        static void Shutdown();
     };
 }

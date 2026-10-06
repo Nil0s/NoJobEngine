@@ -722,6 +722,7 @@ int main()
         cubeMesh.reset();
         shader.reset();
 
+        NoJob::SceneRenderer::Shutdown();
         NoJob::Renderer::Shutdown();
         return 0;
     }

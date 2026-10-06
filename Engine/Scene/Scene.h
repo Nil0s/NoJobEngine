@@ -38,6 +38,20 @@ namespace NoJob
         void OnUpdate(float deltaTime);
         float GetDeltaTime() const { return m_DeltaTime; }
 
+        struct RuntimeParticle
+        {
+            glm::vec3 Position{0.0f};
+            glm::vec3 Velocity{0.0f};
+            float Age = 0.0f;
+            float Lifetime = 1.0f;
+            float Size = 0.1f;
+            float StartSize = 0.1f;
+            glm::vec4 Color{1.0f};
+            glm::vec4 StartColor{1.0f};
+            glm::vec4 EndColor{1.0f};
+        };
+        const std::vector<RuntimeParticle>& GetParticles(std::uint32_t handle) const;
+
         Entity GetParent(Entity entity);
         std::vector<Entity> GetChildren(Entity entity);
         bool IsDescendant(Entity possibleDescendant, Entity ancestor) const;
@@ -74,6 +88,9 @@ namespace NoJob
             std::optional<SphereColliderComponent> SphereCollider;
             std::optional<CapsuleColliderComponent> CapsuleCollider;
             std::optional<CameraComponent> Camera;
+            std::optional<AudioSourceComponent> AudioSource;
+            std::optional<AudioListenerComponent> AudioListener;
+            std::optional<ParticleSystemComponent> ParticleSystem;
             std::optional<DirectionalLightComponent> DirectionalLight;
             std::optional<PointLightComponent> PointLight;
             std::optional<SpotLightComponent> SpotLight;
@@ -112,6 +129,12 @@ namespace NoJob
                 return data.CapsuleCollider.value();
             else if constexpr (std::is_same_v<T, CameraComponent>)
                 return data.Camera.value();
+            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
+                return data.AudioSource.value();
+            else if constexpr (std::is_same_v<T, AudioListenerComponent>)
+                return data.AudioListener.value();
+            else if constexpr (std::is_same_v<T, ParticleSystemComponent>)
+                return data.ParticleSystem.value();
             else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
                 return data.DirectionalLight.value();
             else if constexpr (std::is_same_v<T, PointLightComponent>)
@@ -155,6 +178,12 @@ namespace NoJob
                 return data.CapsuleCollider.value();
             else if constexpr (std::is_same_v<T, CameraComponent>)
                 return data.Camera.value();
+            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
+                return data.AudioSource.value();
+            else if constexpr (std::is_same_v<T, AudioListenerComponent>)
+                return data.AudioListener.value();
+            else if constexpr (std::is_same_v<T, ParticleSystemComponent>)
+                return data.ParticleSystem.value();
             else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
                 return data.DirectionalLight.value();
             else if constexpr (std::is_same_v<T, PointLightComponent>)
@@ -228,6 +257,21 @@ namespace NoJob
                 data.Camera.emplace(T{ std::forward<Args>(args)... });
                 return data.Camera.value();
             }
+            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
+            {
+                data.AudioSource.emplace(T{ std::forward<Args>(args)... });
+                return data.AudioSource.value();
+            }
+            else if constexpr (std::is_same_v<T, AudioListenerComponent>)
+            {
+                data.AudioListener.emplace(T{ std::forward<Args>(args)... });
+                return data.AudioListener.value();
+            }
+            else if constexpr (std::is_same_v<T, ParticleSystemComponent>)
+            {
+                data.ParticleSystem.emplace(T{ std::forward<Args>(args)... });
+                return data.ParticleSystem.value();
+            }
             else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
             {
                 data.DirectionalLight.emplace(T{ std::forward<Args>(args)... });
@@ -268,6 +312,12 @@ namespace NoJob
                 data.CapsuleCollider.reset();
             else if constexpr (std::is_same_v<T, CameraComponent>)
                 data.Camera.reset();
+            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
+                data.AudioSource.reset();
+            else if constexpr (std::is_same_v<T, AudioListenerComponent>)
+                data.AudioListener.reset();
+            else if constexpr (std::is_same_v<T, ParticleSystemComponent>)
+                data.ParticleSystem.reset();
             else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
                 data.DirectionalLight.reset();
             else if constexpr (std::is_same_v<T, PointLightComponent>)
@@ -313,6 +363,12 @@ namespace NoJob
                 return data.CapsuleCollider.has_value();
             else if constexpr (std::is_same_v<T, CameraComponent>)
                 return data.Camera.has_value();
+            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
+                return data.AudioSource.has_value();
+            else if constexpr (std::is_same_v<T, AudioListenerComponent>)
+                return data.AudioListener.has_value();
+            else if constexpr (std::is_same_v<T, ParticleSystemComponent>)
+                return data.ParticleSystem.has_value();
             else if constexpr (std::is_same_v<T, DirectionalLightComponent>)
                 return data.DirectionalLight.has_value();
             else if constexpr (std::is_same_v<T, PointLightComponent>)
@@ -328,6 +384,14 @@ namespace NoJob
         std::uint64_t m_NextID = 1;
         float m_DeltaTime = 0.0f;
         bool m_RuntimeRunning = false;
+        struct ParticleRuntimeState
+        {
+            std::vector<RuntimeParticle> Particles;
+            float SpawnAccumulator = 0.0f;
+            float Elapsed = 0.0f;
+            std::uint32_t Seed = 1;
+        };
+        std::unordered_map<std::uint32_t, ParticleRuntimeState> m_ParticleStates;
         std::unordered_map<std::uint32_t, std::unique_ptr<ScriptableEntity>> m_ScriptInstances;
         void CreateScriptInstance(std::uint32_t handle);
         void DestroyScriptInstance(std::uint32_t handle);
