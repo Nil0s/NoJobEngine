@@ -1130,14 +1130,14 @@ namespace NoJob
                         nullptr,
                         L"open",
                         visualStudio.wstring().c_str(),
-                        (L"\"" + absoluteScript.wstring() + L"\"").c_str(),
+                        (L"/Edit \"" + absoluteScript.wstring() + L"\"").c_str(),
                         AssetManager::GetProjectRoot().wstring().c_str(),
                         SW_SHOWNORMAL));
 
                 if (result > 32)
                 {
                     ScriptLog(
-                        "[Scripts] Opened in Visual Studio: " +
+                        "[Scripts] Opened in existing Visual Studio instance: " +
                         absoluteScript.filename().string());
                     return true;
                 }

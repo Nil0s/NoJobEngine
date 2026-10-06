@@ -1,5 +1,10 @@
 # NoJobEngine
 
+<p align="center">
+  <img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">
+</p>
+
+
 A lightweight **C++20 game engine and Unity-inspired editor** built from
 scratch as a learning and engineering project.
 
