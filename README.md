@@ -1,55 +1,86 @@
 # NoJobEngine
 
+```{=html}
 <p align="center">
-  <img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">
+```
+`<img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">`{=html}
+```{=html}
 </p>
+```
+A custom **C++20 game engine and editor built from scratch as the
+foundation for experimenting with native, visual and inspectable Game
+AI.**
 
-A custom **C++20 game engine and editor built from scratch as the foundation
-for experimenting with native, visual and inspectable Game AI.**
+NoJobEngine started with a simple idea: if I wanted to explore game AI
+at a deeper level, I wanted control over the entire stack instead of
+treating the engine itself as a black box.
 
-NoJobEngine started with a simple idea: if I wanted to explore game AI at
-a deeper level, I wanted control over the entire stack instead of treating
-the engine itself as a black box.
-
-Before building the AI systems I had in mind, I needed the environment they
-would live in.
+Before building the AI systems I had in mind, I needed the environment
+they would live in.
 
 That meant building the engine first.
 
 The project has grown from rendering its first triangle into a complete
 editor/runtime foundation with scenes, assets, prefabs, physics, PBR
-rendering, skeletal animation, GPU skinning, audio, VFX, native C++ scripting
-with hot reload and standalone builds.
+rendering, skeletal animation, GPU skinning, audio, VFX, native C++
+scripting with hot reload and standalone builds.
 
-With the core engine foundation now complete, development is moving into the
-original goal of the project:
+With the core engine foundation now complete, development is moving into
+the original goal of the project:
 
 **Game AI.**
 
-The next stage will explore navigation, perception, visual behavior authoring,
-AI debugging and, eventually, native neural networks, reinforcement learning
-and training directly inside NoJobEngine.
+The next stage will explore navigation, perception, visual behavior
+authoring, AI debugging and, eventually, native neural networks,
+reinforcement learning and training directly inside NoJobEngine.
 
-> **Current milestone: NoJobEngine V1.7 — Standalone Build — Complete and Validated**
+> **Current milestone: NoJobEngine V1.7 --- Standalone Build ---
+> Complete and Validated**
 >
-> **Next milestone: V1.8 — AI Navigation & Gameplay AI**
+> **Next milestone: V1.8 --- AI Navigation & Gameplay AI**
 
-**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio · CMake**
+**C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
+CMake**
 
 ------------------------------------------------------------------------
 
-## Why I built it
+## Why NoJobEngine exists
 
 I have spent several years working with Unity and C#, both on
-interactive applications and real-world projects. NoJobEngine is my way
-of going deeper into engine architecture, graphics programming and
-modern C++.
+interactive applications and real-world projects.
 
-The goal is not to clone Unity feature-for-feature. Instead, the editor
-intentionally follows familiar Unity-style workflows while the
+NoJobEngine started from my interest in going deeper into engine
+architecture, graphics programming and modern C++, but building another
+general-purpose game engine was never the final objective.
+
+The engine is the foundation for a larger experiment:
+
+**What would game AI look like if it were treated as a first-class part
+of the engine itself?**
+
+The goal is to explore an AI workflow where developers can build
+behaviors visually, inspect what an agent perceives, debug its decisions
+and eventually design and train neural networks directly inside the
+engine.
+
+Rather than relying on an external Python training pipeline as the core
+workflow, the long-term direction is to explore native C++ training and
+inference integrated directly with the runtime and editor.
+
+This also opens the door to hybrid approaches where deterministic game
+AI and learned behavior can work together in the same agent.
+
+The goal is not to replace Unity, Unreal or Godot. The editor
+intentionally keeps some familiar Unity-style workflows, while the
 underlying systems are implemented and explored from the ground up.
 
-The project is especially focused on:
+Building NoJobEngine gives me something more useful for this project:
+
+**control over the editor, runtime, simulation and tooling needed to
+explore these ideas from the ground up.**
+
+The engine itself is already a substantial engineering project, focused
+on:
 
 -   engine and editor architecture;
 -   real-time rendering;
@@ -60,6 +91,9 @@ The project is especially focused on:
 -   runtime/editor separation;
 -   native C++ gameplay scripting;
 -   understanding how high-level engine features are built internally.
+
+Now that foundation becomes the environment for the next stage of the
+project.
 
 ------------------------------------------------------------------------
 
@@ -742,7 +776,11 @@ Completed and validated.
 
 ------------------------------------------------------------------------
 
-## Roadmap
+## AI Roadmap
+
+The roadmap below describes planned work. Items in this section are not
+presented as implemented until they move into the completed development
+milestones above.
 
 ### V1.8 --- AI Navigation & Gameplay AI
 
@@ -821,7 +859,9 @@ trained directly inside the C++ engine.
 ## What this project demonstrates
 
 NoJobEngine is both a technical project and a record of my progression
-beyond using an existing engine API.
+beyond using an existing engine API. The completed engine foundation
+demonstrates the systems listed below; the AI roadmap extends that
+foundation into the project's next area of experimentation.
 
 It covers problems across:
 
