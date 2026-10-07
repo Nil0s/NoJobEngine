@@ -1,10 +1,13 @@
 #include "Engine/Scene/SceneSerializer.h"
+#include "Engine/Core/Log.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Asset/AssetManager.h"
+#include "Engine/Animation/Animation.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -51,6 +54,13 @@ namespace NoJob
                    <<c.Gravity.x<<' '<<c.Gravity.y<<' '<<c.Gravity.z<<' '
                    <<static_cast<int>(c.Shape)<<' '<<c.ShapeRadius<<' '<<c.ConeAngle<<' '
                    <<static_cast<int>(c.BlendMode)<<' '<<std::quoted(c.TexturePath)<<'\n';}
+            if(e.HasComponent<AnimatorComponent>())
+            {
+                auto& c=e.GetComponent<AnimatorComponent>();
+                const auto source=c.Animation ? AssetManager::ToProjectRelative(c.Animation->SourcePath()).generic_string() : std::string();
+                out<<"ANIMATOR "<<std::quoted(source)<<' '<<c.ClipIndex<<' '<<c.Speed<<' '
+                   <<c.Playing<<' '<<c.Loop<<'\n';
+            }
             if(e.HasComponent<NativeScriptComponent>())
             {
                 auto& c=e.GetComponent<NativeScriptComponent>();
@@ -123,6 +133,33 @@ namespace NoJob
             else if(k=="AUDIO_SOURCE"){AudioSourceComponent c;s>>std::quoted(c.ClipPath)>>c.PlayOnAwake>>c.Loop>>c.Volume>>c.Pitch;current.AddComponent<AudioSourceComponent>(c);}
             else if(k=="AUDIO_SOURCE_V2"){AudioSourceComponent c;s>>std::quoted(c.ClipPath)>>c.PlayOnAwake>>c.Loop>>c.Volume>>c.Pitch>>c.SpatialBlend>>c.MinDistance>>c.MaxDistance>>c.DopplerFactor;current.AddComponent<AudioSourceComponent>(c);}
             else if(k=="AUDIO_LISTENER"){AudioListenerComponent c;s>>c.Enabled;current.AddComponent<AudioListenerComponent>(c);}
+            else if(k=="ANIMATOR")
+            {
+                std::string animationPath; int clipIndex=0,playing=1,loop=1; float speed=1.0f;
+                s>>std::quoted(animationPath)>>clipIndex>>speed>>playing>>loop;
+                if(!animationPath.empty())
+                {
+                    try
+                    {
+                        auto animation=AnimationAsset::Load(AssetManager::ResolveProjectPath(animationPath));
+                        if(animation && animation->HasAnimations())
+                        {
+                            AnimatorComponent c;
+                            c.Animation=std::move(animation);
+                            c.ClipIndex=std::clamp(clipIndex,0,static_cast<int>(c.Animation->Clips().size())-1);
+                            c.TimeSeconds=0.0f;
+                            c.Speed=speed;
+                            c.Playing=playing!=0;
+                            c.Loop=loop!=0;
+                            current.AddComponent<AnimatorComponent>(std::move(c));
+                        }
+                    }
+                    catch(...)
+                    {
+                        Log::Warn("Scene animation load failed: " + animationPath);
+                    }
+                }
+            }
             else if(k=="PARTICLE_SYSTEM"){ParticleSystemComponent c;
                 s>>c.Playing>>c.Loop>>c.Duration>>c.StartLifetime>>c.StartSpeed>>c.StartSize
                  >>c.StartColor.r>>c.StartColor.g>>c.StartColor.b>>c.StartColor.a
@@ -170,7 +207,7 @@ namespace NoJob
             else if(k=="BOX"){BoxColliderComponent c;ReadV3(s,c.Size);s>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<BoxColliderComponent>(c);}
             else if(k=="SPHERE"){SphereColliderComponent c;s>>c.Radius>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<SphereColliderComponent>(c);}
             else if(k=="CAPSULE"){CapsuleColliderComponent c;s>>c.Radius>>c.Height>>c.IsTrigger>>c.Material.Friction>>c.Material.Bounciness;current.AddComponent<CapsuleColliderComponent>(c);}
-            else if(k=="MESH"){std::string mp;s>>std::quoted(mp);if(mp=="CUBE"||mp.empty())current.AddComponent<MeshComponent>(defaultMesh);else{try{current.AddComponent<MeshComponent>(AssetManager::LoadMesh(mp));}catch(...){current.AddComponent<MeshComponent>(defaultMesh);}}}
+            else if(k=="MESH"){std::string mp;s>>std::quoted(mp);if(mp=="CUBE"||mp.empty())current.AddComponent<MeshComponent>(defaultMesh);else{try{current.AddComponent<MeshComponent>(AssetManager::LoadMesh(mp));}catch(...){Log::Warn("Scene mesh load failed, using fallback: " + mp);current.AddComponent<MeshComponent>(defaultMesh);}}}
             else if(k=="MATERIAL"){
                 auto m=std::make_shared<Material>(*defaultMaterial);
                 glm::vec4 col; s>>col.r>>col.g>>col.b>>col.a>>m->Metallic()>>m->Roughness()>>m->AmbientOcclusion()>>m->NormalStrength();

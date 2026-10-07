@@ -1,4 +1,5 @@
 #include "Engine/Asset/AssetManager.h"
+#include "Engine/Core/Log.h"
 
 #include "Engine/Renderer/Texture.h"
 #include "Engine/Renderer/Mesh.h"
@@ -54,6 +55,15 @@ namespace NoJob
     const std::filesystem::path& AssetManager::GetAssetsDirectory()
     {
         return s_AssetsDirectory;
+    }
+
+    std::filesystem::path AssetManager::ResolveProjectPath(
+        const std::filesystem::path& path)
+    {
+        if (path.empty() || path.is_absolute() || s_ProjectRoot.empty())
+            return path.lexically_normal();
+
+        return (s_ProjectRoot / path).lexically_normal();
     }
 
     std::filesystem::path AssetManager::MakeUniqueDestination(
@@ -302,6 +312,7 @@ namespace NoJob
             }
             catch (...)
             {
+                Log::Warn("Material texture import failed; texture slot left empty.");
                 return {};
             }
         };
@@ -478,7 +489,7 @@ namespace NoJob
                 AssetRegistry r(s_AssetsDirectory);r.Load();
                 r.Register(s_ProjectRoot/rel,AssetType::Texture2D);r.Save();
                 return LoadTexture(rel);
-            }catch(...){return {};}
+            }catch(...){Log::Warn("Model material texture import failed; texture slot left empty.");return {};}
         };
 
         for(unsigned i=0;i<scene->mNumMaterials;++i)

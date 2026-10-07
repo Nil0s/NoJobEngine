@@ -1,4 +1,5 @@
 #include "Engine/Assets/PrefabSerializer.h"
+#include "Engine/Core/Log.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Asset/AssetManager.h"
@@ -106,14 +107,14 @@ std::shared_ptr<Texture2D> LoadTex(const std::string& p,const std::filesystem::p
   auto tex=AssetManager::LoadTexture(p);
   if(tex) return tex;
  }
- catch(...){}
+ catch(...){Log::Warn("Prefab asset load failed; trying fallback.");}
  try
  {
   // Compatibility/fallback for paths that were serialized relative to the prefab itself.
   const auto candidate=(prefabPath.parent_path()/p).lexically_normal();
   if(std::filesystem::exists(candidate)) return AssetManager::LoadTexture(candidate);
  }
- catch(...){}
+ catch(...){Log::Warn("Prefab asset load failed; trying fallback.");}
  return {};
 }
 }
@@ -147,7 +148,7 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
    else if(k=="TEXTURES")i>>std::quoted(a)>>std::quoted(n)>>std::quoted(me)>>std::quoted(r)>>std::quoted(aop)>>std::quoted(em);
   }
   auto e=s.CreateEntity(name);auto& tr=e.GetComponent<TransformComponent>();tr.Position=pos;tr.Rotation=rot;tr.Scale=sc;
-  if(!mp.empty()){try{e.AddComponent<MeshComponent>(mp=="CUBE"?fallback:AssetManager::LoadMesh(mp));}catch(...){if(fallback)e.AddComponent<MeshComponent>(fallback);}}
+  if(!mp.empty()){try{e.AddComponent<MeshComponent>(mp=="CUBE"?fallback:AssetManager::LoadMesh(mp));}catch(...){Log::Warn("Prefab mesh load failed; using fallback mesh.");if(fallback)e.AddComponent<MeshComponent>(fallback);}}
   if(hm&&base){
    auto m=std::make_shared<Material>(*base);m->GetColor()=col;m->Metallic()=mt;m->Roughness()=ro;m->AmbientOcclusion()=ao;
    m->NormalStrength()=ns;m->EmissiveColor()=ec;m->EmissiveStrength()=es;m->UseTexture()=false;
@@ -245,15 +246,13 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
   auto& tr=e.GetComponent<TransformComponent>();tr.Position=pos;tr.Rotation=rot;tr.Scale=sc;
   if(!meshPath.empty()){
    try{e.AddComponent<MeshComponent>(meshPath=="CUBE"?fallback:AssetManager::LoadMesh(meshPath));}
-   catch(...){if(fallback)e.AddComponent<MeshComponent>(fallback);}
+   catch(...){Log::Warn("Prefab mesh load failed; using fallback mesh.");if(fallback)e.AddComponent<MeshComponent>(fallback);}
   }
   if(!animationPath.empty()){
    try{
-    const std::filesystem::path animationFilePath(animationPath);
-    const auto resolvedAnimationPath=animationFilePath.is_absolute()
-     ?animationFilePath
-     :(AssetManager::GetProjectRoot()/animationFilePath);
-    auto animation=AnimationAsset::Load(std::filesystem::absolute(resolvedAnimationPath).lexically_normal());
+    const auto resolvedAnimationPath =
+     AssetManager::ResolveProjectPath(std::filesystem::path(animationPath));
+    auto animation=AnimationAsset::Load(resolvedAnimationPath);
     if(animation&&animation->HasAnimations()){
      AnimatorComponent animator;
      animator.Animation=std::move(animation);
@@ -264,7 +263,7 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
      animator.Loop=animationLoop;
      e.AddComponent<AnimatorComponent>(std::move(animator));
     }
-   }catch(...){}
+   }catch(...){Log::Warn("Prefab animation load failed: " + animationPath);}
   }
   if(hasAudioSource)e.AddComponent<AudioSourceComponent>(std::move(audioSource));
   if(hasAudioListener)e.AddComponent<AudioListenerComponent>(audioListener);

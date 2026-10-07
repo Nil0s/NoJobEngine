@@ -21,6 +21,11 @@ namespace NoJob
         static const std::filesystem::path& GetProjectRoot();
         static const std::filesystem::path& GetAssetsDirectory();
 
+        // Resolves a project-relative path without depending on the process CWD.
+        // Absolute paths pass through normalized.
+        static std::filesystem::path ResolveProjectPath(
+            const std::filesystem::path& path);
+
         // Copies an external image into Assets/Textures and returns
         // a project-relative path such as Assets/Textures/brick.png.
         static std::filesystem::path ImportTexture(

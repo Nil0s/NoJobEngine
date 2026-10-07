@@ -1,0 +1,19 @@
+NOJOB_PREFAB 6
+ENTITY 0 -1 "Hip Hop Dancing_2"
+TRANSFORM 0 0 0 0 0 0 0.01 0.01 0.01
+MESH "Assets/Models/Hip Hop Dancing_2.fbx"
+MATERIALS 6
+MAT 1 1 1 1 0 0.226679 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_18.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_18.png" "" "" "" ""
+MAT 1 1 1 1 0 0.226679 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_19.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_19.png" "" "" "" ""
+MAT 1 1 1 1 0 0.373878 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_20.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_20.png" "" "" "" ""
+MAT 1 1 1 1 0 0.355266 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_21.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_21.png" "" "" "" ""
+MAT 1 1 1 1 0 0.18 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_22.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_22.png" "" "" "" ""
+MAT 1 1 1 1 0 0.18 1 1 0 0 0 0 1 0 0.5
+TEX "Assets/Textures/Hip Hop Dancing_embedded_Boss_diffuse_23.png" "Assets/Textures/Hip Hop Dancing_embedded_Boss_normal_23.png" "" "" "" ""
+ANIMATOR "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Models/Hip Hop Dancing_2.fbx" 0 1 1 1
+END_ENTITY

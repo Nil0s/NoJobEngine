@@ -1,4 +1,5 @@
 #include "Engine/Scene/SceneRenderer.h"
+#include "Engine/Core/Log.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/Mesh.h"
@@ -217,10 +218,9 @@ namespace NoJob
             auto& r=Shadows();
             const auto& settings=RendererSettings();
             const std::string& configuredPath=settings.EnvironmentHDRIPath;
-            std::filesystem::path environmentPath(configuredPath);
-            if (!environmentPath.empty() && environmentPath.is_relative())
-                environmentPath = std::filesystem::absolute(environmentPath);
-            const std::string path = environmentPath.lexically_normal().string();
+            const std::filesystem::path environmentPath =
+                AssetManager::ResolveProjectPath(configuredPath);
+            const std::string path = environmentPath.string();
 
             if(configuredPath.empty())
             {
@@ -990,7 +990,7 @@ namespace NoJob
                 cache[path] = texture;
                 return texture;
             }
-            catch (...) { return {}; }
+            catch (...) { Log::Warn("Particle texture load failed: " + path); return {}; }
         }
 
         void RenderParticles(Scene& scene, const glm::mat4& viewProjection,

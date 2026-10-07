@@ -1,0 +1,6 @@
+NOJOB_MATERIAL 3
+COLOR 1 1 1 1
+PBR 0 0.449694 1 1
+EMISSIVE 0 0 0 0
+SURFACE 1 0.5
+TEXTURES "Assets/Textures/Tree_embedded_DB2X2_L01.png" "Assets/Textures/Tree_embedded_DB2X2_L01_Nor.png" "" "" "" ""

@@ -1,4 +1,11 @@
 #include "Editor/EditorLayer.h"
+#include "Editor/Build/StandaloneBuilder.h"
+#include "Editor/Build/BuildSettings.h"
+#include "Editor/Assets/ProjectPanel.h"
+#include "Editor/Assets/ProjectAssetOperations.h"
+#include "Editor/Scene/SceneFileDialog.h"
+#include "Editor/Scripting/ProjectScriptManager.h"
+#include "Editor/Scripting/ProjectScriptBuildSystem.h"
 
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Renderer/Material.h"
@@ -14,6 +21,12 @@
 #include "Engine/Assets/PrefabSerializer.h"
 #include "Engine/Animation/Animation.h"
 #include "Engine/Audio/AudioEngine.h"
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#include <commdlg.h>
+#endif
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -42,9 +55,6 @@
 #include <thread>
 
 #ifdef _WIN32
-#define NOMINMAX
-#include <Windows.h>
-#include <commdlg.h>
 #include <cctype>
 #endif
 
@@ -57,19 +67,16 @@ namespace NoJob
     namespace
     {
 #ifdef _WIN32
-        HMODULE s_ProjectScriptsModule = nullptr;
-        std::vector<std::string> s_ProjectScriptNames;
         std::vector<std::string> s_ScriptConsole;
         std::mutex s_ScriptConsoleMutex;
-        std::atomic_bool s_ScriptCompileRunning{ false };
-        std::atomic_bool s_ProjectScriptsReloadPending{ false };
-        std::atomic_bool s_ScriptCompileSucceeded{ false };
-        std::thread s_ScriptCompileThread;
         bool s_ScriptsCompiled = false;
-        std::uint64_t s_ProjectScriptReloadGeneration = 0;
+        std::thread s_StandaloneBuildThread;
         std::atomic_bool s_StandaloneBuildRunning{ false };
         std::atomic_bool s_StandaloneBuildSucceeded{ false };
         std::filesystem::path s_LastStandaloneBuildDirectory;
+        BuildSettings s_BuildSettings;
+        bool s_ShowBuildSettings = false;
+        char s_BuildNameBuffer[128]{};
 
         void ScriptLog(std::string message)
         {
@@ -81,114 +88,6 @@ namespace NoJob
         {
             std::lock_guard<std::mutex> lock(s_ScriptConsoleMutex);
             s_ScriptConsole.clear();
-        }
-
-        using RegisterProjectScriptFn = void(*)(void(*)(ScriptDefinition));
-
-        void HostRegisterProjectScript(ScriptDefinition definition)
-        {
-            s_ProjectScriptNames.push_back(definition.Name);
-            ScriptRegistry::Register(std::move(definition));
-        }
-
-        void UnloadProjectScripts()
-        {
-            for (const auto& name : s_ProjectScriptNames)
-                ScriptRegistry::Unregister(name);
-            s_ProjectScriptNames.clear();
-
-            if (s_ProjectScriptsModule)
-            {
-                FreeLibrary(s_ProjectScriptsModule);
-                s_ProjectScriptsModule = nullptr;
-            }
-        }
-
-        bool LoadProjectScripts(const std::filesystem::path& root)
-        {
-            UnloadProjectScripts();
-
-            std::filesystem::path dll;
-            const auto outputDirectory = root / "out" / "ProjectScripts";
-            std::error_code dllEc;
-            std::filesystem::file_time_type newestTime{};
-
-            if (std::filesystem::exists(outputDirectory, dllEc))
-            {
-                for (auto it = std::filesystem::recursive_directory_iterator(
-                         outputDirectory,
-                         std::filesystem::directory_options::skip_permission_denied,
-                         dllEc);
-                     !dllEc && it != std::filesystem::recursive_directory_iterator();
-                     ++it)
-                {
-                    if (!it->is_regular_file(dllEc))
-                        continue;
-
-                    const auto candidate = it->path();
-                    if (candidate.extension() != ".dll")
-                        continue;
-
-                    // Accept Debug postfix too:
-                    // NoJobProjectScripts_12.dll / NoJobProjectScripts_12d.dll
-                    const std::string stem = candidate.stem().string();
-                    if (stem.rfind("NoJobProjectScripts_", 0) != 0)
-                        continue;
-
-                    const auto writeTime =
-                        std::filesystem::last_write_time(candidate, dllEc);
-                    if (dllEc)
-                    {
-                        dllEc.clear();
-                        continue;
-                    }
-
-                    if (dll.empty() || writeTime > newestTime)
-                    {
-                        dll = candidate;
-                        newestTime = writeTime;
-                    }
-                }
-            }
-
-            if (dll.empty())
-            {
-                ScriptLog(
-                    "[Scripts] Versioned ProjectScripts DLL not found under: " +
-                    outputDirectory.string());
-                return false;
-            }
-
-            ScriptLog("[Scripts] Loading versioned DLL: " + dll.string());
-
-            s_ProjectScriptsModule = LoadLibraryW(dll.wstring().c_str());
-            if (!s_ProjectScriptsModule)
-            {
-                ScriptLog(
-                    "[Scripts] LoadLibrary failed (Win32 error " +
-                    std::to_string(GetLastError()) + ").");
-                return false;
-            }
-
-            const auto scripts = AssetManager::GetAssetsDirectory() / "Scripts";
-            std::error_code ec;
-            if (std::filesystem::exists(scripts, ec))
-            {
-                for (const auto& entry : std::filesystem::directory_iterator(scripts, ec))
-                {
-                    if (entry.path().extension() != ".cpp") continue;
-                    const auto name = entry.path().stem().string();
-                    const auto symbol = "NoJobRegister_" + name;
-                    auto fn = reinterpret_cast<RegisterProjectScriptFn>(
-                        GetProcAddress(s_ProjectScriptsModule, symbol.c_str()));
-                    if (fn) fn(&HostRegisterProjectScript);
-                }
-            }
-
-            ScriptLog(
-                "[Scripts] Loaded " + std::to_string(s_ProjectScriptNames.size()) +
-                " project script(s).");
-            return true;
         }
 
         std::filesystem::path FindCMakeExecutable()
@@ -376,311 +275,7 @@ namespace NoJob
 #endif
         }
 
-        std::string ReadProjectName(const std::filesystem::path& root)
-        {
-            std::error_code ec;
-            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
-            {
-                if (entry.path().extension() != ".nojobproject")
-                    continue;
-
-                std::ifstream in(entry.path());
-                std::string header;
-                int version = 0;
-                std::string name;
-                if ((in >> header >> version) &&
-                    header == "NOJOB_PROJECT" &&
-                    (in >> std::quoted(name)) &&
-                    !name.empty())
-                {
-                    return name;
-                }
-            }
-            return root.filename().string().empty()
-                ? std::string("NoJobGame")
-                : root.filename().string();
-        }
-
-        bool CopyDirectoryContents(
-            const std::filesystem::path& source,
-            const std::filesystem::path& destination,
-            std::string& error)
-        {
-            std::error_code ec;
-            if (!std::filesystem::exists(source, ec))
-            {
-                error = "Source directory does not exist: " + source.string();
-                return false;
-            }
-            std::filesystem::create_directories(destination, ec);
-            if (ec) { error = ec.message(); return false; }
-
-            for (auto it = std::filesystem::recursive_directory_iterator(
-                     source, std::filesystem::directory_options::skip_permission_denied, ec);
-                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
-            {
-                const auto relative = std::filesystem::relative(it->path(), source, ec);
-                if (ec) break;
-                const auto target = destination / relative;
-                if (it->is_directory(ec))
-                    std::filesystem::create_directories(target, ec);
-                else if (it->is_regular_file(ec))
-                {
-                    std::filesystem::create_directories(target.parent_path(), ec);
-                    std::filesystem::copy_file(
-                        it->path(), target,
-                        std::filesystem::copy_options::overwrite_existing, ec);
-                }
-                if (ec) break;
-            }
-            if (ec) { error = ec.message(); return false; }
-            return true;
-        }
-
-        std::filesystem::path FindBuiltRuntimeExecutable(
-            const std::filesystem::path& buildRoot,
-            const std::wstring& configuration)
-        {
-            const std::vector<std::filesystem::path> candidates = {
-                buildRoot / configuration / "NoJobRuntime.exe",
-                buildRoot / "NoJobRuntime.exe",
-                buildRoot / "Runtime" / configuration / "NoJobRuntime.exe"
-            };
-            for (const auto& candidate : candidates)
-                if (std::filesystem::exists(candidate)) return candidate;
-
-            std::error_code ec;
-            for (auto it = std::filesystem::recursive_directory_iterator(
-                     buildRoot, std::filesystem::directory_options::skip_permission_denied, ec);
-                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
-                if (it->is_regular_file(ec) &&
-                    it->path().filename() == "NoJobRuntime.exe")
-                    return it->path();
-            return {};
-        }
-
-        bool IsRuntimeAssetExtension(const std::filesystem::path& path)
-        {
-            std::string ext = path.extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(),
-                [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-            static const std::vector<std::string> extensions = {
-                ".nojobscene", ".nojobmat", ".nojobprefab",
-                ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr",
-                ".obj", ".fbx", ".gltf", ".glb", ".dae", ".stl", ".ply", ".3ds", ".blend",
-                ".wav", ".mp3", ".flac"
-            };
-            return std::find(extensions.begin(), extensions.end(), ext) != extensions.end();
-        }
-
-        bool CopyRuntimeAsset(
-            const std::filesystem::path& root,
-            const std::filesystem::path& source,
-            const std::filesystem::path& outputRoot,
-            std::vector<std::filesystem::path>& cooked,
-            std::string& error)
-        {
-            std::error_code ec;
-            if (!std::filesystem::exists(source, ec) || !std::filesystem::is_regular_file(source, ec))
-                return true;
-
-            auto relative = std::filesystem::relative(source, root, ec);
-            if (ec || relative.empty() || relative.native().find(L"..") == 0)
-                return true;
-
-            const auto destination = outputRoot / relative;
-            std::filesystem::create_directories(destination.parent_path(), ec);
-            if (ec) { error = ec.message(); return false; }
-            std::filesystem::copy_file(
-                source, destination,
-                std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) { error = ec.message(); return false; }
-            cooked.push_back(relative);
-            return true;
-        }
-
-        bool CookRuntimeAssets(
-            const std::filesystem::path& root,
-            const std::filesystem::path& outputRoot,
-            std::vector<std::filesystem::path>& cooked,
-            std::string& error)
-        {
-            // The Start Scene is the root of the runtime dependency graph.
-            std::filesystem::path projectFile;
-            std::filesystem::path startSceneRelative;
-            std::error_code ec;
-            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
-            {
-                if (entry.path().extension() != ".nojobproject") continue;
-                projectFile = entry.path();
-                std::ifstream in(projectFile);
-                std::string line;
-                while (std::getline(in, line))
-                {
-                    // Current project format stores the StartScene as the third quoted value.
-                    // Prefer a path ending in .nojobscene so this remains tolerant of key names.
-                    const auto first = line.find('"');
-                    const auto last = line.rfind('"');
-                    if (first != std::string::npos && last > first)
-                    {
-                        std::filesystem::path value = line.substr(first + 1, last - first - 1);
-                        if (value.extension() == ".nojobscene")
-                            startSceneRelative = value;
-                    }
-                }
-                break;
-            }
-
-            if (projectFile.empty() || startSceneRelative.empty())
-            {
-                error = "Project file or Start Scene could not be resolved.";
-                return false;
-            }
-
-            const auto startScene = root / startSceneRelative;
-            if (!std::filesystem::exists(startScene))
-            {
-                error = "Start Scene does not exist: " + startScene.string();
-                return false;
-            }
-
-            if (!CopyRuntimeAsset(root, startScene, outputRoot, cooked, error))
-                return false;
-
-            // Scene serializers persist runtime resource paths as text. Resolve every
-            // token/path that points to a real runtime asset inside the project.
-            std::ifstream scene(startScene);
-            std::string contents((std::istreambuf_iterator<char>(scene)),
-                                  std::istreambuf_iterator<char>());
-
-            std::vector<std::filesystem::path> candidates;
-            std::string token;
-            auto flushToken = [&]()
-            {
-                if (token.empty()) return;
-                for (char& c : token) if (c == '\\') c = '/';
-                std::filesystem::path rel(token);
-                if (IsRuntimeAssetExtension(rel))
-                    candidates.push_back(rel);
-                token.clear();
-            };
-
-            bool quoted = false;
-            for (char c : contents)
-            {
-                if (c == '"') { quoted = !quoted; flushToken(); continue; }
-                if (quoted)
-                    token += c;
-                else if (std::isalnum(static_cast<unsigned char>(c)) ||
-                         c=='/' || c=='\\' || c=='.' || c=='_' || c=='-' || c==':' )
-                    token += c;
-                else
-                    flushToken();
-            }
-            flushToken();
-
-            for (const auto& candidate : candidates)
-            {
-                std::filesystem::path source =
-                    candidate.is_absolute() ? candidate : root / candidate;
-                if (!CopyRuntimeAsset(root, source, outputRoot, cooked, error))
-                    return false;
-
-                // Imported text model formats can reference sidecar material/texture
-                // files. Preserve their containing directory's runtime assets.
-                std::string ext = source.extension().string();
-                std::transform(ext.begin(), ext.end(), ext.begin(),
-                    [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-                if (ext == ".obj" || ext == ".gltf" || ext == ".dae")
-                {
-                    for (const auto& sibling :
-                         std::filesystem::directory_iterator(source.parent_path(), ec))
-                    {
-                        if (ec) break;
-                        if (!sibling.is_regular_file(ec)) continue;
-                        const auto siblingExt = sibling.path().extension().string();
-                        if (IsRuntimeAssetExtension(sibling.path()) || siblingExt == ".mtl" ||
-                            siblingExt == ".bin")
-                            if (!CopyRuntimeAsset(root, sibling.path(), outputRoot, cooked, error))
-                                return false;
-                    }
-                }
-            }
-
-            // Deduplicate manifest entries.
-            std::sort(cooked.begin(), cooked.end());
-            cooked.erase(std::unique(cooked.begin(), cooked.end()), cooked.end());
-
-            std::ofstream manifest(outputRoot / "NoJobRuntimeAssets.manifest");
-            manifest << "NOJOB_RUNTIME_ASSETS 1\n";
-            for (const auto& path : cooked)
-                manifest << path.generic_string() << '\n';
-            return true;
-        }
-
-        bool ValidateStandalonePackage(
-            const std::filesystem::path& outputRoot,
-            const std::string& projectName,
-            std::string& error)
-        {
-            const std::vector<std::filesystem::path> required = {
-                outputRoot / (projectName + ".exe"),
-                outputRoot / "NoJobRuntimeAssets.manifest",
-                outputRoot / "Assets"
-            };
-            for (const auto& path : required)
-            {
-                if (!std::filesystem::exists(path))
-                {
-                    error = "Missing runtime package item: " + path.string();
-                    return false;
-                }
-            }
-
-            // Development/source artifacts must never leak into a final package.
-            const std::vector<std::filesystem::path> forbiddenDirectories = {
-                outputRoot / "out",
-                outputRoot / "Editor",
-                outputRoot / "Engine",
-                outputRoot / ".git",
-                outputRoot / ".vs"
-            };
-            for (const auto& path : forbiddenDirectories)
-            {
-                if (std::filesystem::exists(path))
-                {
-                    error = "Development directory leaked into package: " + path.string();
-                    return false;
-                }
-            }
-
-            std::error_code ec;
-            bool hasProjectFile = false;
-            for (auto it = std::filesystem::recursive_directory_iterator(
-                     outputRoot,
-                     std::filesystem::directory_options::skip_permission_denied, ec);
-                 !ec && it != std::filesystem::recursive_directory_iterator(); ++it)
-            {
-                if (!it->is_regular_file(ec)) continue;
-                const auto ext = it->path().extension().string();
-                if (ext == ".nojobproject") hasProjectFile = true;
-                if (ext == ".cpp" || ext == ".h" || ext == ".hpp" ||
-                    ext == ".pdb" || ext == ".ilk" || ext == ".obj")
-                {
-                    error = "Development/source file leaked into package: " +
-                        it->path().string();
-                    return false;
-                }
-            }
-            if (!hasProjectFile)
-            {
-                error = "No .nojobproject file found in package.";
-                return false;
-            }
-            return true;
-        }
-
-        bool BuildStandalone(const std::wstring& configuration)
+        bool BuildStandalone()
         {
             if (s_StandaloneBuildRunning.exchange(true))
             {
@@ -697,304 +292,46 @@ namespace NoJob
                 return false;
             }
 
-            const std::string projectName = ReadProjectName(root);
-            const auto buildRoot = root / "out" / "StandaloneBuild";
-            const auto outputRoot = root / "Builds" / projectName;
             s_StandaloneBuildSucceeded = false;
+            if (s_StandaloneBuildThread.joinable())
+                s_StandaloneBuildThread.join();
 
-            if (s_ScriptCompileThread.joinable())
-                s_ScriptCompileThread.join();
-
-            s_ScriptCompileThread = std::thread(
-                [root, cmake, buildRoot, outputRoot, projectName, configuration]()
-                {
-                    ScriptLog("[Build] Building standalone " +
-                        std::string(configuration.begin(), configuration.end()) + "...");
-
-                    const int configureCode = RunProcessToScriptConsole(
-                        cmake, {L"-S", root.wstring(), L"-B", buildRoot.wstring()},
-                        "[Build/CMake] ");
-                    if (configureCode != 0)
+            const BuildSettings settings = s_BuildSettings;
+            s_StandaloneBuildThread = std::thread([root, cmake, settings]()
+            {
+                const auto result = StandaloneBuilder::Build(
+                    root,
+                    cmake,
+                    settings,
+                    [](std::string message) { ScriptLog(std::move(message)); },
+                    [](const std::filesystem::path& executable,
+                       const std::vector<std::wstring>& arguments,
+                       const std::string& prefix)
                     {
-                        ScriptLog("[Build] CMake configure failed.");
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
+                        return RunProcessToScriptConsole(executable, arguments, prefix);
+                    });
 
-                    const int buildCode = RunProcessToScriptConsole(
-                        cmake,
-                        {L"--build", buildRoot.wstring(), L"--config", configuration,
-                         L"--target", L"NoJobRuntime"},
-                        "[Build/CMake] ");
-                    if (buildCode != 0)
-                    {
-                        ScriptLog("[Build] NoJobRuntime build failed.");
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    // Build the project scripts in the SAME configuration as the
-                    // standalone runtime. A previously compiled Debug DLL must not
-                    // be reused for Release, and a stale Release DLL must not be
-                    // silently packaged.
-                    const int scriptsBuildCode = RunProcessToScriptConsole(
-                        cmake,
-                        {L"--build", buildRoot.wstring(), L"--config", configuration,
-                         L"--target", L"NoJobProjectScripts"},
-                        "[Build/Scripts] ");
-                    if (scriptsBuildCode != 0)
-                    {
-                        ScriptLog("[Build] ProjectScripts " +
-                            std::string(configuration.begin(), configuration.end()) +
-                            " build failed.");
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    const auto runtimeExe =
-                        FindBuiltRuntimeExecutable(buildRoot, configuration);
-                    if (runtimeExe.empty())
-                    {
-                        ScriptLog("[Build] NoJobRuntime.exe was not found after build.");
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    std::error_code ec;
-                    if (std::filesystem::exists(outputRoot, ec))
-                    {
-                        ec.clear();
-                        std::filesystem::remove_all(outputRoot, ec);
-                        if (ec)
-                        {
-                            ScriptLog("[Build] Could not clean previous output: " + ec.message());
-                            ScriptLog("[Build] Close the previous game EXE/Explorer handles and retry.");
-                            s_StandaloneBuildRunning = false;
-                            return;
-                        }
-                    }
-
-                    std::filesystem::create_directories(outputRoot, ec);
-                    if (ec)
-                    {
-                        ScriptLog("[Build] Could not create output: " + ec.message());
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    const auto gameExe = outputRoot / (projectName + ".exe");
-                    std::filesystem::copy_file(
-                        runtimeExe, gameExe,
-                        std::filesystem::copy_options::overwrite_existing, ec);
-                    if (ec)
-                    {
-                        ScriptLog("[Build] Could not copy runtime executable: " + ec.message());
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    std::string copyError;
-                    std::vector<std::filesystem::path> cookedAssets;
-                    if (!CookRuntimeAssets(root, outputRoot, cookedAssets, copyError))
-                    {
-                        ScriptLog("[Build] Asset cooking failed: " + copyError);
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-                    ScriptLog("[Build] Cooked " +
-                        std::to_string(cookedAssets.size()) + " runtime asset(s).");
-
-                    // Copy the project file so Runtime can discover Name,
-                    // AssetDirectory and StartScene inside the standalone folder.
-                    for (const auto& entry : std::filesystem::directory_iterator(root, ec))
-                    {
-                        if (entry.path().extension() != ".nojobproject") continue;
-                        std::filesystem::copy_file(
-                            entry.path(), outputRoot / entry.path().filename(),
-                            std::filesystem::copy_options::overwrite_existing, ec);
-                        if (ec)
-                        {
-                            ScriptLog("[Build] Project config copy failed: " + ec.message());
-                            s_StandaloneBuildRunning = false;
-                            return;
-                        }
-                        break;
-                    }
-
-                    // Block 3 intentionally copies the currently compiled project
-                    // scripts. Block 4 will cook/package only required runtime assets.
-                    const auto scriptsSource = buildRoot;
-                    if (std::filesystem::exists(scriptsSource))
-                    {
-                        const auto scriptsDestination =
-                            outputRoot / "RuntimeData" / "ProjectScripts";
-                        std::filesystem::create_directories(scriptsDestination, ec);
-                        if (ec)
-                        {
-                            ScriptLog("[Build] ProjectScripts output failed: " + ec.message());
-                            s_StandaloneBuildRunning = false;
-                            return;
-                        }
-
-                        const bool releaseBuild = configuration == L"Release";
-                        std::filesystem::path selectedDll;
-                        std::filesystem::file_time_type selectedTime{};
-
-                        for (auto it = std::filesystem::recursive_directory_iterator(
-                                 scriptsSource,
-                                 std::filesystem::directory_options::skip_permission_denied,
-                                 ec);
-                             !ec && it != std::filesystem::recursive_directory_iterator();
-                             ++it)
-                        {
-                            if (!it->is_regular_file(ec) ||
-                                it->path().extension() != ".dll")
-                                continue;
-
-                            const std::string stem = it->path().stem().string();
-                            if (stem.rfind("NoJobProjectScripts_", 0) != 0)
-                                continue;
-
-                            // CMake DEBUG_POSTFIX is "d". Do not mix a Debug
-                            // ProjectScripts DLL with a Release runtime.
-                            const bool debugDll = !stem.empty() && stem.back() == 'd';
-                            if (releaseBuild == debugDll)
-                                continue;
-
-                            const auto time =
-                                std::filesystem::last_write_time(it->path(), ec);
-                            if (ec) { ec.clear(); continue; }
-                            if (selectedDll.empty() || time > selectedTime)
-                            {
-                                selectedDll = it->path();
-                                selectedTime = time;
-                            }
-                        }
-
-                        if (!selectedDll.empty())
-                        {
-                            std::filesystem::copy_file(
-                                selectedDll,
-                                scriptsDestination / selectedDll.filename(),
-                                std::filesystem::copy_options::overwrite_existing,
-                                ec);
-                            if (ec)
-                            {
-                                ScriptLog("[Build] ProjectScripts DLL copy failed: " +
-                                    ec.message());
-                                s_StandaloneBuildRunning = false;
-                                return;
-                            }
-                            ScriptLog("[Build] Packaged ProjectScripts: " +
-                                selectedDll.filename().string());
-                        }
-                        else
-                        {
-                            ScriptLog("[Build] No matching " +
-                                std::string(releaseBuild ? "Release" : "Debug") +
-                                " ProjectScripts DLL found; package will contain no project scripts.");
-                        }
-                    }
-
-                    std::string validationError;
-                    if (!ValidateStandalonePackage(
-                            outputRoot, projectName, validationError))
-                    {
-                        ScriptLog("[Build] Package validation FAILED: " + validationError);
-                        s_StandaloneBuildRunning = false;
-                        return;
-                    }
-
-                    s_LastStandaloneBuildDirectory = outputRoot;
-                    s_StandaloneBuildSucceeded = true;
-                    ScriptLog("[Build] Package validation passed.");
-                    ScriptLog("[Build] Package layout: Assets + RuntimeData + manifest (no development out folder).");
-                    ScriptLog("[Build] Standalone build completed: " + outputRoot.string());
-                    s_StandaloneBuildRunning = false;
-                });
+                s_StandaloneBuildSucceeded = result.Succeeded;
+                if (result.Succeeded)
+                    s_LastStandaloneBuildDirectory = result.OutputDirectory;
+                s_StandaloneBuildRunning = false;
+            });
             return true;
         }
 
         bool CompileProjectScripts()
         {
-            if (s_ScriptCompileRunning.exchange(true))
+            if (ProjectScriptBuildSystem::IsRunning())
             {
                 ScriptLog("[Scripts] Compilation is already running.");
                 return false;
             }
 
-            // DLL unloading touches ScriptRegistry and therefore stays on the
-            // editor/main thread. The worker only runs external build tools.
-            UnloadProjectScripts();
+            // ScriptRegistry/DLL lifecycle remains on the editor thread.
+            ProjectScriptManager::Unload();
             ClearScriptLog();
             ScriptLog("[Scripts] Starting asynchronous script compilation...");
-
-            const auto root = AssetManager::GetProjectRoot();
-            const auto cmake = FindCMakeExecutable();
-            if (cmake.empty())
-            {
-                ScriptLog("[Scripts] CMake was not found.");
-                ScriptLog("[Scripts] Install CMake or the Visual Studio C++/CMake tools.");
-                s_ScriptCompileRunning = false;
-                return false;
-            }
-
-            s_ScriptCompileSucceeded = false;
-            s_ProjectScriptsReloadPending = false;
-
-            const std::uint64_t generation =
-                ++s_ProjectScriptReloadGeneration;
-            ScriptLog(
-                "[Scripts] Hot reload generation: " +
-                std::to_string(generation));
-
-            s_ScriptCompileThread = std::thread([root, cmake, generation]()
-            {
-                ScriptLog("[Scripts] CMake: " + cmake.string());
-                ScriptLog("[Scripts] Configuring project...");
-
-                const auto out = root / "out";
-                const int configCode = RunProcessToScriptConsole(
-                    cmake,
-                    {
-                        L"-S", root.wstring(),
-                        L"-B", out.wstring(),
-                        L"-DNOJOB_HOT_RELOAD_GENERATION=" +
-                            std::to_wstring(generation)
-                    },
-                    "[CMake] ");
-
-                if (configCode != 0)
-                {
-                    ScriptLog("[Scripts] CMake configure FAILED (exit code " +
-                              std::to_string(configCode) + ").");
-                    s_ScriptCompileRunning = false;
-                    return;
-                }
-
-                ScriptLog("[Scripts] Incremental build: compiling changed scripts only...");
-                const int buildCode = RunProcessToScriptConsole(
-                    cmake,
-                    { L"--build", out.wstring(), L"--target",
-                      L"NoJobProjectScripts", L"--config", L"Debug" },
-                    "[Build] ");
-
-                if (buildCode != 0)
-                {
-                    ScriptLog("[Scripts] Build FAILED (exit code " +
-                              std::to_string(buildCode) + ").");
-                    s_ScriptCompileRunning = false;
-                    return;
-                }
-
-                ScriptLog("[Scripts] Build succeeded. DLL reload queued...");
-                s_ScriptCompileSucceeded = true;
-                s_ProjectScriptsReloadPending = true;
-                s_ScriptCompileRunning = false;
-            });
-            s_ScriptCompileThread.detach();
-
-            return true;
+            return ProjectScriptBuildSystem::Start(AssetManager::GetProjectRoot());
         }
 #endif
 
@@ -1068,190 +405,6 @@ namespace NoJob
             return std::filesystem::current_path();
         }
 
-#ifdef _WIN32
-        std::filesystem::path FindVisualStudioExecutable()
-        {
-            wchar_t* programFilesX86 = nullptr;
-            std::size_t length = 0;
-            if (_wdupenv_s(&programFilesX86, &length, L"ProgramFiles(x86)") != 0 ||
-                !programFilesX86)
-                return {};
-
-            const std::filesystem::path vswhere =
-                std::filesystem::path(programFilesX86) /
-                "Microsoft Visual Studio" / "Installer" / "vswhere.exe";
-            free(programFilesX86);
-
-            if (!std::filesystem::exists(vswhere))
-                return {};
-
-            const std::wstring command =
-                L"\"" + vswhere.wstring() +
-                L"\" -latest -products * -requires Microsoft.Component.MSBuild "
-                L"-property productPath";
-
-            FILE* pipe = _wpopen(command.c_str(), L"rt");
-            if (!pipe)
-                return {};
-
-            wchar_t buffer[2048]{};
-            std::wstring result;
-            if (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe))
-                result = buffer;
-            _pclose(pipe);
-
-            while (!result.empty() &&
-                   (result.back() == L'\r' || result.back() == L'\n' ||
-                    result.back() == L' ' || result.back() == L'\t'))
-                result.pop_back();
-
-            const std::filesystem::path devenv(result);
-            return std::filesystem::exists(devenv) ? devenv
-                                                    : std::filesystem::path{};
-        }
-
-        bool OpenScriptInVisualStudio(const std::filesystem::path& scriptPath)
-        {
-            const auto absoluteScript =
-                std::filesystem::absolute(scriptPath).lexically_normal();
-
-            if (!std::filesystem::exists(absoluteScript))
-            {
-                ScriptLog(
-                    "[Scripts] File not found: " + absoluteScript.string());
-                return false;
-            }
-
-            const auto visualStudio = FindVisualStudioExecutable();
-            if (!visualStudio.empty())
-            {
-                const auto result = reinterpret_cast<std::intptr_t>(
-                    ShellExecuteW(
-                        nullptr,
-                        L"open",
-                        visualStudio.wstring().c_str(),
-                        (L"/Edit \"" + absoluteScript.wstring() + L"\"").c_str(),
-                        AssetManager::GetProjectRoot().wstring().c_str(),
-                        SW_SHOWNORMAL));
-
-                if (result > 32)
-                {
-                    ScriptLog(
-                        "[Scripts] Opened in existing Visual Studio instance: " +
-                        absoluteScript.filename().string());
-                    return true;
-                }
-            }
-
-            // Portable fallback: use the Windows association for C++ files.
-            const auto result = reinterpret_cast<std::intptr_t>(
-                ShellExecuteW(
-                    nullptr,
-                    L"open",
-                    absoluteScript.wstring().c_str(),
-                    nullptr,
-                    AssetManager::GetProjectRoot().wstring().c_str(),
-                    SW_SHOWNORMAL));
-
-            if (result > 32)
-            {
-                ScriptLog(
-                    "[Scripts] Opened with Windows file association: " +
-                    absoluteScript.filename().string());
-                return true;
-            }
-
-            ScriptLog(
-                "[Scripts] Could not open " + absoluteScript.string());
-            return false;
-        }
-#endif
-
-        std::string SanitizeCppIdentifier(std::string name)
-        {
-            name.erase(std::remove_if(name.begin(), name.end(),
-                [](unsigned char c){ return !(std::isalnum(c) || c == '_'); }),
-                name.end());
-            if (name.empty()) name = "NewScript";
-            if (std::isdigit(static_cast<unsigned char>(name.front())))
-                name.insert(name.begin(), '_');
-            return name;
-        }
-
-        bool CreateCppScriptAsset(const std::filesystem::path& scriptsDirectory,
-                                  const std::string& requestedName)
-        {
-            const std::string name = SanitizeCppIdentifier(requestedName);
-            std::error_code ec;
-            std::filesystem::create_directories(scriptsDirectory, ec);
-            if (ec)
-            {
-#ifdef _WIN32
-                ScriptLog(
-                    "[Scripts] Could not create Assets/Scripts: " + ec.message());
-#endif
-                return false;
-            }
-
-            const auto headerPath = scriptsDirectory / (name + ".h");
-            const auto sourcePath = scriptsDirectory / (name + ".cpp");
-            if (std::filesystem::exists(headerPath) ||
-                std::filesystem::exists(sourcePath))
-                return false;
-
-            std::ofstream header(headerPath);
-            std::ofstream source(sourcePath);
-            if (!header || !source)
-            {
-#ifdef _WIN32
-                ScriptLog(
-                    "[Scripts] Could not write script files to: " +
-                    scriptsDirectory.string());
-#endif
-                return false;
-            }
-
-            header << "#pragma once\n"
-                   << "#include \"Engine/Scene/ScriptableEntity.h\"\n\n"
-                   << "namespace NoJob\n{\n"
-                   << "    class " << name << " final : public Script\n"
-                   << "    {\n    public:\n"
-                   << "        // Exposed fields: float, int, bool, glm::vec3\n"
-                   << "        float Speed = 5.0f;\n"
-                   << "        int Lives = 3;\n"
-                   << "        bool EnabledMovement = true;\n"
-                   << "        glm::vec3 Direction{ 1.0f, 0.0f, 0.0f };\n\n"
-                   << "        void OnCreate() override;\n"
-                   << "        void OnUpdate(float deltaTime) override;\n"
-                   << "        void OnDestroy() override;\n"
-                   << "    };\n}\n";
-
-            source << "#include \"" << name << ".h\"\n"
-                   << "#include \"Engine/Scene/ScriptRegistry.h\"\n\n"
-                   << "namespace NoJob\n{\n"
-                   << "    void " << name << "::OnCreate()\n    {\n    }\n\n"
-                   << "    void " << name << "::OnUpdate(float deltaTime)\n"
-                   << "    {\n        (void)deltaTime;\n    }\n\n"
-                   << "    void " << name << "::OnDestroy()\n    {\n    }\n\n"
-                   << "}\n\n"
-                   << "NOJOB_REGISTER_SCRIPT(" << name << ", \"Gameplay\",\n"
-                   << "    NOJOB_FIELD(" << name << ", Speed),\n"
-                   << "    NOJOB_FIELD(" << name << ", Lives),\n"
-                   << "    NOJOB_FIELD(" << name << ", EnabledMovement),\n"
-                   << "    NOJOB_FIELD(" << name << ", Direction))\n";
-
-            AssetRegistry registry(AssetManager::GetAssetsDirectory());
-            registry.Load();
-            registry.Register(headerPath, AssetType::Script);
-            registry.Register(sourcePath, AssetType::Script);
-            registry.Save();
-#ifdef _WIN32
-            ScriptLog(
-                "[Scripts] Created " + name + ".h / " + name +
-                ".cpp in Assets/Scripts.");
-#endif
-            return true;
-        }
         ImVec2 ProjectColliderPoint(
             const glm::vec3& point,
             const glm::mat4& viewProjection,
@@ -1821,13 +974,19 @@ return{};}
 
     void EditorLayer::Init(GLFWwindow* window, Scene* scene)
     {
+        s_BuildSettings = BuildSettings::Load(AssetManager::GetProjectRoot());
+        std::snprintf(s_BuildNameBuffer, sizeof(s_BuildNameBuffer), "%s", s_BuildSettings.BuildName.c_str());
+#ifdef _WIN32
+        ProjectScriptManager::SetLogger(ScriptLog);
+        ProjectScriptBuildSystem::SetLogger(ScriptLog);
+#endif
         m_Scene = scene;
 
         const auto projectRoot = FindNoJobProjectRoot();
         AssetManager::Init(projectRoot);
         std::filesystem::create_directories(
             AssetManager::GetAssetsDirectory() / "Scripts");
-        m_ProjectDirectory = AssetManager::GetProjectRoot();
+        m_ProjectPanel.Initialize();
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -1865,8 +1024,10 @@ return{};}
     void EditorLayer::Shutdown()
     {
 #ifdef _WIN32
-        if (s_ScriptCompileThread.joinable())
-            s_ScriptCompileThread.join();
+        ProjectScriptBuildSystem::Shutdown();
+        if (s_StandaloneBuildThread.joinable())
+            s_StandaloneBuildThread.join();
+        ProjectScriptManager::Unload();
 #endif
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
@@ -1932,9 +1093,9 @@ return{};}
     void EditorLayer::Draw()
     {
 #ifdef _WIN32
-        if (s_ProjectScriptsReloadPending.exchange(false))
+        if (ProjectScriptBuildSystem::ConsumeReloadPending())
         {
-            if (LoadProjectScripts(AssetManager::GetProjectRoot()))
+            if (ProjectScriptManager::Load(AssetManager::GetProjectRoot()))
             {
                 s_ScriptsCompiled = true;
                 ScriptLog("[Scripts] Hot reload completed successfully.");
@@ -2124,10 +1285,8 @@ return{};}
             // automatically attach an Animator so the clips are immediately visible.
             try
             {
-                const auto animationPath =
-                    p.is_absolute() ? p : (AssetManager::GetProjectRoot() / p);
-                auto animation = AnimationAsset::Load(
-                    std::filesystem::absolute(animationPath).lexically_normal());
+                const auto animationPath = AssetManager::ResolveProjectPath(p);
+                auto animation = AnimationAsset::Load(animationPath);
                 if (animation && animation->HasAnimations())
                 {
                     AnimatorComponent animator;
@@ -2140,13 +1299,17 @@ return{};}
                     entity.AddComponent<AnimatorComponent>(std::move(animator));
                 }
             }
-            catch (...) {}
+            catch (...)
+            {
+                ScriptLog("[Import] Model animation discovery failed; model imported without Animator.");
+            }
 
             m_SelectedEntity = entity;
             return entity;
         }
         catch (...)
         {
+            ScriptLog("[Import] Model entity creation failed.");
             return {};
         }
     }
@@ -2416,13 +1579,15 @@ return{};}
             {
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
                     m_SaveSceneRequested = true;
-                if (ImGui::MenuItem("Load Scene", "Ctrl+O"))
+                if (ImGui::MenuItem("Save Scene As..."))
+                    m_SaveSceneAsRequested = true;
+                if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
                     m_LoadSceneRequested = true;
                 ImGui::Separator();
                 if (ImGui::MenuItem("Load Graphics Test Scene"))
                     m_GraphicsTestSceneRequested = true;
                 ImGui::Separator();
-                if(ImGui::MenuItem("Import 3D Model...")){auto s=OpenModelFileDialog();if(!s.empty())try{CreateModelEntity(AssetManager::ImportModel(s));}catch(...){}}
+                if(ImGui::MenuItem("Import 3D Model...")){auto s=OpenModelFileDialog();if(!s.empty())try{CreateModelEntity(AssetManager::ImportModel(s));}catch(...){ScriptLog("[Import] 3D model import failed.");}}
                 ImGui::Separator();
                 ImGui::MenuItem("Exit");
                 ImGui::EndMenu();
@@ -2448,11 +1613,7 @@ return{};}
                     DeleteSelectedEntity();
                 }
 
-                ImGui::EndMenu();
-            }
-
-            if (ImGui::BeginMenu("Edit"))
-            {
+                ImGui::Separator();
                 ImGui::BeginDisabled(m_UndoHistory.empty() || m_IsPlaying);
                 if (ImGui::MenuItem("Undo", "Ctrl+Z"))
                     Undo();
@@ -2465,26 +1626,40 @@ return{};}
                 ImGui::EndMenu();
             }
 
+            if (s_ShowBuildSettings) ImGui::OpenPopup("Build Settings");
+            if (ImGui::BeginPopupModal("Build Settings", &s_ShowBuildSettings, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::InputText("Build Name", s_BuildNameBuffer, sizeof(s_BuildNameBuffer)); s_BuildSettings.BuildName=s_BuildNameBuffer;
+                ImGui::SeparatorText("Scenes in Build"); int remove=-1;
+                for(size_t i=0;i<s_BuildSettings.Scenes.size();++i){ ImGui::PushID((int)i); bool startup=i==s_BuildSettings.StartupSceneIndex; if(ImGui::RadioButton("##startup",startup))s_BuildSettings.StartupSceneIndex=i; ImGui::SameLine(); ImGui::TextUnformatted(s_BuildSettings.Scenes[i].generic_string().c_str()); ImGui::SameLine(); if(ImGui::SmallButton("Remove"))remove=(int)i; ImGui::PopID(); }
+                if(remove>=0){s_BuildSettings.Scenes.erase(s_BuildSettings.Scenes.begin()+remove); if(s_BuildSettings.Scenes.empty())s_BuildSettings.StartupSceneIndex=0; else if(s_BuildSettings.StartupSceneIndex>=s_BuildSettings.Scenes.size())s_BuildSettings.StartupSceneIndex=s_BuildSettings.Scenes.size()-1;}
+                if(ImGui::Button("Add Scene...")){ auto selected=SceneFileDialog::Open(AssetManager::GetProjectRoot()/"Assets/Scenes"); if(!selected.empty()){std::error_code ec;auto rel=std::filesystem::relative(selected,AssetManager::GetProjectRoot(),ec);if(!ec&&std::find(s_BuildSettings.Scenes.begin(),s_BuildSettings.Scenes.end(),rel)==s_BuildSettings.Scenes.end())s_BuildSettings.Scenes.push_back(rel);}}
+                ImGui::SeparatorText("Configuration"); bool debug=s_BuildSettings.Configuration==L"Debug"; if(ImGui::RadioButton("Debug",debug))s_BuildSettings.Configuration=L"Debug"; ImGui::SameLine(); if(ImGui::RadioButton("Release",!debug))s_BuildSettings.Configuration=L"Release";
+                ImGui::Separator();
+                if(ImGui::Button("Save Settings")){s_BuildSettings.Save(AssetManager::GetProjectRoot());ScriptLog("[Build] Build Settings saved.");} ImGui::SameLine();
+                if(ImGui::Button("Build")){std::string error;if(!s_BuildSettings.IsValid(error))ScriptLog("[Build] "+error);else{s_BuildSettings.Save(AssetManager::GetProjectRoot());s_ShowBuildSettings=false;ImGui::CloseCurrentPopup();BuildStandalone();}} ImGui::SameLine();
+                if(ImGui::Button("Close")){s_ShowBuildSettings=false;ImGui::CloseCurrentPopup();}
+                ImGui::EndPopup();
+            }
+
             if (ImGui::BeginMenu("Build"))
             {
 #ifdef _WIN32
-                ImGui::BeginDisabled(s_ScriptCompileRunning.load());
+                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning());
                 if (ImGui::MenuItem("Compile Scripts", "Ctrl+Shift+B"))
                     CompileProjectScripts();
                 ImGui::EndDisabled();
-                ImGui::BeginDisabled(s_ScriptCompileRunning.load());
+                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning());
                 if (ImGui::MenuItem("Reload Scripts"))
-                    LoadProjectScripts(AssetManager::GetProjectRoot());
+                    ProjectScriptManager::Load(AssetManager::GetProjectRoot());
                 ImGui::EndDisabled();
-                if (s_ScriptCompileRunning.load())
+                if (ProjectScriptBuildSystem::IsRunning())
                     ImGui::TextDisabled("Compiling scripts...");
                 ImGui::Separator();
                 ImGui::BeginDisabled(
-                    s_ScriptCompileRunning.load() || s_StandaloneBuildRunning.load());
-                if (ImGui::MenuItem("Build Standalone (Debug)"))
-                    BuildStandalone(L"Debug");
-                if (ImGui::MenuItem("Build Standalone (Release)"))
-                    BuildStandalone(L"Release");
+                    ProjectScriptBuildSystem::IsRunning() || s_StandaloneBuildRunning.load());
+                if (ImGui::MenuItem("Build Settings...")) s_ShowBuildSettings = true;
+                if (ImGui::MenuItem("Build Project")) BuildStandalone();
                 ImGui::EndDisabled();
                 if (s_StandaloneBuildRunning.load())
                     ImGui::TextDisabled("Building standalone...");
@@ -2493,7 +1668,7 @@ return{};}
                     ImGui::TextDisabled("Last build: %s",
                         s_LastStandaloneBuildDirectory.string().c_str());
                 ImGui::Separator();
-                ImGui::TextDisabled(s_ProjectScriptsModule
+                ImGui::TextDisabled(ProjectScriptManager::IsLoaded()
                     ? "ProjectScripts.dll loaded"
                     : "ProjectScripts.dll not loaded");
 #else
@@ -2522,7 +1697,10 @@ return{};}
                                 const auto imported = AssetManager::ImportModel(source);
                                 CreateModelEntity(imported);
                             }
-                            catch (...) {}
+                            catch (...)
+                            {
+                                ScriptLog("[Import] 3D model import failed.");
+                            }
                         }
                     }
 
@@ -2541,17 +1719,10 @@ return{};}
 
                 if (m_SelectedEntity && ImGui::MenuItem("Create Prefab From Selected"))
                 {
-                    const auto prefabPath =
-                        AssetManager::GetAssetsDirectory() / "Prefabs" /
-                        (m_SelectedEntity.GetComponent<TagComponent>().Tag + ".nojobprefab");
-
-                    if (PrefabSerializer::Save(m_SelectedEntity, prefabPath))
-                    {
-                        AssetRegistry registry(AssetManager::GetAssetsDirectory());
-                        registry.Load();
-                        registry.Register(prefabPath, AssetType::Prefab);
-                        registry.Save();
-                    }
+                    ProjectAssetOperations::CreatePrefab(
+                        m_SelectedEntity,
+                        AssetManager::GetAssetsDirectory() / "Prefabs",
+                        [this](const std::string& message) { ScriptLog(message); });
                 }
 
                 ImGui::Separator();
@@ -2895,17 +2066,10 @@ return{};}
 
             if (ImGui::MenuItem("Create Prefab"))
             {
-                const auto prefabPath =
-                    AssetManager::GetAssetsDirectory() / "Prefabs" /
-                    (entity.GetComponent<TagComponent>().Tag + ".nojobprefab");
-
-                if (PrefabSerializer::Save(entity, prefabPath))
-                {
-                    AssetRegistry registry(AssetManager::GetAssetsDirectory());
-                    registry.Load();
-                    registry.Register(prefabPath, AssetType::Prefab);
-                    registry.Save();
-                }
+                ProjectAssetOperations::CreatePrefab(
+                    entity,
+                    AssetManager::GetAssetsDirectory() / "Prefabs",
+                    [this](const std::string& message) { ScriptLog(message); });
             }
 
             if (relationship.Parent != 0
@@ -2934,1132 +2098,7 @@ return{};}
         ImGui::PopID();
     }
 
-    void EditorLayer::DrawInspector()
-    {
-        ImGui::Begin("Inspector");
 
-        if (m_SelectedEntity)
-        {
-            auto& tag =
-                m_SelectedEntity.GetComponent<TagComponent>().Tag;
-
-            char tagBuffer[256]{};
-            std::strncpy(
-                tagBuffer,
-                tag.c_str(),
-                sizeof(tagBuffer) - 1);
-
-            if (m_RenameSelectedRequested)
-            {
-                ImGui::SetKeyboardFocusHere();
-                m_RenameSelectedRequested = false;
-            }
-            if (ImGui::InputText(
-                    "##EntityName",
-                    tagBuffer,
-                    sizeof(tagBuffer),
-                    ImGuiInputTextFlags_EnterReturnsTrue))
-            {
-                tag = tagBuffer;
-            }
-            if (m_MultiSelection.size() > 1)
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("%zu selected", m_MultiSelection.size());
-            }
-
-            ImGui::Separator();
-
-            if (ImGui::CollapsingHeader(
-                    "Transform",
-                    ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                auto& transform =
-                    m_SelectedEntity.GetComponent<TransformComponent>();
-
-                // Unity-style numeric transform fields with Undo/Redo transactions.
-                auto editTransform = [&](const char* label, glm::vec3& value)
-                {
-                    ImGui::SetNextItemWidth(-1.0f);
-                    ImGui::DragFloat3(
-                        label,
-                        &value.x,
-                        0.01f,
-                        0.0f,
-                        0.0f,
-                        "%.3f");
-
-                    if (ImGui::IsItemActivated() && !m_TransformEditSnapshot)
-                        m_TransformEditSnapshot = m_Scene->Copy();
-
-                    if (ImGui::IsItemDeactivatedAfterEdit()
-                        && m_TransformEditSnapshot)
-                    {
-                        PushUndoSnapshot(std::move(m_TransformEditSnapshot));
-                    }
-                    else if (ImGui::IsItemDeactivated()
-                             && m_TransformEditSnapshot)
-                    {
-                        m_TransformEditSnapshot.reset();
-                    }
-                };
-
-                editTransform("Position", transform.Position);
-                editTransform("Rotation", transform.Rotation);
-                editTransform("Scale", transform.Scale);
-
-                ImGui::TextDisabled(
-                    "Ctrl + click to type | Ctrl+Z / Ctrl+Y to undo/redo.");
-            }
-
-            {
-                Entity parent = m_Scene->GetParent(m_SelectedEntity);
-                if (parent)
-                {
-                    ImGui::TextDisabled(
-                        "Parent: %s",
-                        parent.GetComponent<TagComponent>().Tag.c_str());
-
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Unparent"))
-                    {
-                        CaptureUndoSnapshot();
-                        m_Scene->Unparent(m_SelectedEntity, true);
-                    }
-                }
-                else
-                {
-                    ImGui::TextDisabled("Parent: None");
-                }
-            }
-
-            if (m_SelectedEntity.HasComponent<MeshComponent>())
-            {
-                ImGui::Separator();
-
-                if (ImGui::CollapsingHeader(
-                        "Mesh",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    ImGui::TextDisabled("Primitive Mesh");
-                }
-            }
-
-            ImGui::Separator();
-            if (m_SelectedEntity.HasComponent<NativeScriptComponent>())
-            {
-                auto& script =
-                    m_SelectedEntity.GetComponent<NativeScriptComponent>();
-                RegisterBuiltinScripts();
-                ScriptRegistry::ApplyDefaults(script);
-
-                const std::string header =
-                    "Native Script: " + script.ScriptName;
-                if (ImGui::CollapsingHeader(
-                        header.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto beginEdit = [&]()
-                    {
-                        if (ImGui::IsItemActivated() &&
-                            !m_ScriptFieldEditSnapshot)
-                            m_ScriptFieldEditSnapshot = m_Scene->Copy();
-                    };
-                    auto endEdit = [&]()
-                    {
-                        if (ImGui::IsItemDeactivatedAfterEdit() &&
-                            m_ScriptFieldEditSnapshot)
-                            PushUndoSnapshot(
-                                std::move(m_ScriptFieldEditSnapshot));
-                        else if (ImGui::IsItemDeactivated() &&
-                                 m_ScriptFieldEditSnapshot)
-                            m_ScriptFieldEditSnapshot.reset();
-                    };
-
-                    ImGui::Checkbox(
-                        "Enabled##NativeScript", &script.Enabled);
-                    beginEdit(); endEdit();
-                    ImGui::TextDisabled("C++ Native Script");
-
-                    const auto* definition =
-                        ScriptRegistry::Find(script.ScriptName);
-                    if (!definition)
-                    {
-                        ImGui::TextDisabled(
-                            "Script definition not loaded. Compile Scripts.");
-                    }
-                    else
-                    {
-                        for (const auto& fieldDef : definition->Fields)
-                        {
-                            auto it = script.Fields.find(fieldDef.Name);
-                            if (it == script.Fields.end()) continue;
-                            auto& field = it->second;
-
-                            ImGui::PushID(fieldDef.Name.c_str());
-                            if (field.Type == ScriptFieldType::Float)
-                                ImGui::DragFloat(
-                                    fieldDef.Name.c_str(), &field.Float, 0.05f);
-                            else if (field.Type == ScriptFieldType::Int)
-                                ImGui::DragInt(
-                                    fieldDef.Name.c_str(), &field.Int);
-                            else if (field.Type == ScriptFieldType::Bool)
-                                ImGui::Checkbox(
-                                    fieldDef.Name.c_str(), &field.Bool);
-                            else if (field.Type == ScriptFieldType::Vec3)
-                                ImGui::DragFloat3(
-                                    fieldDef.Name.c_str(), &field.Vec3.x, 0.05f);
-                            beginEdit(); endEdit();
-                            ImGui::PopID();
-                        }
-                        ImGui::TextDisabled(
-                            "Scene/Prefab persistent | Hot-reload safe");
-                    }
-                }
-            }
-
-            ImGui::Separator();
-            if (m_SelectedEntity.HasComponent<RigidbodyComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Rigidbody",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& body =
-                        m_SelectedEntity.GetComponent<RigidbodyComponent>();
-
-                    const char* bodyTypes[] = {
-                        "Static", "Dynamic", "Kinematic"
-                    };
-                    int type = static_cast<int>(body.Type);
-                    if (ImGui::Combo(
-                            "Body Type",
-                            &type,
-                            bodyTypes,
-                            IM_ARRAYSIZE(bodyTypes)))
-                    {
-                        body.Type = static_cast<RigidbodyType>(type);
-                    }
-
-                    if (body.Type == RigidbodyType::Dynamic)
-                    {
-                        ImGui::DragFloat(
-                            "Mass",
-                            &body.Mass,
-                            0.05f,
-                            0.001f,
-                            10000.0f);
-                        ImGui::Checkbox("Use Gravity", &body.UseGravity);
-                    }
-                    else if (body.Type == RigidbodyType::Kinematic)
-                    {
-                        ImGui::Checkbox("Use Gravity", &body.UseGravity);
-                        ImGui::TextDisabled(
-                            "Kinematic motion control comes in a later step.");
-                    }
-
-                    if (ImGui::Button("Remove Rigidbody"))
-                        m_SelectedEntity.RemoveComponent<RigidbodyComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<BoxColliderComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Box Collider",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& c = m_SelectedEntity.GetComponent<BoxColliderComponent>();
-                    ImGui::DragFloat3("Size##Box", &c.Size.x, 0.05f, 0.01f, 1000.0f);
-                    c.Size = glm::max(c.Size, glm::vec3(0.01f));
-                    ImGui::Checkbox("Is Trigger##Box", &c.IsTrigger);
-                    ImGui::SliderFloat("Friction##Box", &c.Material.Friction, 0.0f, 1.0f);
-                    ImGui::SliderFloat("Bounciness##Box", &c.Material.Bounciness, 0.0f, 1.0f);
-                    if (ImGui::Button("Remove Box Collider"))
-                        m_SelectedEntity.RemoveComponent<BoxColliderComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<SphereColliderComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Sphere Collider",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& c = m_SelectedEntity.GetComponent<SphereColliderComponent>();
-                    ImGui::DragFloat("Radius##Sphere", &c.Radius, 0.02f, 0.01f, 1000.0f);
-                    c.Radius = std::max(c.Radius, 0.01f);
-                    ImGui::Checkbox("Is Trigger##Sphere", &c.IsTrigger);
-                    ImGui::SliderFloat("Friction##Sphere", &c.Material.Friction, 0.0f, 1.0f);
-                    ImGui::SliderFloat("Bounciness##Sphere", &c.Material.Bounciness, 0.0f, 1.0f);
-                    if (ImGui::Button("Remove Sphere Collider"))
-                        m_SelectedEntity.RemoveComponent<SphereColliderComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<CapsuleColliderComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Capsule Collider",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& c = m_SelectedEntity.GetComponent<CapsuleColliderComponent>();
-                    ImGui::DragFloat("Radius##Capsule", &c.Radius, 0.02f, 0.01f, 1000.0f);
-                    ImGui::DragFloat("Height##Capsule", &c.Height, 0.05f, 0.02f, 1000.0f);
-                    c.Radius = std::max(c.Radius, 0.01f);
-                    c.Height = std::max(c.Height, c.Radius * 2.0f);
-                    ImGui::Checkbox("Is Trigger##Capsule", &c.IsTrigger);
-                    ImGui::SliderFloat("Friction##Capsule", &c.Material.Friction, 0.0f, 1.0f);
-                    ImGui::SliderFloat("Bounciness##Capsule", &c.Material.Bounciness, 0.0f, 1.0f);
-                    if (ImGui::Button("Remove Capsule Collider"))
-                        m_SelectedEntity.RemoveComponent<CapsuleColliderComponent>();
-                }
-            }
-
-
-            ImGui::Separator();
-
-            if (m_SelectedEntity.HasComponent<ParticleSystemComponent>())
-            {
-                if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& p = m_SelectedEntity.GetComponent<ParticleSystemComponent>();
-                    ImGui::Checkbox("Playing##Particles", &p.Playing);
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Loop##Particles", &p.Loop);
-                    ImGui::DragFloat("Duration##Particles", &p.Duration, 0.1f, 0.0f, 120.0f);
-                    ImGui::SeparatorText("Main");
-                    ImGui::DragFloat("Start Lifetime##Particles", &p.StartLifetime, 0.05f, 0.01f, 60.0f);
-                    ImGui::SliderFloat("Lifetime Random##Particles", &p.LifetimeRandom, 0.0f, 1.0f);
-                    ImGui::DragFloat("Start Speed##Particles", &p.StartSpeed, 0.05f, -100.0f, 100.0f);
-                    ImGui::SliderFloat("Speed Random##Particles", &p.SpeedRandom, 0.0f, 1.0f);
-                    ImGui::DragFloat("Start Size##Particles", &p.StartSize, 0.01f, 0.001f, 20.0f);
-                    ImGui::SliderFloat("Size Random##Particles", &p.SizeRandom, 0.0f, 1.0f);
-                    ImGui::ColorEdit4("Start Color##Particles", &p.StartColor.x);
-                    ImGui::ColorEdit4("End Color##Particles", &p.EndColor.x);
-                    ImGui::SliderFloat("End Size Multiplier##Particles", &p.EndSizeMultiplier, 0.0f, 4.0f);
-                    ImGui::DragFloat3("Gravity##Particles", &p.Gravity.x, 0.02f);
-
-                    ImGui::SeparatorText("Emission");
-                    ImGui::DragFloat("Emission Rate##Particles", &p.EmissionRate, 0.5f, 0.0f, 10000.0f);
-                    int maxParticles = static_cast<int>(p.MaxParticles);
-                    if (ImGui::DragInt("Max Particles##Particles", &maxParticles, 1.0f, 1, 100000))
-                        p.MaxParticles = static_cast<std::uint32_t>(std::max(maxParticles, 1));
-
-                    ImGui::SeparatorText("Shape");
-                    const char* shapes[] = {"Point", "Sphere", "Cone"};
-                    int shape = static_cast<int>(p.Shape);
-                    if (ImGui::Combo("Emitter Shape##Particles", &shape, shapes, 3))
-                        p.Shape = static_cast<ParticleShape>(shape);
-                    ImGui::DragFloat3("Direction##Particles", &p.Direction.x, 0.02f);
-                    if (p.Shape == ParticleShape::Sphere)
-                        ImGui::DragFloat("Sphere Radius##Particles", &p.ShapeRadius, 0.02f, 0.0f, 100.0f);
-                    if (p.Shape == ParticleShape::Cone)
-                        ImGui::SliderFloat("Cone Angle##Particles", &p.ConeAngle, 0.0f, 89.0f);
-
-                    ImGui::SeparatorText("Renderer");
-                    const char* blends[] = {"Alpha", "Additive"};
-                    int blend = static_cast<int>(p.BlendMode);
-                    if (ImGui::Combo("Blend Mode##Particles", &blend, blends, 2))
-                        p.BlendMode = static_cast<ParticleBlendMode>(blend);
-                    ImGui::TextWrapped("Texture: %s", p.TexturePath.empty() ? "<none>" : p.TexturePath.c_str());
-                    ImGui::Button(p.TexturePath.empty() ? "Drop Texture Here##Particles" : "Texture Assigned##Particles", ImVec2(-1.0f,0.0f));
-                    if (ImGui::BeginDragDropTarget())
-                    {
-                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("NOJOB_TEXTURE_ASSET"))
-                            p.TexturePath = static_cast<const char*>(payload->Data);
-                        ImGui::EndDragDropTarget();
-                    }
-                    if (!p.TexturePath.empty())
-                    {
-                        if (ImGui::Button("Clear Texture##Particles")) p.TexturePath.clear();
-                    }
-                    ImGui::TextDisabled("Simulation runs in Play Mode. Rendering is instanced per emitter.");
-                    if (ImGui::Button("Remove Particle System"))
-                        m_SelectedEntity.RemoveComponent<ParticleSystemComponent>();
-                }
-            }
-
-            ImGui::Separator();
-
-            if (m_SelectedEntity.HasComponent<AudioSourceComponent>())
-            {
-                if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& audio = m_SelectedEntity.GetComponent<AudioSourceComponent>();
-                    ImGui::TextWrapped("Clip: %s", audio.ClipPath.empty() ? "<none>" : audio.ClipPath.c_str());
-                    ImGui::Button(audio.ClipPath.empty() ? "Drop Audio Clip Here" : "Audio Clip Assigned", ImVec2(-1.0f, 0.0f));
-                    if (ImGui::BeginDragDropTarget())
-                    {
-                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("NOJOB_AUDIO_ASSET"))
-                        {
-                            audio.ClipPath = static_cast<const char*>(payload->Data);
-                            AudioEngine::Stop(m_SelectedEntity.GetHandle());
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
-                    if (ImGui::Button("Load Audio Clip"))
-                    {
-                        const std::string path = OpenAudioFileDialog();
-                        if (!path.empty())
-                        {
-                            std::filesystem::path selected(path);
-                            std::error_code ec;
-                            const auto relative = std::filesystem::relative(selected, m_ProjectDirectory, ec);
-                            audio.ClipPath = (!ec && !relative.empty() && relative.generic_string().rfind("..", 0) != 0)
-                                ? relative.generic_string() : selected.lexically_normal().string();
-                        }
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Clear##AudioClip")) audio.ClipPath.clear();
-                    ImGui::Checkbox("Play On Awake", &audio.PlayOnAwake);
-                    ImGui::Checkbox("Loop##Audio", &audio.Loop);
-                    ImGui::SliderFloat("Volume##Audio", &audio.Volume, 0.0f, 1.0f);
-                    ImGui::SliderFloat("Pitch##Audio", &audio.Pitch, 0.1f, 3.0f);
-                    ImGui::SeparatorText("Spatial Audio");
-                    ImGui::SliderFloat("Spatial Blend##Audio", &audio.SpatialBlend, 0.0f, 1.0f, "%.2f");
-                    ImGui::DragFloat("Min Distance##Audio", &audio.MinDistance, 0.1f, 0.01f, 10000.0f);
-                    ImGui::DragFloat("Max Distance##Audio", &audio.MaxDistance, 0.25f, 0.02f, 100000.0f);
-                    ImGui::SliderFloat("Doppler Factor##Audio", &audio.DopplerFactor, 0.0f, 5.0f);
-                    audio.MinDistance = std::max(0.01f, audio.MinDistance);
-                    audio.MaxDistance = std::max(audio.MinDistance + 0.01f, audio.MaxDistance);
-                    audio.SpatialBlend = std::clamp(audio.SpatialBlend, 0.0f, 1.0f);
-                    if (audio.SpatialBlend <= 0.001f)
-                        ImGui::TextDisabled("2D: position and distance attenuation are disabled.");
-                    else
-                        ImGui::TextDisabled("3D: source follows the entity world Transform.");
-                    if (ImGui::Button("Preview Play"))
-                    {
-                        const glm::mat4 world = m_Scene->GetWorldTransform(m_SelectedEntity);
-                        AudioEngine::Play(m_SelectedEntity.GetHandle(), audio, glm::vec3(world[3]));
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Preview Stop")) AudioEngine::Stop(m_SelectedEntity.GetHandle());
-                    if (!AudioEngine::GetLastError().empty())
-                        ImGui::TextWrapped("Audio: %s", AudioEngine::GetLastError().c_str());
-                    if (ImGui::Button("Remove Audio Source"))
-                    {
-                        AudioEngine::Stop(m_SelectedEntity.GetHandle());
-                        m_SelectedEntity.RemoveComponent<AudioSourceComponent>();
-                    }
-                }
-            }
-
-            if (m_SelectedEntity.HasComponent<AudioListenerComponent>())
-            {
-                if (ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& listener = m_SelectedEntity.GetComponent<AudioListenerComponent>();
-                    ImGui::Checkbox("Enabled##AudioListener", &listener.Enabled);
-                    ImGui::TextDisabled("Uses this entity's world position and orientation.");
-                    ImGui::TextDisabled("The first enabled listener in the runtime scene is active.");
-                    if (ImGui::Button("Remove Audio Listener"))
-                        m_SelectedEntity.RemoveComponent<AudioListenerComponent>();
-                }
-            }
-
-            if (m_SelectedEntity.HasComponent<CameraComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Camera",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& camera =
-                        m_SelectedEntity.GetComponent<CameraComponent>();
-
-                    ImGui::Checkbox("Primary", &camera.Primary);
-
-                    const char* projectionTypes[] =
-                        { "Perspective", "Orthographic" };
-                    int projectionType =
-                        static_cast<int>(camera.ProjectionType);
-                    if (ImGui::Combo(
-                            "Projection",
-                            &projectionType,
-                            projectionTypes,
-                            IM_ARRAYSIZE(projectionTypes)))
-                    {
-                        camera.ProjectionType =
-                            static_cast<CameraProjectionType>(projectionType);
-                    }
-
-                    if (camera.ProjectionType ==
-                        CameraProjectionType::Perspective)
-                    {
-                        ImGui::SliderFloat(
-                            "Field of View",
-                            &camera.PerspectiveFOV,
-                            1.0f, 179.0f);
-                        ImGui::DragFloat(
-                            "Near Clip",
-                            &camera.PerspectiveNear,
-                            0.01f, 0.001f, 100.0f);
-                        ImGui::DragFloat(
-                            "Far Clip",
-                            &camera.PerspectiveFar,
-                            1.0f, 1.0f, 100000.0f);
-                        camera.PerspectiveFar =
-                            std::max(
-                                camera.PerspectiveFar,
-                                camera.PerspectiveNear + 0.01f);
-                    }
-                    else
-                    {
-                        ImGui::DragFloat(
-                            "Size",
-                            &camera.OrthographicSize,
-                            0.1f, 0.01f, 10000.0f);
-                        ImGui::DragFloat(
-                            "Near Clip##Ortho",
-                            &camera.OrthographicNear,
-                            0.1f);
-                        ImGui::DragFloat(
-                            "Far Clip##Ortho",
-                            &camera.OrthographicFar,
-                            1.0f);
-                    }
-
-                    if (ImGui::Button("Remove Camera"))
-                        m_SelectedEntity.RemoveComponent<CameraComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<DirectionalLightComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Directional Light",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& light =
-                        m_SelectedEntity.GetComponent<DirectionalLightComponent>();
-                    ImGui::ColorEdit3("Color##Directional", &light.Color.x);
-                    ImGui::DragFloat(
-                        "Intensity##Directional",
-                        &light.Intensity, 0.05f, 0.0f, 100.0f);
-                    ImGui::Checkbox("Cast Shadows##Directional", &light.CastShadows);
-                    ImGui::DragFloat("Shadow Bias##Directional", &light.ShadowBias, 0.0001f, 0.00001f, 0.05f, "%.5f");
-                    if (ImGui::Button("Remove Directional Light"))
-                        m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<PointLightComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Point Light",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& light =
-                        m_SelectedEntity.GetComponent<PointLightComponent>();
-                    ImGui::ColorEdit3("Color##Point", &light.Color.x);
-                    ImGui::DragFloat(
-                        "Intensity##Point",
-                        &light.Intensity, 0.05f, 0.0f, 100.0f);
-                    ImGui::DragFloat(
-                        "Range##Point",
-                        &light.Range, 0.1f, 0.01f, 10000.0f);
-                    ImGui::Checkbox("Cast Shadows##Point", &light.CastShadows);
-                    ImGui::DragFloat("Shadow Bias##Point", &light.ShadowBias, 0.001f, 0.001f, 0.25f, "%.4f");
-                    if (ImGui::Button("Remove Point Light"))
-                        m_SelectedEntity.RemoveComponent<PointLightComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<SpotLightComponent>())
-            {
-                if (ImGui::CollapsingHeader(
-                        "Spot Light",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& light =
-                        m_SelectedEntity.GetComponent<SpotLightComponent>();
-                    ImGui::ColorEdit3("Color##Spot", &light.Color.x);
-                    ImGui::DragFloat(
-                        "Intensity##Spot",
-                        &light.Intensity, 0.05f, 0.0f, 100.0f);
-                    ImGui::DragFloat(
-                        "Range##Spot",
-                        &light.Range, 0.1f, 0.01f, 10000.0f);
-                    ImGui::SliderFloat(
-                        "Inner Angle",
-                        &light.InnerAngle, 0.1f, 89.0f);
-                    ImGui::SliderFloat(
-                        "Outer Angle",
-                        &light.OuterAngle, 0.1f, 89.0f);
-                    light.OuterAngle =
-                        std::max(light.OuterAngle, light.InnerAngle);
-                    ImGui::Checkbox("Cast Shadows##Spot", &light.CastShadows);
-                    ImGui::DragFloat("Shadow Bias##Spot", &light.ShadowBias, 0.0001f, 0.00001f, 0.05f, "%.5f");
-                    if (ImGui::Button("Remove Spot Light"))
-                        m_SelectedEntity.RemoveComponent<SpotLightComponent>();
-                }
-            }
-
-
-            if (m_SelectedEntity.HasComponent<AnimatorComponent>())
-            {
-                ImGui::Separator();
-                if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& animator=m_SelectedEntity.GetComponent<AnimatorComponent>();
-                    ImGui::Checkbox("Playing", &animator.Playing);
-                    ImGui::SameLine(); ImGui::Checkbox("Loop", &animator.Loop);
-                    ImGui::DragFloat("Speed", &animator.Speed, 0.05f, -4.0f, 4.0f);
-                    if(animator.Animation && !animator.Animation->Clips().empty())
-                    {
-                        const auto& clips=animator.Animation->Clips();
-                        animator.ClipIndex=std::clamp(animator.ClipIndex,0,(int)clips.size()-1);
-                        if(ImGui::BeginCombo("Clip", clips[animator.ClipIndex].Name.c_str()))
-                        {
-                            for(int ci=0;ci<(int)clips.size();++ci)
-                                if(ImGui::Selectable(clips[ci].Name.c_str(),ci==animator.ClipIndex))
-                                { animator.ClipIndex=ci; animator.TimeSeconds=0.0f; }
-                            ImGui::EndCombo();
-                        }
-                        ImGui::Text("Skeleton bones: %zu", animator.Animation->Bones().size());
-                        ImGui::Text("Time: %.2f / %.2f s", animator.TimeSeconds,
-                            (float)clips[animator.ClipIndex].DurationSeconds());
-                    }
-                    else ImGui::TextDisabled("No animation asset loaded.");
-                }
-            }
-
-            DrawComponentTools();
-
-            ImGui::Separator();
-            ImGui::Spacing();
-            const float addWidth = std::min(260.0f, ImGui::GetContentRegionAvail().x);
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
-                std::max(0.0f, (ImGui::GetContentRegionAvail().x - addWidth) * 0.5f));
-            if (ImGui::Button("Add Component", ImVec2(addWidth, 0.0f)))
-                ImGui::OpenPopup("AddComponentPopup");
-
-            if (ImGui::BeginPopup("AddComponentPopup"))
-            {
-                static char componentSearch[96]{};
-                ImGui::SetNextItemWidth(300.0f);
-                ImGui::InputTextWithHint("##ComponentSearch", "Search components...",
-                    componentSearch, sizeof(componentSearch));
-                ImGui::Separator();
-
-                std::string filter = componentSearch;
-                std::transform(filter.begin(), filter.end(), filter.begin(),
-                    [](unsigned char c){ return (char)std::tolower(c); });
-                auto visible = [&](const char* name)
-                {
-                    if(filter.empty()) return true;
-                    std::string n=name;
-                    std::transform(n.begin(), n.end(), n.begin(),
-                        [](unsigned char c){ return (char)std::tolower(c); });
-                    return n.find(filter) != std::string::npos;
-                };
-                auto addItem = [&](const char* category, const char* name, bool enabled, auto add)
-                {
-                    if(!visible(name)) return;
-                    ImGui::TextDisabled("%s", category);
-                    ImGui::SameLine(95.0f);
-                    if(!enabled) ImGui::BeginDisabled();
-                    if(ImGui::Selectable(name, false, enabled ? 0 : ImGuiSelectableFlags_Disabled))
-                    {
-                        CaptureUndoSnapshot();
-                        add();
-                        ImGui::CloseCurrentPopup();
-                    }
-                    if(!enabled) ImGui::EndDisabled();
-                };
-
-                addItem("Physics", "Rigidbody",
-                    !m_SelectedEntity.HasComponent<RigidbodyComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<RigidbodyComponent>(); });
-
-                const bool noCollider =
-                    !m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
-                    !m_SelectedEntity.HasComponent<SphereColliderComponent>() &&
-                    !m_SelectedEntity.HasComponent<CapsuleColliderComponent>();
-                addItem("Physics", "Box Collider", noCollider,
-                    [&]{ m_SelectedEntity.AddComponent<BoxColliderComponent>(); });
-                addItem("Physics", "Sphere Collider", noCollider,
-                    [&]{ m_SelectedEntity.AddComponent<SphereColliderComponent>(); });
-                addItem("Physics", "Capsule Collider", noCollider,
-                    [&]{ m_SelectedEntity.AddComponent<CapsuleColliderComponent>(); });
-
-                const bool noViewLight =
-                    !m_SelectedEntity.HasComponent<CameraComponent>() &&
-                    !m_SelectedEntity.HasComponent<DirectionalLightComponent>() &&
-                    !m_SelectedEntity.HasComponent<PointLightComponent>() &&
-                    !m_SelectedEntity.HasComponent<SpotLightComponent>();
-                addItem("Rendering", "Camera", noViewLight,
-                    [&]{ m_SelectedEntity.AddComponent<CameraComponent>(); });
-                addItem("Rendering", "Directional Light", noViewLight,
-                    [&]{ m_SelectedEntity.AddComponent<DirectionalLightComponent>(); });
-                addItem("Rendering", "Point Light", noViewLight,
-                    [&]{ m_SelectedEntity.AddComponent<PointLightComponent>(); });
-                addItem("Rendering", "Spot Light", noViewLight,
-                    [&]{ m_SelectedEntity.AddComponent<SpotLightComponent>(); });
-
-                addItem("Effects", "Particle System",
-                    !m_SelectedEntity.HasComponent<ParticleSystemComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<ParticleSystemComponent>(); });
-
-                addItem("Audio", "Audio Source",
-                    !m_SelectedEntity.HasComponent<AudioSourceComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<AudioSourceComponent>(); });
-                addItem("Audio", "Audio Listener",
-                    !m_SelectedEntity.HasComponent<AudioListenerComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<AudioListenerComponent>(); });
-
-                addItem("Animation", "Animator",
-                    !m_SelectedEntity.HasComponent<AnimatorComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<AnimatorComponent>(); });
-                RegisterBuiltinScripts();
-                for(const auto* definition:ScriptRegistry::All())
-                {
-                    const std::string label=definition->Name+" Script";
-                    addItem("Scripting",label.c_str(),
-                        !m_SelectedEntity.HasComponent<NativeScriptComponent>(),
-                        [&,definition]{
-                            NativeScriptComponent component;
-                            component.ScriptName=definition->Name;
-                            ScriptRegistry::ApplyDefaults(component);
-                            m_SelectedEntity.AddComponent<NativeScriptComponent>(component);
-                        });
-                }
-
-                ImGui::EndPopup();
-            }
-
-            if (m_SelectedEntity.HasComponent<PrefabInstanceComponent>())
-            {
-                ImGui::Separator();
-                if(ImGui::CollapsingHeader("Prefab Instance",ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& pi=m_SelectedEntity.GetComponent<PrefabInstanceComponent>();
-                    ImGui::TextWrapped("Source: %s",pi.SourcePath.c_str());
-                    if(ImGui::Button("Apply to Prefab"))
-                    {
-                        CaptureUndoSnapshot();
-                        PrefabSerializer::Apply(m_SelectedEntity,pi.SourcePath);
-                    }
-                    ImGui::SameLine();
-                    if(ImGui::Button("Revert"))
-                    {
-                        CaptureUndoSnapshot();
-                        Entity reverted=PrefabSerializer::Revert(
-                            m_SelectedEntity,m_DefaultCubeMesh,m_DefaultCubeMaterial);
-                        if(reverted) m_SelectedEntity=reverted;
-                    }
-                }
-            }
-
-            if (m_SelectedEntity.HasComponent<MeshRendererComponent>())
-            {
-                ImGui::Separator();
-
-                if (ImGui::CollapsingHeader(
-                        "Mesh Renderer",
-                        ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    auto& renderer =
-                        m_SelectedEntity.GetComponent<MeshRendererComponent>();
-
-                    // Upgrade V1 renderers to the slot representation lazily.
-                    if (renderer.Materials.empty() && renderer.MaterialAsset)
-                        renderer.Materials.push_back(renderer.MaterialAsset);
-                    else if (!renderer.Materials.empty() && !renderer.MaterialAsset)
-                        renderer.MaterialAsset = renderer.Materials.front();
-
-                    if (!renderer.Materials.empty())
-                    {
-                        if (m_SelectedMaterialSlot >= renderer.Materials.size())
-                            m_SelectedMaterialSlot = 0;
-
-                        ImGui::SeparatorText("Materials");
-                        for (std::size_t slot = 0;
-                             slot < renderer.Materials.size();
-                             ++slot)
-                        {
-                            ImGui::PushID(static_cast<int>(slot));
-
-                            const bool selected =
-                                slot == m_SelectedMaterialSlot;
-                            const char* state =
-                                renderer.Materials[slot] ? "Assigned" : "None";
-
-                            std::string label =
-                                "Element " + std::to_string(slot) +
-                                "  [" + state + "]";
-
-                            if (ImGui::Selectable(label.c_str(), selected))
-                                m_SelectedMaterialSlot = slot;
-
-                            // Every element is a real material drop target.
-                            if (ImGui::BeginDragDropTarget())
-                            {
-                                if (const ImGuiPayload* payload =
-                                        ImGui::AcceptDragDropPayload(
-                                            "NOJOB_MATERIAL_ASSET"))
-                                {
-                                    const char* relativePath =
-                                        static_cast<const char*>(payload->Data);
-
-                                    AssetRegistry registry(
-                                        AssetManager::GetAssetsDirectory());
-                                    registry.Load();
-
-                                    std::shared_ptr<Shader> shader;
-                                    if (renderer.Materials[slot])
-                                        shader =
-                                            renderer.Materials[slot]->GetShader();
-                                    else if (renderer.MaterialAsset)
-                                        shader =
-                                            renderer.MaterialAsset->GetShader();
-
-                                    auto loaded = MaterialSerializer::Load(
-                                        AssetManager::GetProjectRoot() /
-                                            relativePath,
-                                        shader,
-                                        registry);
-
-                                    if (loaded)
-                                    {
-                                        renderer.Materials[slot] = loaded;
-                                        if (slot == 0)
-                                            renderer.MaterialAsset = loaded;
-                                    }
-                                }
-                                ImGui::EndDragDropTarget();
-                            }
-
-                            ImGui::PopID();
-                        }
-
-                        auto& activeMaterial =
-                            renderer.Materials[m_SelectedMaterialSlot];
-
-                        if (!activeMaterial)
-                        {
-                            ImGui::TextDisabled(
-                                "Selected material slot is empty.");
-                        }
-                        else
-                        {
-                            // Keep the legacy slot-0 alias synchronized.
-                            if (m_SelectedMaterialSlot == 0)
-                                renderer.MaterialAsset = activeMaterial;
-
-                            ImGui::SeparatorText(
-                                ("Element " +
-                                 std::to_string(m_SelectedMaterialSlot))
-                                    .c_str());
-
-                            const char* surfaceModes[] =
-                            {
-                                "Opaque",
-                                "Alpha Clip",
-                                "Transparent"
-                            };
-
-                            int surfaceMode =
-                                static_cast<int>(
-                                    activeMaterial->SurfaceMode());
-
-                            if (ImGui::Combo(
-                                    "Rendering Mode",
-                                    &surfaceMode,
-                                    surfaceModes,
-                                    3))
-                            {
-                                activeMaterial->SurfaceMode() =
-                                    static_cast<MaterialSurfaceMode>(
-                                        surfaceMode);
-                            }
-
-                            if (activeMaterial->SurfaceMode() ==
-                                MaterialSurfaceMode::AlphaClip)
-                            {
-                                ImGui::SliderFloat(
-                                    "Alpha Cutoff",
-                                    &activeMaterial->AlphaCutoff(),
-                                    0.0f,
-                                    1.0f);
-                            }
-
-                            ImGui::TextUnformatted("Material");
-                            ImGui::SameLine();
-                            ImGui::Button(
-                                "Material Slot",
-                                ImVec2(
-                                    ImGui::GetContentRegionAvail().x,
-                                    0.0f));
-
-                            if (ImGui::BeginDragDropTarget())
-                            {
-                                if (const ImGuiPayload* materialPayload =
-                                        ImGui::AcceptDragDropPayload(
-                                            "NOJOB_MATERIAL_ASSET"))
-                                {
-                                    const char* relativePath =
-                                        static_cast<const char*>(
-                                            materialPayload->Data);
-
-                                    AssetRegistry registry(
-                                        AssetManager::GetAssetsDirectory());
-                                    registry.Load();
-
-                                    auto loaded = MaterialSerializer::Load(
-                                        AssetManager::GetProjectRoot() /
-                                            relativePath,
-                                        activeMaterial->GetShader(),
-                                        registry);
-
-                                    if (loaded)
-                                    {
-                                        activeMaterial = loaded;
-                                        if (m_SelectedMaterialSlot == 0)
-                                            renderer.MaterialAsset = loaded;
-                                    }
-                                }
-
-                                if (const ImGuiPayload* texturePayload =
-                                        ImGui::AcceptDragDropPayload(
-                                            "NOJOB_TEXTURE_ASSET"))
-                                {
-                                    const char* relativePath =
-                                        static_cast<const char*>(
-                                            texturePayload->Data);
-                                    try
-                                    {
-                                        activeMaterial->SetTexture(
-                                            AssetManager::LoadTexture(
-                                                relativePath));
-                                        activeMaterial->UseTexture() = true;
-                                    }
-                                    catch (const std::exception&) {}
-                                }
-
-                                ImGui::EndDragDropTarget();
-                            }
-
-                            ImGui::Separator();
-                            auto& color = activeMaterial->GetColor();
-                            ImGui::ColorEdit4(
-                                "Material Color", &color.x);
-
-                            ImGui::SeparatorText("PBR Surface");
-                            ImGui::SliderFloat(
-                                "Metallic",
-                                &activeMaterial->Metallic(), 0.0f, 1.0f);
-                            ImGui::SliderFloat(
-                                "Roughness",
-                                &activeMaterial->Roughness(), 0.04f, 1.0f);
-                            ImGui::SliderFloat(
-                                "Ambient Occlusion",
-                                &activeMaterial->AmbientOcclusion(),
-                                0.0f, 1.0f);
-                            ImGui::SliderFloat(
-                                "Normal Strength",
-                                &activeMaterial->NormalStrength(),
-                                0.0f, 2.0f);
-                            ImGui::ColorEdit3(
-                                "Emissive Color",
-                                &activeMaterial->EmissiveColor().x);
-                            ImGui::SliderFloat(
-                                "Emissive Strength",
-                                &activeMaterial->EmissiveStrength(),
-                                0.0f, 20.0f);
-
-                            ImGui::SeparatorText("PBR Texture Maps");
-                            auto selectPBRMap =
-                                [&](const char* label, auto setter)
-                            {
-                                if (ImGui::Button(label))
-                                {
-                                    const std::string path =
-                                        OpenTextureFileDialog();
-                                    if (!path.empty())
-                                    {
-                                        try
-                                        {
-                                            const auto importedPath =
-                                                AssetManager::ImportTexture(
-                                                    path);
-                                            setter(
-                                                AssetManager::LoadTexture(
-                                                    importedPath));
-                                        }
-                                        catch (const std::exception&) {}
-                                    }
-                                }
-                            };
-
-                            selectPBRMap(
-                                "Normal Map...",
-                                [&](std::shared_ptr<Texture2D> v)
-                                {
-                                    activeMaterial->SetNormalTexture(
-                                        std::move(v));
-                                });
-                            ImGui::SameLine();
-                            selectPBRMap(
-                                "Metallic Map...",
-                                [&](std::shared_ptr<Texture2D> v)
-                                {
-                                    activeMaterial->SetMetallicTexture(
-                                        std::move(v));
-                                });
-                            selectPBRMap(
-                                "Roughness Map...",
-                                [&](std::shared_ptr<Texture2D> v)
-                                {
-                                    activeMaterial->SetRoughnessTexture(
-                                        std::move(v));
-                                });
-                            ImGui::SameLine();
-                            selectPBRMap(
-                                "AO Map...",
-                                [&](std::shared_ptr<Texture2D> v)
-                                {
-                                    activeMaterial->SetAOTexture(
-                                        std::move(v));
-                                });
-                            selectPBRMap(
-                                "Emissive Map...",
-                                [&](std::shared_ptr<Texture2D> v)
-                                {
-                                    activeMaterial->SetEmissiveTexture(
-                                        std::move(v));
-                                });
-
-                            ImGui::Checkbox(
-                                "Use Texture",
-                                &activeMaterial->UseTexture());
-
-                            if (ImGui::Button("Select Texture..."))
-                            {
-                                const std::string path =
-                                    OpenTextureFileDialog();
-                                if (!path.empty())
-                                {
-                                    try
-                                    {
-                                        const auto importedPath =
-                                            AssetManager::ImportTexture(path);
-                                        activeMaterial->SetTexture(
-                                            AssetManager::LoadTexture(
-                                                importedPath));
-                                        activeMaterial->UseTexture() = true;
-                                    }
-                                    catch (const std::exception&) {}
-                                }
-                            }
-
-                            ImGui::SameLine();
-                            if (ImGui::Button("Checkerboard"))
-                            {
-                                activeMaterial->SetTexture(
-                                    Texture2D::CreateCheckerboard());
-                                activeMaterial->UseTexture() = true;
-                            }
-
-                            if (ImGui::Button("Save Material Asset"))
-                            {
-                                const auto& tag =
-                                    m_SelectedEntity
-                                        .GetComponent<TagComponent>().Tag;
-
-                                const auto materialPath =
-                                    AssetManager::GetAssetsDirectory() /
-                                    "Materials" /
-                                    (tag + "_Element" +
-                                     std::to_string(
-                                         m_SelectedMaterialSlot) +
-                                     ".nojobmat");
-
-                                AssetRegistry registry(
-                                    AssetManager::GetAssetsDirectory());
-                                registry.Load();
-                                MaterialSerializer::Save(
-                                    *activeMaterial,
-                                    materialPath,
-                                    registry);
-                                registry.Register(
-                                    materialPath,
-                                    AssetType::Material);
-                                registry.Save();
-                            }
-
-                            ImGui::SameLine();
-                            if (ImGui::Button("Create Prefab"))
-                            {
-                                auto prefabPath =
-                                    AssetManager::GetAssetsDirectory() /
-                                    "Prefabs" /
-                                    (m_SelectedEntity
-                                         .GetComponent<TagComponent>().Tag +
-                                     ".nojobprefab");
-                                PrefabSerializer::Save(
-                                    m_SelectedEntity, prefabPath);
-                                AssetRegistry registry(
-                                    AssetManager::GetAssetsDirectory());
-                                registry.Load();
-                                registry.Register(
-                                    prefabPath, AssetType::Prefab);
-                                registry.Save();
-                            }
-
-                            if (activeMaterial->GetTexture())
-                            {
-                                const auto& texture =
-                                    activeMaterial->GetTexture();
-                                const std::filesystem::path texturePath(
-                                    texture->GetPath());
-
-                                const std::string displayName =
-                                    texture->GetPath() == "Checkerboard"
-                                        ? std::string("Checkerboard")
-                                        : texturePath.filename().string();
-
-                                ImGui::TextDisabled(
-                                    "Texture: %s",
-                                    displayName.c_str());
-
-                                ImGui::Image(
-                                    static_cast<ImTextureID>(
-                                        static_cast<intptr_t>(
-                                            texture->GetRendererID())),
-                                    ImVec2(96.0f, 96.0f));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        ImGui::TextDisabled("No material assigned.");
-                    }
-                }
-            }
-
-            ImGui::Separator();
-
-            const auto id =
-                m_SelectedEntity.GetComponent<IDComponent>().ID;
-
-            ImGui::Text(
-                "Entity ID: %llu",
-                static_cast<unsigned long long>(id));
-        }
-        else
-        {
-            ImGui::TextDisabled(
-                "Select an entity in Hierarchy.");
-        }
-
-        ImGui::End();
-    }
 
     void EditorLayer::DrawViewport()
     {
@@ -4278,586 +2317,32 @@ return{};}
 #endif
         ImGui::End();
     }
-    void EditorLayer::DrawComponentTools()
+
+
+    std::string EditorLayer::OpenInspectorAudioFileDialog()
     {
-        if (!m_SelectedEntity) return;
+        return OpenAudioFileDialog();
+    }
 
-        ImGui::SeparatorText("Component Actions");
-        static int componentIndex = 0;
+    std::string EditorLayer::OpenInspectorTextureFileDialog()
+    {
+        return OpenTextureFileDialog();
+    }
 
-        struct Entry { const char* Name; int Id; };
-        std::vector<Entry> entries;
-        entries.push_back({"Transform", 0});
-        if(m_SelectedEntity.HasComponent<NativeScriptComponent>()) entries.push_back({"Native Script",1});
-        if(m_SelectedEntity.HasComponent<RigidbodyComponent>()) entries.push_back({"Rigidbody",2});
-        if(m_SelectedEntity.HasComponent<BoxColliderComponent>()) entries.push_back({"Box Collider",3});
-        if(m_SelectedEntity.HasComponent<SphereColliderComponent>()) entries.push_back({"Sphere Collider",4});
-        if(m_SelectedEntity.HasComponent<CapsuleColliderComponent>()) entries.push_back({"Capsule Collider",5});
-        if(m_SelectedEntity.HasComponent<CameraComponent>()) entries.push_back({"Camera",6});
-        if(m_SelectedEntity.HasComponent<DirectionalLightComponent>()) entries.push_back({"Directional Light",7});
-        if(m_SelectedEntity.HasComponent<PointLightComponent>()) entries.push_back({"Point Light",8});
-        if(m_SelectedEntity.HasComponent<SpotLightComponent>()) entries.push_back({"Spot Light",9});
-        if(m_SelectedEntity.HasComponent<AnimatorComponent>()) entries.push_back({"Animator",10});
-
-        componentIndex = std::clamp(componentIndex, 0, (int)entries.size()-1);
-        if(ImGui::BeginCombo("Component", entries[componentIndex].Name))
-        {
-            for(int i=0;i<(int)entries.size();++i)
-                if(ImGui::Selectable(entries[i].Name, i==componentIndex))
-                    componentIndex=i;
-            ImGui::EndCombo();
-        }
-
-        const int id=entries[componentIndex].Id;
-        auto copy=[&]{
-            switch(id){
-            case 0:m_ComponentClipboard=m_SelectedEntity.GetComponent<TransformComponent>();break;
-            case 1:m_ComponentClipboard=m_SelectedEntity.GetComponent<NativeScriptComponent>();break;
-            case 2:m_ComponentClipboard=m_SelectedEntity.GetComponent<RigidbodyComponent>();break;
-            case 3:m_ComponentClipboard=m_SelectedEntity.GetComponent<BoxColliderComponent>();break;
-            case 4:m_ComponentClipboard=m_SelectedEntity.GetComponent<SphereColliderComponent>();break;
-            case 5:m_ComponentClipboard=m_SelectedEntity.GetComponent<CapsuleColliderComponent>();break;
-            case 6:m_ComponentClipboard=m_SelectedEntity.GetComponent<CameraComponent>();break;
-            case 7:m_ComponentClipboard=m_SelectedEntity.GetComponent<DirectionalLightComponent>();break;
-            case 8:m_ComponentClipboard=m_SelectedEntity.GetComponent<PointLightComponent>();break;
-            case 9:m_ComponentClipboard=m_SelectedEntity.GetComponent<SpotLightComponent>();break;
-            case 10:m_ComponentClipboard=m_SelectedEntity.GetComponent<AnimatorComponent>();break;
-            }
-        };
-        auto reset=[&]{
-            CaptureUndoSnapshot();
-            switch(id){
-            case 0:m_SelectedEntity.GetComponent<TransformComponent>()={};break;
-            case 1:m_SelectedEntity.GetComponent<NativeScriptComponent>()={};break;
-            case 2:m_SelectedEntity.GetComponent<RigidbodyComponent>()={};break;
-            case 3:m_SelectedEntity.GetComponent<BoxColliderComponent>()={};break;
-            case 4:m_SelectedEntity.GetComponent<SphereColliderComponent>()={};break;
-            case 5:m_SelectedEntity.GetComponent<CapsuleColliderComponent>()={};break;
-            case 6:m_SelectedEntity.GetComponent<CameraComponent>()={};break;
-            case 7:m_SelectedEntity.GetComponent<DirectionalLightComponent>()={};break;
-            case 8:m_SelectedEntity.GetComponent<PointLightComponent>()={};break;
-            case 9:m_SelectedEntity.GetComponent<SpotLightComponent>()={};break;
-            case 10:m_SelectedEntity.GetComponent<AnimatorComponent>()={};break;
-            }
-        };
-        auto paste=[&]{
-            CaptureUndoSnapshot();
-            switch(id){
-            case 0:if(auto p=std::get_if<TransformComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<TransformComponent>()=*p;break;
-            case 1:if(auto p=std::get_if<NativeScriptComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<NativeScriptComponent>()=*p;break;
-            case 2:if(auto p=std::get_if<RigidbodyComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<RigidbodyComponent>()=*p;break;
-            case 3:if(auto p=std::get_if<BoxColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<BoxColliderComponent>()=*p;break;
-            case 4:if(auto p=std::get_if<SphereColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<SphereColliderComponent>()=*p;break;
-            case 5:if(auto p=std::get_if<CapsuleColliderComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<CapsuleColliderComponent>()=*p;break;
-            case 6:if(auto p=std::get_if<CameraComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<CameraComponent>()=*p;break;
-            case 7:if(auto p=std::get_if<DirectionalLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<DirectionalLightComponent>()=*p;break;
-            case 8:if(auto p=std::get_if<PointLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<PointLightComponent>()=*p;break;
-            case 9:if(auto p=std::get_if<SpotLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<SpotLightComponent>()=*p;break;
-            case 10:if(auto p=std::get_if<AnimatorComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<AnimatorComponent>()=*p;break;
-            }
-        };
-
-        if(ImGui::SmallButton("Reset")) reset();
-        ImGui::SameLine();
-        if(ImGui::SmallButton("Copy")) copy();
-        ImGui::SameLine();
-        if(ImGui::SmallButton("Paste")) paste();
-        ImGui::SameLine();
-
-        const bool removable=id!=0;
-        if(!removable) ImGui::BeginDisabled();
-        if(ImGui::SmallButton("Remove") && removable)
-        {
-            CaptureUndoSnapshot();
-            switch(id){
-            case 1:m_SelectedEntity.RemoveComponent<NativeScriptComponent>();break;
-            case 2:m_SelectedEntity.RemoveComponent<RigidbodyComponent>();break;
-            case 3:m_SelectedEntity.RemoveComponent<BoxColliderComponent>();break;
-            case 4:m_SelectedEntity.RemoveComponent<SphereColliderComponent>();break;
-            case 5:m_SelectedEntity.RemoveComponent<CapsuleColliderComponent>();break;
-            case 6:m_SelectedEntity.RemoveComponent<CameraComponent>();break;
-            case 7:m_SelectedEntity.RemoveComponent<DirectionalLightComponent>();break;
-            case 8:m_SelectedEntity.RemoveComponent<PointLightComponent>();break;
-            case 9:m_SelectedEntity.RemoveComponent<SpotLightComponent>();break;
-            case 10:m_SelectedEntity.RemoveComponent<AnimatorComponent>();break;
-            }
-            componentIndex=0;
-        }
-        if(!removable) ImGui::EndDisabled();
-        ImGui::TextDisabled("F2 Rename | Ctrl+D Duplicate | Delete | Ctrl+Z/Y Undo/Redo");
+    void EditorLayer::LogInspectorMessage(const std::string& message)
+    {
+        ScriptLog(message);
     }
 
     void EditorLayer::DrawProjectPanel()
     {
-        ImGui::Begin("Project");
-
-        if (m_ProjectDirectory.empty())
-            m_ProjectDirectory = AssetManager::GetProjectRoot();
-
-        const auto projectRoot = AssetManager::GetProjectRoot();
-        const auto assetsRoot = AssetManager::GetAssetsDirectory();
-
-        if (m_ProjectDirectory != projectRoot)
-        {
-            if (ImGui::Button("< Back"))
-            {
-                const auto parent = m_ProjectDirectory.parent_path();
-                m_ProjectDirectory =
-                    parent.string().size() < projectRoot.string().size()
-                    ? projectRoot : parent;
-            }
-
-            ImGui::SameLine();
-        }
-
-        ImGui::TextDisabled(
-            "%s",
-            m_ProjectDirectory.lexically_relative(
-                AssetManager::GetProjectRoot()).generic_string().c_str());
-
-        ImGui::Separator();
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##ProjectSearch", "Search current folder...",
-            m_ProjectSearch, sizeof(m_ProjectSearch));
-        ImGui::Separator();
-
-        // Unity-style prefab creation:
-        // drag an entity from Hierarchy and drop it into any folder inside Assets.
-        const bool projectFolderIsInsideAssets =
-            m_ProjectDirectory == assetsRoot
-            || m_ProjectDirectory.string().rfind(assetsRoot.string(), 0) == 0;
-
-        if (projectFolderIsInsideAssets)
-        {
-            ImGui::InvisibleButton(
-                "##ProjectPrefabDropTarget",
-                ImVec2(ImGui::GetContentRegionAvail().x, 28.0f));
-
-            // IMPORTANT: BeginDragDropTarget must be immediately after the
-            // target item. Previously TextDisabled became the last item,
-            // therefore ImGui never accepted the Hierarchy payload here.
-            if (ImGui::BeginDragDropTarget())
-            {
-                if (const ImGuiPayload* payload =
-                        ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
-                {
-                    const auto handle =
-                        *static_cast<const std::uint32_t*>(payload->Data);
-
-                    if (m_Scene && m_Scene->IsValid(handle))
-                    {
-                        Entity source(handle, m_Scene);
-                        auto prefabName =
-                            source.GetComponent<TagComponent>().Tag;
-
-                        for (char& c : prefabName)
-                        {
-                            if (c == '/' || c == '\\' || c == ':' ||
-                                c == '*' || c == '?' || c == '"' ||
-                                c == '<' || c == '>' || c == '|')
-                                c = '_';
-                        }
-
-                        auto prefabPath =
-                            m_ProjectDirectory /
-                            (prefabName + ".nojobprefab");
-
-                        int suffix = 1;
-                        while (std::filesystem::exists(prefabPath))
-                        {
-                            prefabPath =
-                                m_ProjectDirectory /
-                                (prefabName + " (" +
-                                 std::to_string(suffix++) +
-                                 ").nojobprefab");
-                        }
-
-                        if (PrefabSerializer::Save(source, prefabPath))
-                        {
-                            AssetRegistry registry(
-                                AssetManager::GetAssetsDirectory());
-                            registry.Load();
-                            registry.Register(
-                                prefabPath,
-                                AssetType::Prefab);
-                            registry.Save();
-                        }
-                    }
-                }
-                ImGui::EndDragDropTarget();
-            }
-
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 28.0f);
-            ImGui::TextDisabled("Drop a Hierarchy object here to create a Prefab");
-            ImGui::Separator();
-        }
-
-        // Right click empty Project space -> Create -> Prefab From Selected.
-        if (ImGui::BeginPopupContextWindow(
-                "ProjectCreateContext",
-                ImGuiPopupFlags_MouseButtonRight |
-                ImGuiPopupFlags_NoOpenOverItems))
-        {
-            if (ImGui::BeginMenu("Create"))
-            {
-                const bool canCreatePrefab =
-                    projectFolderIsInsideAssets
-                    && static_cast<bool>(m_SelectedEntity);
-
-                if (ImGui::MenuItem("C++ Script", nullptr, false,
-                        projectFolderIsInsideAssets))
-                {
-                    m_RequestCreateCppScript = true;
-                }
-
-                if (ImGui::MenuItem(
-                        "Prefab From Selected",
-                        nullptr,
-                        false,
-                        canCreatePrefab))
-                {
-                    auto prefabName =
-                        m_SelectedEntity.GetComponent<TagComponent>().Tag;
-
-                    for (char& c : prefabName)
-                    {
-                        if (c == '/' || c == '\\' || c == ':' ||
-                            c == '*' || c == '?' || c == '"' ||
-                            c == '<' || c == '>' || c == '|')
-                            c = '_';
-                    }
-
-                    auto prefabPath =
-                        m_ProjectDirectory /
-                        (prefabName + ".nojobprefab");
-
-                    int suffix = 1;
-                    while (std::filesystem::exists(prefabPath))
-                    {
-                        prefabPath =
-                            m_ProjectDirectory /
-                            (prefabName + " (" +
-                             std::to_string(suffix++) +
-                             ").nojobprefab");
-                    }
-
-                    if (PrefabSerializer::Save(
-                            m_SelectedEntity,
-                            prefabPath))
-                    {
-                        AssetRegistry registry(
-                            AssetManager::GetAssetsDirectory());
-                        registry.Load();
-                        registry.Register(
-                            prefabPath,
-                            AssetType::Prefab);
-                        registry.Save();
-                    }
-                }
-
-                ImGui::EndMenu();
-            }
-            ImGui::EndPopup();
-        }
-
-        // Open the script modal only after the Project context popup has
-        // completely ended. Opening it from inside the nested popup gives it
-        // the wrong ImGui popup parent and it silently disappears.
-        if (m_RequestCreateCppScript)
-        {
-            ImGui::OpenPopup("Create C++ Script");
-            m_RequestCreateCppScript = false;
-        }
-
-        // Native C++ script authoring. Scripts are always created under the
-        // project's Assets/Scripts tree so CMake can discover them reliably.
-        static char newScriptName[128] = "NewScript";
-        if (ImGui::BeginPopupModal("Create C++ Script", nullptr,
-                ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::TextUnformatted("Script name");
-            ImGui::SetNextItemWidth(280.0f);
-            const bool enter = ImGui::InputText("##CppScriptName",
-                newScriptName, sizeof(newScriptName),
-                ImGuiInputTextFlags_EnterReturnsTrue);
-
-            const auto scriptsRoot = assetsRoot / "Scripts";
-            std::string sanitized = SanitizeCppIdentifier(newScriptName);
-            const bool exists =
-                std::filesystem::exists(scriptsRoot / (sanitized + ".h")) ||
-                std::filesystem::exists(scriptsRoot / (sanitized + ".cpp"));
-            if (exists) ImGui::TextDisabled("A script with this name already exists.");
-            else ImGui::TextDisabled("Creates Assets/Scripts/%s.h and %s.cpp",
-                sanitized.c_str(), sanitized.c_str());
-
-            const bool create = (ImGui::Button("Create") || enter) && !exists;
-            ImGui::SameLine();
-            const bool cancel = ImGui::Button("Cancel");
-
-            if (create)
-            {
-                if (CreateCppScriptAsset(scriptsRoot, sanitized))
-                {
-                    m_ProjectDirectory = scriptsRoot;
-                    newScriptName[0] = '\0';
-                    ImGui::CloseCurrentPopup();
-                }
-            }
-            if (cancel) ImGui::CloseCurrentPopup();
-            ImGui::EndPopup();
-        }
-
-        std::error_code error;
-        if (std::filesystem::exists(m_ProjectDirectory, error))
-        {
-            for (const auto& entry :
-                 std::filesystem::directory_iterator(
-                     m_ProjectDirectory,
-                     std::filesystem::directory_options::skip_permission_denied,
-                     error))
-            {
-                const auto path = entry.path();
-                const std::string name =
-                    path.filename().string();
-
-                if (m_ProjectSearch[0] != '\0')
-                {
-                    std::string filter = m_ProjectSearch;
-                    std::string lowerName = name;
-                    std::transform(filter.begin(), filter.end(), filter.begin(),
-                        [](unsigned char c){ return (char)std::tolower(c); });
-                    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-                        [](unsigned char c){ return (char)std::tolower(c); });
-                    if (lowerName.find(filter) == std::string::npos)
-                        continue;
-                }
-
-                // Unity-style root: Project shows the Assets folder first,
-                // instead of dumping CMake/source files into this panel.
-                if (m_ProjectDirectory == projectRoot
-                    && path.lexically_normal() != assetsRoot.lexically_normal())
-                    continue;
-
-                ImGui::PushID(path.string().c_str());
-
-                if (entry.is_directory())
-                {
-                    if (ImGui::Selectable(
-                            ("[Folder] " + name).c_str(),
-                            false,
-                            ImGuiSelectableFlags_AllowDoubleClick))
-                    {
-                        if (ImGui::IsMouseDoubleClicked(
-                                ImGuiMouseButton_Left))
-                        {
-                            m_ProjectDirectory = path;
-                        }
-                    }
-
-                    // Unity-style: drop a Hierarchy entity directly ON a
-                    // folder (for example Assets/Prefabs).
-                    if (ImGui::BeginDragDropTarget())
-                    {
-                        if (const ImGuiPayload* payload =
-                                ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
-                        {
-                            const auto handle =
-                                *static_cast<const std::uint32_t*>(
-                                    payload->Data);
-
-                            if (m_Scene && m_Scene->IsValid(handle))
-                            {
-                                Entity source(handle, m_Scene);
-                                auto prefabName =
-                                    source.GetComponent<TagComponent>().Tag;
-
-                                for (char& c : prefabName)
-                                {
-                                    if (c == '/' || c == '\\' || c == ':' ||
-                                        c == '*' || c == '?' || c == '"' ||
-                                        c == '<' || c == '>' || c == '|')
-                                        c = '_';
-                                }
-
-                                auto prefabPath =
-                                    path / (prefabName + ".nojobprefab");
-
-                                int suffix = 1;
-                                while (std::filesystem::exists(prefabPath))
-                                {
-                                    prefabPath =
-                                        path /
-                                        (prefabName + " (" +
-                                         std::to_string(suffix++) +
-                                         ").nojobprefab");
-                                }
-
-                                if (PrefabSerializer::Save(
-                                        source,
-                                        prefabPath))
-                                {
-                                    AssetRegistry registry(
-                                        AssetManager::GetAssetsDirectory());
-                                    registry.Load();
-                                    registry.Register(
-                                        prefabPath,
-                                        AssetType::Prefab);
-                                    registry.Save();
-                                }
-                            }
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
-                }
-                else
-                {
-                    const std::string extension =
-                        path.extension().string();
-
-                    const bool isTexture =
-                        extension == ".png"
-                        || extension == ".jpg"
-                        || extension == ".jpeg"
-                        || extension == ".bmp"
-                        || extension == ".tga";
-
-                    const bool isModel =
-                        extension == ".obj" || extension == ".fbx" ||
-                        extension == ".gltf" || extension == ".glb" ||
-                        extension == ".dae" || extension == ".stl" ||
-                        extension == ".ply" || extension == ".3ds" ||
-                        extension == ".blend";
-                    const bool isMaterial = extension == ".nojobmat";
-                    const bool isPrefab = extension == ".nojobprefab";
-                    const bool isScript = extension == ".cpp" || extension == ".h" || extension == ".hpp";
-                    const bool isAudio = extension == ".wav" || extension == ".mp3" || extension == ".flac";
-                    if(isAudio)
-                    {
-                        ImGui::Selectable(("[Audio] " + name).c_str());
-                        const std::string relative =
-                            AssetManager::ToProjectRelative(path).generic_string();
-                        if (ImGui::BeginDragDropSource())
-                        {
-                            ImGui::SetDragDropPayload(
-                                "NOJOB_AUDIO_ASSET",
-                                relative.c_str(), relative.size() + 1);
-                            ImGui::Text("Audio: %s", name.c_str());
-                            ImGui::EndDragDropSource();
-                        }
-                    }
-                    else if(isScript)
-                    {
-                        const bool clicked = ImGui::Selectable(
-                            ("[C++] " + name).c_str(),
-                            false,
-                            ImGuiSelectableFlags_AllowDoubleClick);
-
-#ifdef _WIN32
-                        if (clicked &&
-                            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                        {
-                            OpenScriptInVisualStudio(path);
-                        }
-
-                        if (ImGui::BeginPopupContextItem())
-                        {
-                            if (ImGui::MenuItem("Open in Visual Studio"))
-                                OpenScriptInVisualStudio(path);
-
-                            ImGui::Separator();
-                            ImGui::TextDisabled(
-                                "%s",
-                                path.lexically_relative(
-                                    AssetManager::GetProjectRoot())
-                                    .generic_string().c_str());
-                            ImGui::EndPopup();
-                        }
-#endif
-                    }
-                    else if(isModel){if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)&&ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))CreateModelEntity(AssetManager::ToProjectRelative(path));}
-                    else if(isPrefab)
-                    {
-                        if(ImGui::Selectable(name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick)
-                            && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                        {
-                            auto e=PrefabSerializer::Instantiate(
-                                *m_Scene,path,m_DefaultCubeMesh,m_DefaultCubeMaterial);
-                            if(e)m_SelectedEntity=e;
-                        }
-
-                        if(ImGui::BeginPopupContextItem())
-                        {
-                            if(ImGui::MenuItem("Instantiate Prefab"))
-                            {
-                                auto e=PrefabSerializer::Instantiate(
-                                    *m_Scene,path,m_DefaultCubeMesh,m_DefaultCubeMaterial);
-                                if(e)m_SelectedEntity=e;
-                            }
-                            ImGui::EndPopup();
-                        }
-                    }
-                    else if(isMaterial)
-                    {
-                        const bool clicked=ImGui::Selectable(
-                            name.c_str(),false,ImGuiSelectableFlags_AllowDoubleClick);
-
-                        const std::string relative =
-                            AssetManager::ToProjectRelative(path).generic_string();
-
-                        if(clicked && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
-                           && m_SelectedEntity
-                           && m_SelectedEntity.HasComponent<MeshRendererComponent>())
-                        {
-                            auto& renderer=m_SelectedEntity.GetComponent<MeshRendererComponent>();
-                            if(renderer.MaterialAsset)
-                            {
-                                AssetRegistry registry(AssetManager::GetAssetsDirectory());
-                                registry.Load();
-                                auto loaded=MaterialSerializer::Load(
-                                    path,renderer.MaterialAsset->GetShader(),registry);
-                                if(loaded) renderer.MaterialAsset=loaded;
-                            }
-                        }
-
-                        if(ImGui::BeginDragDropSource())
-                        {
-                            ImGui::SetDragDropPayload(
-                                "NOJOB_MATERIAL_ASSET",
-                                relative.c_str(),relative.size()+1);
-                            ImGui::Text("Material: %s",name.c_str());
-                            ImGui::EndDragDropSource();
-                        }
-                    }
-                    else if (isTexture)
-                    {
-                        ImGui::Selectable(name.c_str());
-
-                        if (ImGui::BeginDragDropSource())
-                        {
-                            const std::string relative =
-                                AssetManager::ToProjectRelative(path)
-                                    .generic_string();
-
-                            ImGui::SetDragDropPayload(
-                                "NOJOB_TEXTURE_ASSET",
-                                relative.c_str(),
-                                relative.size() + 1);
-
-                            ImGui::Text("Texture: %s", name.c_str());
-                            ImGui::EndDragDropSource();
-                        }
-                    }
-                    else
-                    {
-                        ImGui::TextDisabled("%s", name.c_str());
-                    }
-                }
-
-                ImGui::PopID();
-            }
-        }
-
-        ImGui::End();
+        m_ProjectPanel.Draw(
+            m_Scene,
+            m_SelectedEntity,
+            m_DefaultCubeMesh,
+            m_DefaultCubeMaterial,
+            [this](const std::filesystem::path& path) { CreateModelEntity(path); },
+            ScriptLog);
     }
 
     void EditorLayer::DrawGraphicsSettings()
@@ -4898,7 +2383,7 @@ return{};}
                 std::filesystem::path selected(path);
                 std::error_code ec;
                 const auto relative = std::filesystem::relative(
-                    selected, m_ProjectDirectory, ec);
+                    selected, m_ProjectPanel.GetCurrentDirectoryPath(), ec);
                 if (!ec && !relative.empty() &&
                     relative.generic_string().rfind("..", 0) != 0)
                 {
@@ -5009,6 +2494,13 @@ return{};}
     {
         const bool requested = m_SaveSceneRequested;
         m_SaveSceneRequested = false;
+        return requested;
+    }
+
+    bool EditorLayer::ConsumeSaveSceneAsRequest()
+    {
+        const bool requested = m_SaveSceneAsRequested;
+        m_SaveSceneAsRequested = false;
         return requested;
     }
 

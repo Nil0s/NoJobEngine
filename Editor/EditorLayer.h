@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Assets/ProjectPanel.h"
 #include "Engine/Scene/Entity.h"
 #include "Engine/Scene/Components.h"
 #include "Engine/Renderer/Framebuffer.h"
@@ -42,6 +43,7 @@ namespace NoJob
         bool ConsumePauseRequest();
         bool ConsumeStopRequest();
         bool ConsumeSaveSceneRequest();
+        bool ConsumeSaveSceneAsRequest();
         bool ConsumeLoadSceneRequest();
         bool ConsumeGraphicsTestSceneRequest();
         void SetRuntimeState(bool playing, bool paused);
@@ -81,6 +83,9 @@ namespace NoJob
         void DrawGraphicsSettings();
         void DrawRendererProfiler();
         void DrawComponentTools();
+        std::string OpenInspectorAudioFileDialog();
+        std::string OpenInspectorTextureFileDialog();
+        void LogInspectorMessage(const std::string& message);
         bool HierarchyMatchesFilter(Entity entity) const;
         bool IsMultiSelected(Entity entity) const;
         void ClearMultiSelection();
@@ -102,8 +107,6 @@ namespace NoJob
         std::vector<std::uint32_t> m_MultiSelection;
         std::size_t m_SelectedMaterialSlot = 0;
         char m_HierarchySearch[128]{};
-        char m_ProjectSearch[128]{};
-        bool m_RequestCreateCppScript = false;
         bool m_RenameSelectedRequested = false;
 
         using ComponentClipboard = std::variant<
@@ -135,13 +138,14 @@ namespace NoJob
         glm::mat4 m_EditorProjection{ 1.0f };
         int m_GizmoOperation = 0;
 
-        std::filesystem::path m_ProjectDirectory;
+        ProjectPanel m_ProjectPanel;
         bool m_IsPlaying = false;
         bool m_IsPaused = false;
         bool m_PlayRequested = false;
         bool m_PauseRequested = false;
         bool m_StopRequested = false;
         bool m_SaveSceneRequested = false;
+        bool m_SaveSceneAsRequested = false;
         bool m_LoadSceneRequested = false;
         bool m_GraphicsTestSceneRequested = false;
         bool m_ShowGraphicsSettings = true;

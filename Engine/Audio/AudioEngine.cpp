@@ -26,10 +26,7 @@ namespace NoJob
 
         std::filesystem::path ResolveClip(const std::string& clip)
         {
-            std::filesystem::path p(clip);
-            if (p.empty() || p.is_absolute()) return p;
-            const auto project = AssetManager::GetProjectRoot();
-            return (project.empty() ? p : project / p).lexically_normal();
+            return AssetManager::ResolveProjectPath(std::filesystem::path(clip));
         }
     }
 

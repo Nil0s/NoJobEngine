@@ -221,6 +221,15 @@ set_target_properties(NoJobProjectScripts PROPERTIES
 add_executable(NoJobEditor
     Editor/main.cpp
     Editor/EditorLayer.cpp
+    Editor/Build/StandaloneBuilder.cpp
+    Editor/Build/BuildSettings.cpp
+    Editor/Scripting/VisualStudioIntegration.cpp
+    Editor/Scripting/ProjectScriptManager.cpp
+    Editor/Scripting/ProjectScriptBuildSystem.cpp
+    Editor/Assets/ProjectAssetOperations.cpp
+    Editor/Assets/ProjectPanel.cpp
+    Editor/Panels/InspectorPanel.cpp
+    Editor/Scene/SceneFileDialog.cpp
     Editor/EditorCamera.cpp)
 
 target_link_libraries(NoJobEditor PRIVATE

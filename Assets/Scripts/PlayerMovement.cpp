@@ -12,6 +12,7 @@ namespace NoJob
         (void)deltaTime;
         auto& transform = GetComponent<TransformComponent>();
         transform.Position += Direction * Speed * deltaTime;
+        
     }
 
     void PlayerMovement::OnDestroy()
