@@ -56,8 +56,8 @@ glad_add_library(NoJobGLAD STATIC REPRODUCIBLE API gl:core=4.6)
 
 FetchContent_Declare(stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE)
+    # Pinned for reproducible builds and license traceability.
+    GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20)
 FetchContent_MakeAvailable(stb)
 
 # miniaudio 0.11.25 - low-level audio backend used behind NoJobEngine's AudioEngine.
@@ -79,8 +79,8 @@ FetchContent_MakeAvailable(imgui)
 
 FetchContent_Declare(imguizmo
     GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE)
+    # Pinned for reproducible builds and license traceability.
+    GIT_TAG 18cef5e031d8c6973d80284c67f60549fafd78c1)
 
 FetchContent_GetProperties(imguizmo)
 if(NOT imguizmo_POPULATED)

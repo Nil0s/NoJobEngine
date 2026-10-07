@@ -895,5 +895,12 @@ it.**
 
 ## License
 
-This repository currently does not declare a project license.
-Third-party dependencies retain their respective licenses.
+NoJobEngine is **proprietary source-available software**. The source code is
+publicly viewable for evaluation, portfolio review and personal non-commercial
+testing, but no general permission is granted to redistribute, sublicense, sell,
+or commercially exploit the engine. See [`LICENSE`](LICENSE) for the complete
+terms.
+
+Third-party components remain subject to their respective licenses and
+copyrights. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the
+current dependency inventory and redistribution notes.

@@ -1,0 +1,75 @@
+NoJobEngine Proprietary Source-Available License
+Version 1.0 — 2026
+
+Copyright (c) 2026 Francisco Ramón Asensi Domingo.
+All rights reserved.
+
+1. OWNERSHIP
+
+NoJobEngine, including its original source code, engine architecture, editor code,
+documentation, and other original material contained in this repository
+(collectively, the "Software"), is proprietary software owned by Francisco Ramón
+Asensi Domingo, except for third-party components identified separately.
+
+2. PERMITTED ACCESS
+
+The source code is made publicly viewable for evaluation, educational review,
+portfolio review, and technical assessment purposes only.
+
+You may:
+- view and inspect the source code;
+- clone or download the repository solely for personal evaluation and review;
+- build and run the Software locally solely for personal, non-commercial
+  evaluation and testing.
+
+3. RESTRICTIONS
+
+Unless you have prior written permission from the copyright holder, you may not:
+- copy or redistribute the Software or substantial portions of it;
+- publish, sublicense, sell, rent, lease, or commercially exploit the Software;
+- incorporate the Software or substantial portions of it into another product,
+  service, engine, framework, library, or commercial project;
+- distribute modified or derivative versions of the Software;
+- use the Software to provide paid services or products;
+- remove or alter copyright, license, authorship, or attribution notices;
+- represent the Software or substantial portions of it as your own work.
+
+4. CONTRIBUTIONS
+
+No license to third-party contributions is implied by this document. Any future
+external contributions should be governed by explicit contribution terms before
+being accepted into the project.
+
+5. THIRD-PARTY SOFTWARE
+
+This license applies only to original NoJobEngine material owned by Francisco
+Ramón Asensi Domingo. Third-party libraries, dependencies, assets, specifications,
+and other third-party material retain their respective copyrights and licenses.
+See THIRD_PARTY_NOTICES.md and the corresponding upstream projects for details.
+
+Nothing in this license restricts rights independently granted by a third-party
+license.
+
+6. NO TRADEMARK LICENSE
+
+No permission is granted to use the NoJobEngine name, logo, branding, or other
+project identifiers to imply endorsement, sponsorship, or affiliation.
+
+7. COMMERCIAL LICENSING
+
+Commercial use, redistribution, integration, OEM use, sublicensing, or other
+rights may be available under a separate written agreement with the copyright
+holder.
+
+8. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF THE SOFTWARE.
+
+9. NO IMPLIED RIGHTS
+
+No rights are granted except those expressly stated in this license. All rights
+not expressly granted are reserved by the copyright holder.
