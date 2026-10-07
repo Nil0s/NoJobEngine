@@ -20,5 +20,9 @@ namespace NoJob
         void DrawIndexedRange(const VertexArray& vertexArray,
                               std::uint32_t indexCount,
                               std::uint32_t indexOffset) override;
+
+        void DrawLines(
+            const VertexArray& vertexArray,
+            std::uint32_t vertexCount) override;
     };
 }

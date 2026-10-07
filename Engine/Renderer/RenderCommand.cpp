@@ -57,4 +57,12 @@ namespace NoJob
         s_RendererAPI->DrawIndexedRange(vertexArray,indexCount,indexOffset);
     }
 
+    void RenderCommand::DrawLines(
+        const VertexArray& vertexArray,
+        std::uint32_t vertexCount)
+    {
+        s_RendererAPI->DrawLines(
+            vertexArray,
+            vertexCount);
+    }
 }

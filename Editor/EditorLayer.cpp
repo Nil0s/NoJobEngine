@@ -123,8 +123,8 @@ namespace NoJob
                             installPath = buffer;
                         _pclose(pipe);
                         while (!installPath.empty() &&
-                               (installPath.back()==L'\r' || installPath.back()==L'\n' ||
-                                installPath.back()==L' ' || installPath.back()==L'\t'))
+                            (installPath.back() == L'\r' || installPath.back() == L'\n' ||
+                                installPath.back() == L' ' || installPath.back() == L'\t'))
                             installPath.pop_back();
 
                         if (!installPath.empty())
@@ -152,7 +152,7 @@ namespace NoJob
             return {};
         }
 
-                int RunProcessToScriptConsole(
+        int RunProcessToScriptConsole(
             const std::filesystem::path& executable,
             const std::vector<std::wstring>& arguments,
             const std::string& prefix)
@@ -228,12 +228,12 @@ namespace NoJob
             char buffer[2048];
             DWORD bytesRead = 0;
             while (ReadFile(
-                       readPipe,
-                       buffer,
-                       static_cast<DWORD>(sizeof(buffer)),
-                       &bytesRead,
-                       nullptr) &&
-                   bytesRead > 0)
+                readPipe,
+                buffer,
+                static_cast<DWORD>(sizeof(buffer)),
+                &bytesRead,
+                nullptr) &&
+                bytesRead > 0)
             {
                 pending.append(buffer, buffer + bytesRead);
 
@@ -298,24 +298,24 @@ namespace NoJob
 
             const BuildSettings settings = s_BuildSettings;
             s_StandaloneBuildThread = std::thread([root, cmake, settings]()
-            {
-                const auto result = StandaloneBuilder::Build(
-                    root,
-                    cmake,
-                    settings,
-                    [](std::string message) { ScriptLog(std::move(message)); },
-                    [](const std::filesystem::path& executable,
-                       const std::vector<std::wstring>& arguments,
-                       const std::string& prefix)
-                    {
-                        return RunProcessToScriptConsole(executable, arguments, prefix);
-                    });
+                {
+                    const auto result = StandaloneBuilder::Build(
+                        root,
+                        cmake,
+                        settings,
+                        [](std::string message) { ScriptLog(std::move(message)); },
+                        [](const std::filesystem::path& executable,
+                            const std::vector<std::wstring>& arguments,
+                            const std::string& prefix)
+                        {
+                            return RunProcessToScriptConsole(executable, arguments, prefix);
+                        });
 
-                s_StandaloneBuildSucceeded = result.Succeeded;
-                if (result.Succeeded)
-                    s_LastStandaloneBuildDirectory = result.OutputDirectory;
-                s_StandaloneBuildRunning = false;
-            });
+                    s_StandaloneBuildSucceeded = result.Succeeded;
+                    if (result.Succeeded)
+                        s_LastStandaloneBuildDirectory = result.OutputDirectory;
+                    s_StandaloneBuildRunning = false;
+                });
             return true;
         }
 
@@ -338,49 +338,49 @@ namespace NoJob
         std::filesystem::path FindNoJobProjectRoot()
         {
             auto containsProject = [](const std::filesystem::path& directory)
-            {
-                std::error_code ec;
-                if (!std::filesystem::exists(directory, ec))
-                    return false;
-
-                bool hasProjectFile = false;
-                for (const auto& entry :
-                     std::filesystem::directory_iterator(
-                         directory,
-                         std::filesystem::directory_options::skip_permission_denied,
-                         ec))
                 {
-                    if (ec) break;
-                    if (entry.is_regular_file() &&
-                        entry.path().extension() == ".nojobproject")
-                    {
-                        hasProjectFile = true;
-                        break;
-                    }
-                }
+                    std::error_code ec;
+                    if (!std::filesystem::exists(directory, ec))
+                        return false;
 
-                return hasProjectFile &&
-                       std::filesystem::exists(directory / "CMakeLists.txt", ec);
-            };
+                    bool hasProjectFile = false;
+                    for (const auto& entry :
+                        std::filesystem::directory_iterator(
+                            directory,
+                            std::filesystem::directory_options::skip_permission_denied,
+                            ec))
+                    {
+                        if (ec) break;
+                        if (entry.is_regular_file() &&
+                            entry.path().extension() == ".nojobproject")
+                        {
+                            hasProjectFile = true;
+                            break;
+                        }
+                    }
+
+                    return hasProjectFile &&
+                        std::filesystem::exists(directory / "CMakeLists.txt", ec);
+                };
 
             auto walkUp = [&](std::filesystem::path start)
                 -> std::filesystem::path
-            {
-                std::error_code ec;
-                start = std::filesystem::absolute(start, ec).lexically_normal();
-
-                while (!start.empty())
                 {
-                    if (containsProject(start))
-                        return start;
+                    std::error_code ec;
+                    start = std::filesystem::absolute(start, ec).lexically_normal();
 
-                    const auto parent = start.parent_path();
-                    if (parent == start)
-                        break;
-                    start = parent;
-                }
-                return {};
-            };
+                    while (!start.empty())
+                    {
+                        if (containsProject(start))
+                            return start;
+
+                        const auto parent = start.parent_path();
+                        if (parent == start)
+                            break;
+                        start = parent;
+                    }
+                    return {};
+                };
 
             // First try the process working directory.
             if (auto root = walkUp(std::filesystem::current_path()); !root.empty())
@@ -396,7 +396,7 @@ namespace NoJob
             {
                 executable.resize(length);
                 if (auto root =
-                        walkUp(std::filesystem::path(executable).parent_path());
+                    walkUp(std::filesystem::path(executable).parent_path());
                     !root.empty())
                     return root;
             }
@@ -581,10 +581,10 @@ namespace NoJob
             const float halfCylinder = height * 0.5f - radius;
 
             DrawColliderEllipse(drawList, world, radius, radius, 1,
-                {0.0f, halfCylinder, 0.0f},
+                { 0.0f, halfCylinder, 0.0f },
                 viewProjection, viewportMin, viewportSize, color, thickness);
             DrawColliderEllipse(drawList, world, radius, radius, 1,
-                {0.0f,-halfCylinder, 0.0f},
+                { 0.0f,-halfCylinder, 0.0f },
                 viewProjection, viewportMin, viewportSize, color, thickness);
 
             const glm::vec3 top[4] = {
@@ -631,8 +631,8 @@ namespace NoJob
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             drawList->PushClipRect(
                 viewportMin,
-                {viewportMin.x + viewportSize.x,
-                 viewportMin.y + viewportSize.y},
+                { viewportMin.x + viewportSize.x,
+                 viewportMin.y + viewportSize.y },
                 true);
 
             const glm::mat4 viewProjection = projection * view;
@@ -691,21 +691,21 @@ namespace NoJob
                 }
 
                 const glm::vec3 origin =
-                    ColliderTransformPoint(world, {0.0f, 0.0f, 0.0f});
+                    ColliderTransformPoint(world, { 0.0f, 0.0f, 0.0f });
                 glm::vec3 forward =
-                    ColliderTransformPoint(world, {0.0f, 0.0f, -1.0f}) -
+                    ColliderTransformPoint(world, { 0.0f, 0.0f, -1.0f }) -
                     origin;
                 if (glm::length(forward) > 0.0001f)
                     forward = glm::normalize(forward);
                 else
-                    forward = {0.0f, 0.0f, -1.0f};
+                    forward = { 0.0f, 0.0f, -1.0f };
 
                 const ImU32 cameraColor =
                     selected ? IM_COL32(100, 220, 255, 255)
-                             : IM_COL32(70, 170, 220, 180);
+                    : IM_COL32(70, 170, 220, 180);
                 const ImU32 lightColor =
                     selected ? IM_COL32(255, 235, 90, 255)
-                             : IM_COL32(235, 205, 70, 190);
+                    : IM_COL32(235, 205, 70, 190);
 
                 if (entity.HasComponent<CameraComponent>())
                 {
@@ -798,22 +798,22 @@ namespace NoJob
                     else if (particles.Shape == ParticleShape::Cone)
                     {
                         glm::vec3 dir = particles.Direction;
-                        if (glm::length(dir) < 0.0001f) dir = {0,1,0};
+                        if (glm::length(dir) < 0.0001f) dir = { 0,1,0 };
                         dir = glm::normalize(glm::mat3(world) * glm::normalize(dir));
                         const float length = 1.25f;
                         const float radius = std::tan(glm::radians(
-                            glm::clamp(particles.ConeAngle,0.0f,89.0f))) * length;
+                            glm::clamp(particles.ConeAngle, 0.0f, 89.0f))) * length;
                         glm::vec3 tangent = std::abs(dir.y) < 0.99f
-                            ? glm::normalize(glm::cross(dir,glm::vec3(0,1,0)))
-                            : glm::vec3(1,0,0);
-                        glm::vec3 bitangent = glm::normalize(glm::cross(dir,tangent));
+                            ? glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)))
+                            : glm::vec3(1, 0, 0);
+                        glm::vec3 bitangent = glm::normalize(glm::cross(dir, tangent));
                         const glm::vec3 center = origin + dir * length;
-                        for (int i=0;i<4;++i)
+                        for (int i = 0;i < 4;++i)
                         {
                             const float a = glm::half_pi<float>() * float(i);
                             const glm::vec3 edge = center +
-                                tangent * std::cos(a)*radius +
-                                bitangent * std::sin(a)*radius;
+                                tangent * std::cos(a) * radius +
+                                bitangent * std::sin(a) * radius;
                             DrawColliderLine(drawList, origin, edge,
                                 viewProjection, viewportMin, viewportSize,
                                 particleColor, thickness);
@@ -867,7 +867,7 @@ namespace NoJob
                         std::min(std::max(light.Range * 0.1f, 0.35f), 1.5f);
                     const float radius =
                         std::tan(glm::radians(light.OuterAngle)) * length;
-                    const glm::vec3 tipLocal{0.0f, 0.0f, 0.0f};
+                    const glm::vec3 tipLocal{ 0.0f, 0.0f, 0.0f };
                     const glm::vec3 ringLocal[4] = {
                         { radius, 0.0f,-length},
                         {-radius, 0.0f,-length},
@@ -883,7 +883,7 @@ namespace NoJob
                             lightColor, thickness);
                     DrawColliderEllipse(
                         drawList, world, radius, radius, 2,
-                        {0.0f, 0.0f,-length},
+                        { 0.0f, 0.0f,-length },
                         viewProjection, viewportMin, viewportSize,
                         lightColor, thickness);
                 }
@@ -892,16 +892,17 @@ namespace NoJob
             drawList->PopClipRect();
         }
 
-        std::string OpenModelFileDialog(){
+        std::string OpenModelFileDialog() {
 #ifdef _WIN32
-char f[MAX_PATH]{};OPENFILENAMEA d{};d.lStructSize=sizeof(d);d.lpstrFile=f;d.nMaxFile=MAX_PATH;d.lpstrFilter=
-"3D Models\0*.obj;*.fbx;*.gltf;*.glb;*.dae;*.stl;*.ply;*.3ds;*.blend\0"
-"glTF / GLB\0*.gltf;*.glb\0"
-"FBX\0*.fbx\0"
-"Wavefront OBJ\0*.obj\0"
-"All Files\0*.*\0";d.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;if(GetOpenFileNameA(&d)==TRUE)return f;
+            char f[MAX_PATH]{};OPENFILENAMEA d{};d.lStructSize = sizeof(d);d.lpstrFile = f;d.nMaxFile = MAX_PATH;d.lpstrFilter =
+                "3D Models\0*.obj;*.fbx;*.gltf;*.glb;*.dae;*.stl;*.ply;*.3ds;*.blend\0"
+                "glTF / GLB\0*.gltf;*.glb\0"
+                "FBX\0*.fbx\0"
+                "Wavefront OBJ\0*.obj\0"
+                "All Files\0*.*\0";d.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;if (GetOpenFileNameA(&d) == TRUE)return f;
 #endif
-return{};}
+            return{};
+        }
         std::string OpenHDRIFileDialog()
         {
 #ifdef _WIN32
@@ -1266,15 +1267,15 @@ return{};}
             std::shared_ptr<Material> material;
             if (m_DefaultCubeMaterial)
             {
-                auto materials=AssetManager::ImportModelMaterials(
-                    p,m_DefaultCubeMaterial->GetShader());
-                if(materials.empty())
+                auto materials = AssetManager::ImportModelMaterials(
+                    p, m_DefaultCubeMaterial->GetShader());
+                if (materials.empty())
                 {
-                    material=std::make_shared<Material>(*m_DefaultCubeMaterial);
-                    material->UseTexture()=false;
+                    material = std::make_shared<Material>(*m_DefaultCubeMaterial);
+                    material->UseTexture() = false;
                     materials.push_back(material);
                 }
-                else material=materials.front();
+                else material = materials.front();
 
                 entity.AddComponent<MeshRendererComponent>(material);
                 entity.GetComponent<MeshRendererComponent>()
@@ -1351,8 +1352,8 @@ return{};}
 
         m_SelectedEntity =
             selected != 0 && m_Scene->IsValid(selected)
-                ? Entity(selected, m_Scene)
-                : Entity{};
+            ? Entity(selected, m_Scene)
+            : Entity{};
     }
 
     void EditorLayer::Redo()
@@ -1369,8 +1370,8 @@ return{};}
 
         m_SelectedEntity =
             selected != 0 && m_Scene->IsValid(selected)
-                ? Entity(selected, m_Scene)
-                : Entity{};
+            ? Entity(selected, m_Scene)
+            : Entity{};
     }
 
     void EditorLayer::DeleteSelectedEntity()
@@ -1415,17 +1416,17 @@ return{};}
         // deletion independent from whether Scene::DestroyEntity itself is
         // recursive and prevents orphaned child entities.
         auto destroyHierarchy = [&](auto&& self, Entity entity) -> void
-        {
-            if (!entity || !m_Scene->IsValid(entity.GetHandle()))
-                return;
+            {
+                if (!entity || !m_Scene->IsValid(entity.GetHandle()))
+                    return;
 
-            const auto children = m_Scene->GetChildren(entity);
-            for (Entity child : children)
-                self(self, child);
+                const auto children = m_Scene->GetChildren(entity);
+                for (Entity child : children)
+                    self(self, child);
 
-            if (m_Scene->IsValid(entity.GetHandle()))
-                m_Scene->DestroyEntity(entity);
-        };
+                if (m_Scene->IsValid(entity.GetHandle()))
+                    m_Scene->DestroyEntity(entity);
+            };
 
         for (Entity root : selectedRoots)
             destroyHierarchy(destroyHierarchy, root);
@@ -1472,80 +1473,80 @@ return{};}
         CaptureUndoSnapshot();
 
         auto copyComponents = [&](Entity source, Entity copy)
-        {
-            copy.GetComponent<TransformComponent>() =
-                source.GetComponent<TransformComponent>();
-
-            if (source.HasComponent<MeshComponent>())
-                copy.AddComponent<MeshComponent>(
-                    source.GetComponent<MeshComponent>().MeshAsset);
-
-            if (source.HasComponent<MeshRendererComponent>())
             {
-                const auto& src =
-                    source.GetComponent<MeshRendererComponent>();
-                auto& dst =
-                    copy.AddComponent<MeshRendererComponent>(src.MaterialAsset);
-                dst.MaterialAsset = src.MaterialAsset;
-                dst.Materials = src.Materials;
-            }
+                copy.GetComponent<TransformComponent>() =
+                    source.GetComponent<TransformComponent>();
 
-            if (source.HasComponent<NativeScriptComponent>())
-                copy.AddComponent<NativeScriptComponent>(
-                    source.GetComponent<NativeScriptComponent>());
-            if (source.HasComponent<RigidbodyComponent>())
-                copy.AddComponent<RigidbodyComponent>(
-                    source.GetComponent<RigidbodyComponent>());
-            if (source.HasComponent<BoxColliderComponent>())
-                copy.AddComponent<BoxColliderComponent>(
-                    source.GetComponent<BoxColliderComponent>());
-            if (source.HasComponent<SphereColliderComponent>())
-                copy.AddComponent<SphereColliderComponent>(
-                    source.GetComponent<SphereColliderComponent>());
-            if (source.HasComponent<CapsuleColliderComponent>())
-                copy.AddComponent<CapsuleColliderComponent>(
-                    source.GetComponent<CapsuleColliderComponent>());
-            if (source.HasComponent<CameraComponent>())
-                copy.AddComponent<CameraComponent>(
-                    source.GetComponent<CameraComponent>());
-            if (source.HasComponent<DirectionalLightComponent>())
-                copy.AddComponent<DirectionalLightComponent>(
-                    source.GetComponent<DirectionalLightComponent>());
-            if (source.HasComponent<PointLightComponent>())
-                copy.AddComponent<PointLightComponent>(
-                    source.GetComponent<PointLightComponent>());
-            if (source.HasComponent<SpotLightComponent>())
-                copy.AddComponent<SpotLightComponent>(
-                    source.GetComponent<SpotLightComponent>());
-            if (source.HasComponent<AnimatorComponent>())
-                copy.AddComponent<AnimatorComponent>(
-                    source.GetComponent<AnimatorComponent>());
-            if (source.HasComponent<PrefabInstanceComponent>())
-                copy.AddComponent<PrefabInstanceComponent>(
-                    source.GetComponent<PrefabInstanceComponent>());
-        };
+                if (source.HasComponent<MeshComponent>())
+                    copy.AddComponent<MeshComponent>(
+                        source.GetComponent<MeshComponent>().MeshAsset);
+
+                if (source.HasComponent<MeshRendererComponent>())
+                {
+                    const auto& src =
+                        source.GetComponent<MeshRendererComponent>();
+                    auto& dst =
+                        copy.AddComponent<MeshRendererComponent>(src.MaterialAsset);
+                    dst.MaterialAsset = src.MaterialAsset;
+                    dst.Materials = src.Materials;
+                }
+
+                if (source.HasComponent<NativeScriptComponent>())
+                    copy.AddComponent<NativeScriptComponent>(
+                        source.GetComponent<NativeScriptComponent>());
+                if (source.HasComponent<RigidbodyComponent>())
+                    copy.AddComponent<RigidbodyComponent>(
+                        source.GetComponent<RigidbodyComponent>());
+                if (source.HasComponent<BoxColliderComponent>())
+                    copy.AddComponent<BoxColliderComponent>(
+                        source.GetComponent<BoxColliderComponent>());
+                if (source.HasComponent<SphereColliderComponent>())
+                    copy.AddComponent<SphereColliderComponent>(
+                        source.GetComponent<SphereColliderComponent>());
+                if (source.HasComponent<CapsuleColliderComponent>())
+                    copy.AddComponent<CapsuleColliderComponent>(
+                        source.GetComponent<CapsuleColliderComponent>());
+                if (source.HasComponent<CameraComponent>())
+                    copy.AddComponent<CameraComponent>(
+                        source.GetComponent<CameraComponent>());
+                if (source.HasComponent<DirectionalLightComponent>())
+                    copy.AddComponent<DirectionalLightComponent>(
+                        source.GetComponent<DirectionalLightComponent>());
+                if (source.HasComponent<PointLightComponent>())
+                    copy.AddComponent<PointLightComponent>(
+                        source.GetComponent<PointLightComponent>());
+                if (source.HasComponent<SpotLightComponent>())
+                    copy.AddComponent<SpotLightComponent>(
+                        source.GetComponent<SpotLightComponent>());
+                if (source.HasComponent<AnimatorComponent>())
+                    copy.AddComponent<AnimatorComponent>(
+                        source.GetComponent<AnimatorComponent>());
+                if (source.HasComponent<PrefabInstanceComponent>())
+                    copy.AddComponent<PrefabInstanceComponent>(
+                        source.GetComponent<PrefabInstanceComponent>());
+            };
 
         // Recursively clone a complete hierarchy. Parenting uses
         // keepWorldTransform=false because copied transforms are already local
         // transforms from the original hierarchy.
         auto duplicateHierarchy =
             [&](auto&& self, Entity source, Entity newParent) -> Entity
-        {
-            const auto sourceTag =
-                source.GetComponent<TagComponent>().Tag;
+            {
+                const auto sourceTag =
+                    source.GetComponent<TagComponent>().Tag;
 
-            Entity copy = m_Scene->CreateEntity(sourceTag + " Copy");
-            copyComponents(source, copy);
+                Entity copy = m_Scene->CreateEntity(sourceTag + " Copy");
+                copyComponents(source, copy);
 
-            if (newParent)
-                m_Scene->SetParent(copy, newParent, false);
+                if (newParent)
+                    m_Scene->SetParent(copy, newParent, false);
 
-            const auto children = m_Scene->GetChildren(source);
-            for (Entity child : children)
-                self(self, child, copy);
+                const auto children = m_Scene->GetChildren(source);
+                for (Entity child : children)
+                    self(self, child, copy);
 
-            return copy;
-        };
+                return copy;
+            };
 
         std::vector<std::uint32_t> newSelection;
         Entity lastCopy{};
@@ -1587,7 +1588,7 @@ return{};}
                 if (ImGui::MenuItem("Load Graphics Test Scene"))
                     m_GraphicsTestSceneRequested = true;
                 ImGui::Separator();
-                if(ImGui::MenuItem("Import 3D Model...")){auto s=OpenModelFileDialog();if(!s.empty())try{CreateModelEntity(AssetManager::ImportModel(s));}catch(...){ScriptLog("[Import] 3D model import failed.");}}
+                if (ImGui::MenuItem("Import 3D Model...")) { auto s = OpenModelFileDialog();if (!s.empty())try { CreateModelEntity(AssetManager::ImportModel(s)); } catch (...) { ScriptLog("[Import] 3D model import failed."); } }
                 ImGui::Separator();
                 ImGui::MenuItem("Exit");
                 ImGui::EndMenu();
@@ -1596,19 +1597,19 @@ return{};}
             if (ImGui::BeginMenu("Edit"))
             {
                 if (ImGui::MenuItem(
-                        "Duplicate Entity",
-                        "Ctrl+D",
-                        false,
-                        static_cast<bool>(m_SelectedEntity)))
+                    "Duplicate Entity",
+                    "Ctrl+D",
+                    false,
+                    static_cast<bool>(m_SelectedEntity)))
                 {
                     DuplicateSelectedEntity();
                 }
 
                 if (ImGui::MenuItem(
-                        "Delete Entity",
-                        "Delete",
-                        false,
-                        static_cast<bool>(m_SelectedEntity)))
+                    "Delete Entity",
+                    "Delete",
+                    false,
+                    static_cast<bool>(m_SelectedEntity)))
                 {
                     DeleteSelectedEntity();
                 }
@@ -1629,16 +1630,16 @@ return{};}
             if (s_ShowBuildSettings) ImGui::OpenPopup("Build Settings");
             if (ImGui::BeginPopupModal("Build Settings", &s_ShowBuildSettings, ImGuiWindowFlags_AlwaysAutoResize))
             {
-                ImGui::InputText("Build Name", s_BuildNameBuffer, sizeof(s_BuildNameBuffer)); s_BuildSettings.BuildName=s_BuildNameBuffer;
-                ImGui::SeparatorText("Scenes in Build"); int remove=-1;
-                for(size_t i=0;i<s_BuildSettings.Scenes.size();++i){ ImGui::PushID((int)i); bool startup=i==s_BuildSettings.StartupSceneIndex; if(ImGui::RadioButton("##startup",startup))s_BuildSettings.StartupSceneIndex=i; ImGui::SameLine(); ImGui::TextUnformatted(s_BuildSettings.Scenes[i].generic_string().c_str()); ImGui::SameLine(); if(ImGui::SmallButton("Remove"))remove=(int)i; ImGui::PopID(); }
-                if(remove>=0){s_BuildSettings.Scenes.erase(s_BuildSettings.Scenes.begin()+remove); if(s_BuildSettings.Scenes.empty())s_BuildSettings.StartupSceneIndex=0; else if(s_BuildSettings.StartupSceneIndex>=s_BuildSettings.Scenes.size())s_BuildSettings.StartupSceneIndex=s_BuildSettings.Scenes.size()-1;}
-                if(ImGui::Button("Add Scene...")){ auto selected=SceneFileDialog::Open(AssetManager::GetProjectRoot()/"Assets/Scenes"); if(!selected.empty()){std::error_code ec;auto rel=std::filesystem::relative(selected,AssetManager::GetProjectRoot(),ec);if(!ec&&std::find(s_BuildSettings.Scenes.begin(),s_BuildSettings.Scenes.end(),rel)==s_BuildSettings.Scenes.end())s_BuildSettings.Scenes.push_back(rel);}}
-                ImGui::SeparatorText("Configuration"); bool debug=s_BuildSettings.Configuration==L"Debug"; if(ImGui::RadioButton("Debug",debug))s_BuildSettings.Configuration=L"Debug"; ImGui::SameLine(); if(ImGui::RadioButton("Release",!debug))s_BuildSettings.Configuration=L"Release";
+                ImGui::InputText("Build Name", s_BuildNameBuffer, sizeof(s_BuildNameBuffer)); s_BuildSettings.BuildName = s_BuildNameBuffer;
+                ImGui::SeparatorText("Scenes in Build"); int remove = -1;
+                for (size_t i = 0;i < s_BuildSettings.Scenes.size();++i) { ImGui::PushID((int)i); bool startup = i == s_BuildSettings.StartupSceneIndex; if (ImGui::RadioButton("##startup", startup))s_BuildSettings.StartupSceneIndex = i; ImGui::SameLine(); ImGui::TextUnformatted(s_BuildSettings.Scenes[i].generic_string().c_str()); ImGui::SameLine(); if (ImGui::SmallButton("Remove"))remove = (int)i; ImGui::PopID(); }
+                if (remove >= 0) { s_BuildSettings.Scenes.erase(s_BuildSettings.Scenes.begin() + remove); if (s_BuildSettings.Scenes.empty())s_BuildSettings.StartupSceneIndex = 0; else if (s_BuildSettings.StartupSceneIndex >= s_BuildSettings.Scenes.size())s_BuildSettings.StartupSceneIndex = s_BuildSettings.Scenes.size() - 1; }
+                if (ImGui::Button("Add Scene...")) { auto selected = SceneFileDialog::Open(AssetManager::GetProjectRoot() / "Assets/Scenes"); if (!selected.empty()) { std::error_code ec;auto rel = std::filesystem::relative(selected, AssetManager::GetProjectRoot(), ec);if (!ec && std::find(s_BuildSettings.Scenes.begin(), s_BuildSettings.Scenes.end(), rel) == s_BuildSettings.Scenes.end())s_BuildSettings.Scenes.push_back(rel); } }
+                ImGui::SeparatorText("Configuration"); bool debug = s_BuildSettings.Configuration == L"Debug"; if (ImGui::RadioButton("Debug", debug))s_BuildSettings.Configuration = L"Debug"; ImGui::SameLine(); if (ImGui::RadioButton("Release", !debug))s_BuildSettings.Configuration = L"Release";
                 ImGui::Separator();
-                if(ImGui::Button("Save Settings")){s_BuildSettings.Save(AssetManager::GetProjectRoot());ScriptLog("[Build] Build Settings saved.");} ImGui::SameLine();
-                if(ImGui::Button("Build")){std::string error;if(!s_BuildSettings.IsValid(error))ScriptLog("[Build] "+error);else{s_BuildSettings.Save(AssetManager::GetProjectRoot());s_ShowBuildSettings=false;ImGui::CloseCurrentPopup();BuildStandalone();}} ImGui::SameLine();
-                if(ImGui::Button("Close")){s_ShowBuildSettings=false;ImGui::CloseCurrentPopup();}
+                if (ImGui::Button("Save Settings")) { s_BuildSettings.Save(AssetManager::GetProjectRoot());ScriptLog("[Build] Build Settings saved."); } ImGui::SameLine();
+                if (ImGui::Button("Build")) { std::string error;if (!s_BuildSettings.IsValid(error))ScriptLog("[Build] " + error);else { s_BuildSettings.Save(AssetManager::GetProjectRoot());s_ShowBuildSettings = false;ImGui::CloseCurrentPopup();BuildStandalone(); } } ImGui::SameLine();
+                if (ImGui::Button("Close")) { s_ShowBuildSettings = false;ImGui::CloseCurrentPopup(); }
                 ImGui::EndPopup();
             }
 
@@ -1732,21 +1733,21 @@ return{};}
                     if (ImGui::MenuItem("Directional Light") && m_Scene)
                     {
                         CaptureUndoSnapshot();
-                    Entity light = m_Scene->CreateEntity("Directional Light");
+                        Entity light = m_Scene->CreateEntity("Directional Light");
                         light.AddComponent<DirectionalLightComponent>();
                         m_SelectedEntity = light;
                     }
                     if (ImGui::MenuItem("Point Light") && m_Scene)
                     {
                         CaptureUndoSnapshot();
-                    Entity light = m_Scene->CreateEntity("Point Light");
+                        Entity light = m_Scene->CreateEntity("Point Light");
                         light.AddComponent<PointLightComponent>();
                         m_SelectedEntity = light;
                     }
                     if (ImGui::MenuItem("Spot Light") && m_Scene)
                     {
                         CaptureUndoSnapshot();
-                    Entity light = m_Scene->CreateEntity("Spot Light");
+                        Entity light = m_Scene->CreateEntity("Spot Light");
                         light.AddComponent<SpotLightComponent>();
                         m_SelectedEntity = light;
                     }
@@ -1755,7 +1756,40 @@ return{};}
 
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("AI"))
+            {
+                if (ImGui::BeginMenu("Navigation"))
+                {
+                    if (ImGui::MenuItem(
+                        "Bake NavMesh",
+                        nullptr,
+                        false,
+                        !m_IsPlaying))
+                    {
+                        m_BakeNavMeshRequested = true;
+                    }
 
+                    if (ImGui::MenuItem(
+                        "Clear NavMesh",
+                        nullptr,
+                        false,
+                        !m_IsPlaying))
+                    {
+                        m_ClearNavMeshRequested = true;
+                    }
+
+                    ImGui::Separator();
+
+                    ImGui::MenuItem(
+                        "Show NavMesh",
+                        nullptr,
+                        &m_ShowNavMesh);
+
+                    ImGui::EndMenu();
+                }
+
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("View"))
             {
                 ImGui::MenuItem("Hierarchy");
@@ -1796,7 +1830,19 @@ return{};}
         m_StopRequested = false;
         return value;
     }
+    bool EditorLayer::ConsumeBakeNavMeshRequest()
+    {
+        const bool value = m_BakeNavMeshRequested;
+        m_BakeNavMeshRequested = false;
+        return value;
+    }
 
+    bool EditorLayer::ConsumeClearNavMeshRequest()
+    {
+        const bool value = m_ClearNavMeshRequested;
+        m_ClearNavMeshRequested = false;
+        return value;
+    }
     void EditorLayer::SetRuntimeState(bool playing, bool paused)
     {
         m_IsPlaying = playing;
@@ -1822,8 +1868,8 @@ return{};}
 
         ImGui::BeginDisabled(!m_IsPlaying);
         if (ImGui::Button(
-                m_IsPaused ? "Resume" : "Pause",
-                ImVec2(60.0f, 0.0f)))
+            m_IsPaused ? "Resume" : "Pause",
+            ImVec2(60.0f, 0.0f)))
         {
             m_PauseRequested = true;
         }
@@ -1857,11 +1903,11 @@ return{};}
         std::string filter = m_HierarchySearch;
         if (filter.empty()) return true;
         std::transform(filter.begin(), filter.end(), filter.begin(),
-            [](unsigned char c){ return (char)std::tolower(c); });
+            [](unsigned char c) { return (char)std::tolower(c); });
 
         std::string name = entity.GetComponent<TagComponent>().Tag;
         std::transform(name.begin(), name.end(), name.begin(),
-            [](unsigned char c){ return (char)std::tolower(c); });
+            [](unsigned char c) { return (char)std::tolower(c); });
         if (name.find(filter) != std::string::npos) return true;
 
         for (Entity child : m_Scene->GetChildren(entity))
@@ -1890,9 +1936,9 @@ return{};}
         ImGui::Separator();
 
         if (ImGui::BeginPopupContextWindow(
-                "HierarchyContext",
-                ImGuiPopupFlags_MouseButtonRight
-                | ImGuiPopupFlags_NoOpenOverItems))
+            "HierarchyContext",
+            ImGuiPopupFlags_MouseButtonRight
+            | ImGuiPopupFlags_NoOpenOverItems))
         {
             if (ImGui::MenuItem("Create Empty"))
                 CreateEmptyEntity();
@@ -1911,7 +1957,7 @@ return{};}
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload =
-                    ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+                ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
             {
                 const auto handle =
                     *static_cast<const std::uint32_t*>(payload->Data);
@@ -2011,7 +2057,7 @@ return{};}
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload =
-                    ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
+                ImGui::AcceptDragDropPayload("NOJOB_ENTITY"))
             {
                 const auto childHandle =
                     *static_cast<const std::uint32_t*>(payload->Data);
@@ -2166,8 +2212,8 @@ return{};}
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             drawList->AddRectFilled(
-                {previewMin.x - 3.0f, previewMin.y - 3.0f},
-                {previewMax.x + 3.0f, previewMax.y + 3.0f},
+                { previewMin.x - 3.0f, previewMin.y - 3.0f },
+                { previewMax.x + 3.0f, previewMax.y + 3.0f },
                 IM_COL32(25, 25, 28, 240));
             drawList->AddImage(
                 static_cast<ImTextureID>(
@@ -2177,7 +2223,7 @@ return{};}
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
             drawList->AddText(
-                {previewMin.x + 8.0f, previewMin.y + 6.0f},
+                { previewMin.x + 8.0f, previewMin.y + 6.0f },
                 IM_COL32(255, 255, 255, 220),
                 "Camera Preview");
         }
@@ -2201,7 +2247,7 @@ return{};}
             && m_ViewportWidth > 1.0f
             && m_ViewportHeight > 1.0f)
         {
-            
+
 
             glm::mat4 transformMatrix =
                 m_Scene->GetWorldTransform(m_SelectedEntity);
@@ -2224,8 +2270,8 @@ return{};}
 
             const ImGuizmo::MODE mode =
                 operation == ImGuizmo::SCALE
-                    ? ImGuizmo::LOCAL
-                    : ImGuizmo::WORLD;
+                ? ImGuizmo::LOCAL
+                : ImGuizmo::WORLD;
 
             ImGuizmo::Manipulate(
                 glm::value_ptr(m_EditorView),
@@ -2411,16 +2457,16 @@ return{};}
                 "HDRI: %s", hdriPath.filename().string().c_str());
         }
 
-        const char* environmentSizes[] = {"128", "256", "512", "1024"};
+        const char* environmentSizes[] = { "128", "256", "512", "1024" };
         int environmentSizeIndex =
             m_GraphicsSettings.EnvironmentResolution <= 128 ? 0 :
             m_GraphicsSettings.EnvironmentResolution <= 256 ? 1 :
             m_GraphicsSettings.EnvironmentResolution <= 512 ? 2 : 3;
         if (ImGui::Combo(
-                "Environment Resolution", &environmentSizeIndex,
-                environmentSizes, 4))
+            "Environment Resolution", &environmentSizeIndex,
+            environmentSizes, 4))
         {
-            const std::uint32_t sizes[] = {128, 256, 512, 1024};
+            const std::uint32_t sizes[] = { 128, 256, 512, 1024 };
             m_GraphicsSettings.EnvironmentResolution =
                 sizes[environmentSizeIndex];
         }

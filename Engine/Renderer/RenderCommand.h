@@ -25,6 +25,10 @@ namespace NoJob
                                      std::uint32_t indexCount,
                                      std::uint32_t indexOffset);
 
+        static void DrawLines(
+            const VertexArray& vertexArray,
+            std::uint32_t vertexCount);
+
     private:
         static std::unique_ptr<RendererAPI> s_RendererAPI;
     };

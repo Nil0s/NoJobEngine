@@ -37,6 +37,10 @@ namespace NoJob
             std::uint32_t indexCount,
             std::uint32_t indexOffset) = 0;
 
+        virtual void DrawLines(
+            const VertexArray& vertexArray,
+            std::uint32_t vertexCount) = 0;
+
         static GraphicsAPI GetAPI() { return s_API; }
 
     protected:

@@ -62,4 +62,21 @@ namespace NoJob
                 static_cast<std::uintptr_t>(indexOffset*sizeof(std::uint32_t))));
     }
 
+    void OpenGLRendererAPI::DrawLines(
+        const VertexArray& vertexArray,
+        std::uint32_t vertexCount)
+    {
+        if (vertexCount < 2)
+        {
+            return;
+        }
+
+        vertexArray.Bind();
+
+        glDrawArrays(
+            GL_LINES,
+            0,
+            static_cast<GLsizei>(vertexCount));
+    }
+
 }

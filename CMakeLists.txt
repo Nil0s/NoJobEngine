@@ -133,40 +133,16 @@ target_compile_definitions(NoJobImGui PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
 target_link_libraries(NoJobImGui PUBLIC glfw)
 
+# Automatically discover all engine implementation files.
+# CONFIGURE_DEPENDS makes CMake re-check the Engine tree when files are added or removed.
+file(GLOB_RECURSE NOJOB_ENGINE_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Engine/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Engine/*.c"
+)
+
 add_library(NoJobEngine STATIC
-    Engine/Core/Window.cpp
-    Engine/Asset/AssetManager.cpp
-    Engine/Assets/AssetRegistry.cpp
-    Engine/Assets/Project.cpp
-    Engine/Assets/MaterialSerializer.cpp
-    Engine/Assets/PrefabSerializer.cpp
-    Engine/Physics/PhysicsSystem.cpp
-    Engine/Audio/AudioEngine.cpp
+    ${NOJOB_ENGINE_SOURCES}
     ${miniaudio_SOURCE_DIR}/miniaudio.c
-    Engine/Animation/Animation.cpp
-    Engine/Scene/Scene.cpp
-    Engine/Scene/SceneSerializer.cpp
-    Engine/Scene/SceneRenderer.cpp
-
-    Engine/Renderer/Renderer.cpp
-    Engine/Renderer/RendererAPI.cpp
-    Engine/Renderer/RenderCommand.cpp
-    Engine/Renderer/Buffer.cpp
-    Engine/Renderer/VertexArray.cpp
-    Engine/Renderer/Shader.cpp
-    Engine/Renderer/Framebuffer.cpp
-    Engine/Renderer/Mesh.cpp
-    Engine/Renderer/Material.cpp
-    Engine/Renderer/Texture.cpp
-    Engine/Renderer/StbImage.cpp
-
-    Engine/Platform/OpenGL/OpenGLContext.cpp
-    Engine/Platform/OpenGL/OpenGLRendererAPI.cpp
-    Engine/Platform/OpenGL/OpenGLBuffer.cpp
-    Engine/Platform/OpenGL/OpenGLVertexArray.cpp
-    Engine/Platform/OpenGL/OpenGLShader.cpp
-    Engine/Platform/OpenGL/OpenGLFramebuffer.cpp
-    Engine/Platform/OpenGL/OpenGLTexture.cpp
 )
 
 target_include_directories(NoJobEngine
