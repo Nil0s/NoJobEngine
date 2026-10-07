@@ -192,7 +192,17 @@ namespace NoJob
         float Mass = 1.0f;
         bool UseGravity = true;
     };
+    struct NavAgentComponent
+    {
+        bool Enabled = true;
 
+        float Speed = 3.5f;
+        float StoppingDistance = 0.1f;
+
+        glm::vec3 Destination{ 0.0f };
+
+        bool HasDestination = false;
+    };
     struct PhysicsMaterial
     {
         float Friction = 0.5f;

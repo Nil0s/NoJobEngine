@@ -1,7 +1,10 @@
 #pragma once
 
 #include "Engine/AI/Navigation/NavMesh.h"
+#include "Engine/AI/Navigation/NavMeshFunnel.h"
 #include "Engine/AI/Navigation/NavMeshGenerator.h"
+
+#include <glm/glm.hpp>
 
 namespace NoJob
 {
@@ -13,6 +16,13 @@ namespace NoJob
         bool Bake(Scene& scene);
 
         void Clear();
+
+        NavPolygonID FindPolygon(
+            const glm::vec3& position) const;
+
+        NavPointPath CalculatePath(
+            const glm::vec3& startPosition,
+            const glm::vec3& destination) const;
 
         bool HasNavMesh() const
         {
@@ -29,10 +39,17 @@ namespace NoJob
             return m_GenerationSettings;
         }
 
-        const NavMeshGenerationSettings& GetGenerationSettings() const
+        const NavMeshGenerationSettings&
+            GetGenerationSettings() const
         {
             return m_GenerationSettings;
         }
+
+    private:
+        static bool IsPointInsidePolygonXZ(
+            const NavMesh& navMesh,
+            const NavPolygon& polygon,
+            const glm::vec3& position);
 
     private:
         NavMesh m_NavMesh;

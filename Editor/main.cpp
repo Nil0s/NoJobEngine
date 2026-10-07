@@ -20,6 +20,7 @@
 #include "Engine/AI/Navigation/NavigationSystem.h"
 
 
+
 #include "Editor/EditorCamera.h"
 #include "Editor/EditorLayer.h"
 #include "Editor/Scene/SceneFileDialog.h"
@@ -350,6 +351,7 @@ int main()
 
         NoJob::NavMeshDebugRenderer
             navMeshDebugRenderer;
+        // ------------------------------------------------------------
 
 
         // ------------------------------------------------------------
@@ -862,6 +864,13 @@ int main()
             {
                 runtimeScene =
                     editorScene.Copy();
+
+                // The runtime scene does not own navigation.
+                // It uses the NavMesh already baked by the
+                // editor NavigationSystem.
+                runtimeScene->
+                    SetNavigationSystem(
+                        &navigationSystem);
 
                 runtimeScene->
                     OnRuntimeStart();

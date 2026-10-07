@@ -166,7 +166,6 @@ namespace NoJob
         char m_HierarchySearch[128]{};
 
         bool m_RenameSelectedRequested = false;
-
         using ComponentClipboard =
             std::variant<
             std::monostate,
@@ -180,7 +179,8 @@ namespace NoJob
             DirectionalLightComponent,
             PointLightComponent,
             SpotLightComponent,
-            AnimatorComponent>;
+            AnimatorComponent,
+            NavAgentComponent>;
 
         ComponentClipboard
             m_ComponentClipboard;

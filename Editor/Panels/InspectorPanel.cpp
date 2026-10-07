@@ -254,7 +254,75 @@ namespace NoJob
                         m_SelectedEntity.RemoveComponent<RigidbodyComponent>();
                 }
             }
+            if (m_SelectedEntity.HasComponent<NavAgentComponent>())
+            {
+                ImGui::Separator();
 
+                if (ImGui::CollapsingHeader(
+                    "Nav Agent",
+                    ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto& agent =
+                        m_SelectedEntity.GetComponent<NavAgentComponent>();
+
+                    ImGui::Checkbox(
+                        "Enabled##NavAgent",
+                        &agent.Enabled);
+
+                    ImGui::DragFloat(
+                        "Speed##NavAgent",
+                        &agent.Speed,
+                        0.05f,
+                        0.0f,
+                        100.0f,
+                        "%.2f");
+
+                    ImGui::DragFloat(
+                        "Stopping Distance##NavAgent",
+                        &agent.StoppingDistance,
+                        0.01f,
+                        0.0f,
+                        100.0f,
+                        "%.2f");
+
+                    agent.Speed =
+                        std::max(
+                            agent.Speed,
+                            0.0f);
+
+                    agent.StoppingDistance =
+                        std::max(
+                            agent.StoppingDistance,
+                            0.0f);
+
+                    ImGui::SeparatorText(
+                        "Destination");
+
+                    ImGui::DragFloat3(
+                        "Position##NavAgentDestination",
+                        &agent.Destination.x,
+                        0.05f,
+                        0.0f,
+                        0.0f,
+                        "%.3f");
+
+                    ImGui::Checkbox(
+                        "Has Destination##NavAgent",
+                        &agent.HasDestination);
+
+                    ImGui::TextDisabled(
+                        "Path is calculated in Play Mode "
+                        "using the baked NavMesh.");
+
+                    if (ImGui::Button(
+                        "Remove Nav Agent"))
+                    {
+                        m_SelectedEntity
+                            .RemoveComponent<
+                            NavAgentComponent>();
+                    }
+                }
+            }
 
             if (m_SelectedEntity.HasComponent<BoxColliderComponent>())
             {
@@ -668,7 +736,16 @@ namespace NoJob
 
                 addItem("Physics", "Rigidbody",
                     !m_SelectedEntity.HasComponent<RigidbodyComponent>(),
-                    [&]{ m_SelectedEntity.AddComponent<RigidbodyComponent>(); });
+                    [&] { m_SelectedEntity.AddComponent<RigidbodyComponent>(); });
+
+                addItem("AI", "Nav Agent",
+                    !m_SelectedEntity.HasComponent<NavAgentComponent>(),
+                    [&]
+                    {
+                        m_SelectedEntity
+                            .AddComponent<
+                            NavAgentComponent>();
+                    });
 
                 const bool noCollider =
                     !m_SelectedEntity.HasComponent<BoxColliderComponent>() &&
@@ -1164,7 +1241,8 @@ namespace NoJob
         if(m_SelectedEntity.HasComponent<PointLightComponent>()) entries.push_back({"Point Light",8});
         if(m_SelectedEntity.HasComponent<SpotLightComponent>()) entries.push_back({"Spot Light",9});
         if(m_SelectedEntity.HasComponent<AnimatorComponent>()) entries.push_back({"Animator",10});
-
+        if (m_SelectedEntity.HasComponent<NavAgentComponent>())
+            entries.push_back({ "Nav Agent",11 });
         componentIndex = std::clamp(componentIndex, 0, (int)entries.size()-1);
         if(ImGui::BeginCombo("Component", entries[componentIndex].Name))
         {
@@ -1188,6 +1266,7 @@ namespace NoJob
             case 8:m_ComponentClipboard=m_SelectedEntity.GetComponent<PointLightComponent>();break;
             case 9:m_ComponentClipboard=m_SelectedEntity.GetComponent<SpotLightComponent>();break;
             case 10:m_ComponentClipboard=m_SelectedEntity.GetComponent<AnimatorComponent>();break;
+            case 11:m_ComponentClipboard = m_SelectedEntity.GetComponent<NavAgentComponent>();break;
             }
         };
         auto reset=[&]{
@@ -1204,6 +1283,7 @@ namespace NoJob
             case 8:m_SelectedEntity.GetComponent<PointLightComponent>()={};break;
             case 9:m_SelectedEntity.GetComponent<SpotLightComponent>()={};break;
             case 10:m_SelectedEntity.GetComponent<AnimatorComponent>()={};break;
+            case 11:m_SelectedEntity.GetComponent<NavAgentComponent>() = {};  break;
             }
         };
         auto paste=[&]{
@@ -1220,6 +1300,7 @@ namespace NoJob
             case 8:if(auto p=std::get_if<PointLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<PointLightComponent>()=*p;break;
             case 9:if(auto p=std::get_if<SpotLightComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<SpotLightComponent>()=*p;break;
             case 10:if(auto p=std::get_if<AnimatorComponent>(&m_ComponentClipboard))m_SelectedEntity.GetComponent<AnimatorComponent>()=*p;break;
+            case 11: if (auto p=std::get_if<NavAgentComponent>(&m_ComponentClipboard)) { m_SelectedEntity.GetComponent<NavAgentComponent>() = *p;} break;
             }
         };
 
@@ -1246,6 +1327,7 @@ namespace NoJob
             case 8:m_SelectedEntity.RemoveComponent<PointLightComponent>();break;
             case 9:m_SelectedEntity.RemoveComponent<SpotLightComponent>();break;
             case 10:m_SelectedEntity.RemoveComponent<AnimatorComponent>();break;
+            case 11:m_SelectedEntity.RemoveComponent<NavAgentComponent>();break;
             }
             componentIndex=0;
         }
