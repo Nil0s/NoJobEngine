@@ -27,14 +27,14 @@ the original goal of the project:
 
 **Game AI.**
 
-The next stage will explore navigation, perception, visual behavior
-authoring, AI debugging and, eventually, native neural networks,
-reinforcement learning and training directly inside NoJobEngine.
+The first native Game AI milestone now includes configurable perception,
+physics-backed line of sight, target memory and an editor-integrated AI
+Debugger. Next comes inspectable decision-making, followed by native
+machine learning and reinforcement learning research.
 
-> **Current milestone: NoJobEngine V1.7 --- Standalone Build ---
-> Complete and Validated**
+> **Current milestone: NoJobEngine V1.8.0 --- Native AI Perception & Debugging --- Complete and Validated**
 >
-> **Next milestone: V1.8 --- AI Navigation & Gameplay AI**
+> **Next milestone: V1.9 --- Native AI Decision System**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
@@ -125,6 +125,27 @@ directly from the **Build** menu, compile the runtime and native project
 scripts in the same configuration, cook runtime assets and produce a
 clean distributable folder that runs independently from Visual Studio
 and NoJobEditor.
+
+### Native AI perception & debugging (V1.8.0)
+
+V1.8.0 introduces the first native Game AI tooling directly into the editor.
+Agents can use a configurable Perception component to detect entities by
+layer, radius and field of view. A physics-backed line-of-sight query through
+Jolt Physics distinguishes visible targets from occluded ones, while target
+memory preserves recently seen information for a configurable duration.
+
+The **AI Debugger** is a dedicated editor window for inspecting agents during
+Play Mode. It displays visible and remembered targets, detection timing,
+perception settings and the last seen target and position. An optional
+**Show Last Seen Position in Scene** control displays the last-known-position
+marker in the scene viewport. The debug display is separate from gameplay
+logic and can be enabled only when needed.
+
+V1.8.0 also includes the NavAgent component and scene persistence for AI
+components, entity layers and perception detection masks. This milestone
+establishes the sensing and inspection foundation; behavior trees, visual
+behavior authoring, NavMesh generation and A* pathfinding are **not** claimed
+as completed V1.8 features.
 
 ### 3D model & material import
 
@@ -229,6 +250,8 @@ as a single action.
 -   Particle-system authoring and emitter-shape gizmos
 -   Build Standalone (Debug / Release) directly from the editor
 -   asynchronous standalone build output in the editor Console
+-   AI Debugger window with live agent and target inspection
+-   optional last-seen-position marker in the scene viewport
 
 ### Asset pipeline
 
@@ -360,6 +383,20 @@ abstraction:
 -   particle triangle/draw-call integration with Renderer Profiler;
 -   explicit renderer resource shutdown;
 -   Scene and Prefab persistence.
+
+### Native Game AI (V1.8.0)
+
+-   `PerceptionComponent` with enable flag, detection layer mask, radius and FOV
+-   configurable eye height, memory duration and update interval
+-   Jolt-backed line-of-sight obstacle checks through a spatial-query abstraction
+-   visible and remembered target tracking
+-   last detected target and last known world position
+-   AI Debugger with agent selection and runtime target information
+-   visibility and memory timing inspection
+-   optional scene marker for last seen position
+-   perception debug drawing controlled from the editor
+-   `NavAgentComponent` with movement and destination configuration
+-   scene persistence for Perception, NavAgent and entity layers
 
 ### Physics
 
@@ -771,6 +808,22 @@ Completed and validated.
 -   automatic standalone package validation;
 -   final Debug and Release regression passes completed successfully.
 
+### ✅ V1.8.0 --- Native AI Perception & Debugging
+
+Completed and validated in the editor.
+
+-   Native `PerceptionComponent` with detection radius, FOV and eye height.
+-   Entity layer filtering and configurable detection masks.
+-   Jolt Physics line-of-sight checks with observer/target exclusion.
+-   Target visibility and short-term memory tracking.
+-   Perception and NavAgent Inspector configuration.
+-   AI component and layer persistence in saved scenes.
+-   Dedicated AI Debugger for monitoring agents in Play Mode.
+-   Visible/remembered target state and detection timing.
+-   Last seen target and last known position inspection.
+-   Optional last-seen-position scene marker.
+-   Debug rendering independent of gameplay decisions.
+
 ------------------------------------------------------------------------
 
 ## AI Roadmap
@@ -779,22 +832,23 @@ Completed and validated.
 > of NoJobEngine and are not presented as implemented until they move
 > into the completed development milestones above.
 
-### V1.8 --- AI Navigation & Gameplay AI
+### V1.9 --- Native AI Decision System (planned)
 
-Build the deterministic AI foundation directly into NoJobEngine:
+Connect perception to explainable, inspectable gameplay decisions:
 
--   NavMesh generation and visualization.
--   A\* pathfinding.
--   NavAgent component.
--   Perception system and Blackboard.
--   Behavior Trees.
--   Visual Behavior Tree editor.
--   Native Scripting integration.
+-   Blackboard-style shared agent state.
+-   Deterministic decision-making and behavior execution.
+-   Target acquisition, investigation and pursuit behaviors.
+-   Decision transitions and reasons exposed in the AI Debugger.
+-   Behavior Trees and visual behavior authoring as design goals,
+    subject to architecture and implementation validation.
+-   Navigation/pathfinding integration as it becomes available;
+    NavMesh generation and A* are not yet completed features.
 
-### V1.9 --- Native Machine Learning
+### Future milestone --- Native Machine Learning (planned)
 
-Build the ML stack **natively in C++ without requiring Python for
-training**:
+Explore a native C++ ML stack without requiring Python for the core
+training workflow:
 
 -   Tensor/data representation and Dense layers.
 -   Activation functions and forward propagation.
@@ -805,9 +859,10 @@ training**:
 -   Neural-network editor/visualization tools.
 
 The objective is to understand and implement the ML pipeline inside the
-engine instead of treating an external framework as a black box.
+engine instead of treating an external framework as a black box. Version
+numbering for this milestone will be finalized after V1.9 scope is settled.
 
-### V2.0 --- ML Agents & Reinforcement Learning
+### Later milestone --- ML Agents & Reinforcement Learning (planned)
 
 Connect native ML to gameplay:
 
@@ -876,7 +931,8 @@ It covers problems across:
 -   engine architecture;
 -   editor/runtime design;
 -   standalone runtime architecture, asset cooking and release
-    packaging.
+    packaging;
+-   native perception, spatial queries and AI debugging tooling.
 
 The development approach is intentionally iterative: **build a system,
 expose it through the editor, validate it end-to-end, and then improve
