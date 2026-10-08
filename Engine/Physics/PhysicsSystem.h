@@ -57,6 +57,16 @@ namespace NoJob
         {
             return m_TriggerEvents;
         }
+        // Returns true when a physical obstacle exists
+        // between two world-space positions.
+        //
+        // The observer and target entities are excluded.
+        bool HasObstacleBetween(
+            const glm::vec3& origin,
+            const glm::vec3& destination,
+            std::uint64_t observerID,
+            std::uint64_t targetID
+        ) const;
 
     private:
         struct Implementation;

@@ -20,6 +20,8 @@
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -30,11 +32,40 @@
 #include <cmath>
 #include <thread>
 #include <mutex>
+#include <iostream>
 
 namespace NoJob
 {
     namespace
     {
+        class LineOfSightBodyFilter final : public JPH::BodyFilter
+        {
+        public:
+            LineOfSightBodyFilter(
+                JPH::BodyID observerBody,
+                JPH::BodyID targetBody)
+                : m_ObserverBody(observerBody),
+                m_TargetBody(targetBody)
+            {
+            }
+
+            bool ShouldCollide(
+                const JPH::BodyID& bodyID) const override
+            {
+                return bodyID != m_ObserverBody &&
+                    bodyID != m_TargetBody;
+            }
+
+            bool ShouldCollideLocked(
+                const JPH::Body& body) const override
+            {
+                return !body.IsSensor();
+            }
+
+        private:
+            JPH::BodyID m_ObserverBody;
+            JPH::BodyID m_TargetBody;
+        };
         namespace Layers
         {
             static constexpr JPH::ObjectLayer NonMoving = 0;
@@ -526,5 +557,73 @@ namespace NoJob
         hit.Distance = result.mFraction * maxDistance;
         hit.Point = origin + dir * hit.Distance;
         return hit;
+    }
+    bool PhysicsSystem::HasObstacleBetween(
+        const glm::vec3& origin,
+        const glm::vec3& destination,
+        std::uint64_t observerID,
+        std::uint64_t targetID) const
+    {
+        if (!m_Running || !m_Impl->World)
+            return false;
+
+        const glm::vec3 delta = destination - origin;
+
+        if (glm::dot(delta, delta) <= 0.00000001f)
+            return false;
+
+        JPH::BodyID observerBody;
+        JPH::BodyID targetBody;
+
+        const auto observerIt = m_Impl->Bodies.find(observerID);
+
+        if (observerIt != m_Impl->Bodies.end())
+            observerBody = observerIt->second;
+
+        const auto targetIt = m_Impl->Bodies.find(targetID);
+
+        if (targetIt != m_Impl->Bodies.end())
+            targetBody = targetIt->second;
+
+        const LineOfSightBodyFilter bodyFilter(
+            observerBody,
+            targetBody
+        );
+
+        const JPH::RRayCast ray(
+            JPH::RVec3(origin.x, origin.y, origin.z),
+            JPH::Vec3(delta.x, delta.y, delta.z)
+        );
+
+        JPH::RayCastResult hit;
+        const bool blocked =
+            m_Impl->World->GetNarrowPhaseQuery().CastRay(
+                ray,
+                hit,
+                JPH::BroadPhaseLayerFilter(),
+                JPH::ObjectLayerFilter(),
+                bodyFilter
+            );
+
+        static bool previousBlocked = false;
+        static bool firstCheck = true;
+
+        if (firstCheck || blocked != previousBlocked)
+        {
+            std::cout
+                << "[AI LOS] Observer: " << observerID
+                << " | Target: " << targetID
+                << " | Blocked: " << (blocked ? "YES" : "NO")
+                << " | Origin: "
+                << origin.x << ", " << origin.y << ", " << origin.z
+                << " | Destination: "
+                << destination.x << ", " << destination.y << ", " << destination.z
+                << '\n';
+
+            previousBlocked = blocked;
+            firstCheck = false;
+        }
+
+        return blocked;
     }
 }

@@ -5,6 +5,7 @@
 #include "Engine/Animation/Animation.h"
 
 #include "Engine/AI/Navigation/NavigationSystem.h"
+#include "Engine/AI/Perception/ISpatialQuery.h"
 
 #include <algorithm>
 #include <cmath>
@@ -119,9 +120,10 @@ namespace NoJob
         m_ScriptInstances.clear();
         m_NavAgentStates.clear();
 
-        // RestoreFrom restores scene data, not an external
-        // navigation-world binding.
+        // External runtime services are not restored
+       // from serialized or copied scene data.
         m_NavigationSystem = nullptr;
+        m_SpatialQuery = nullptr;
     }
 
     Entity Scene::CreateEntity(
@@ -420,6 +422,8 @@ namespace NoJob
     {
         m_RuntimeRunning = false;
 
+        m_SpatialQuery = nullptr;
+
         m_ParticleStates.clear();
         m_NavAgentStates.clear();
         m_PerceptionStates.clear();
@@ -610,6 +614,27 @@ namespace NoJob
                     if (dot < minimumDot)
                         continue;
                 }
+
+                // -----------------------------------------------------
+                // Line of Sight (LOS)
+                // -----------------------------------------------------
+
+                if (m_SpatialQuery)
+                {
+                    const std::uint64_t observerID = data.ID.ID;
+                    const std::uint64_t targetID = targetData.ID.ID;
+
+                    const bool blocked = m_SpatialQuery->HasObstacleBetween(
+                        observerPosition,
+                        targetPosition,
+                        observerID,
+                        targetID
+                    );
+
+                    if (blocked)
+                        continue;
+                }
+
                 auto& targetState = state.Targets[targetHandle];
 
                 targetState.EntityHandle = targetHandle;

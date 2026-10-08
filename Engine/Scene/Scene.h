@@ -18,6 +18,8 @@ namespace NoJob
     class ScriptableEntity;
     class NavigationSystem;
 
+    class ISpatialQuery;
+
     class Scene
     {
     public:
@@ -72,6 +74,17 @@ namespace NoJob
         const NavigationSystem* GetNavigationSystem() const
         {
             return m_NavigationSystem;
+        }
+        // Spatial queries for AI perception.
+        // Scene does not own this provider.
+        void SetSpatialQuery(const ISpatialQuery* spatialQuery)
+        {
+            m_SpatialQuery = spatialQuery;
+        }
+
+        const ISpatialQuery* GetSpatialQuery() const
+        {
+            return m_SpatialQuery;
         }
 
         struct RuntimeParticle
@@ -664,6 +677,9 @@ namespace NoJob
 
         // Non-owning navigation world.
         NavigationSystem* m_NavigationSystem = nullptr;
+
+        // Non-owning spatial query provider.
+        const ISpatialQuery* m_SpatialQuery = nullptr;
 
         // ---------------------------------------------------------
         // Particle runtime state

@@ -1,6 +1,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Physics/PhysicsSystem.h"
+#include "Engine/Physics/JoltSpatialQuery.h"
 #include "Engine/Renderer/Buffer.h"
 #include "Engine/Renderer/Framebuffer.h"
 #include "Engine/Renderer/Material.h"
@@ -239,6 +240,9 @@ int main()
 
         NoJob::PhysicsSystem physics;
 
+        // Adapter between AI perception and Jolt Physics.
+        // PhysicsSystem owns the physical world.
+        NoJob::JoltSpatialQuery spatialQuery(physics);
 
         // ------------------------------------------------------------
         // Main framebuffer
@@ -872,14 +876,14 @@ int main()
                     SetNavigationSystem(
                         &navigationSystem);
 
-                runtimeScene->
-                    OnRuntimeStart();
+                runtimeScene->OnRuntimeStart();
 
-                physics.Start(
-                    *runtimeScene);
+                physics.Start(*runtimeScene);
 
-                activeScene =
-                    runtimeScene.get();
+                // Connect AI perception to the active physics world.
+                runtimeScene->SetSpatialQuery(&spatialQuery);
+
+                activeScene = runtimeScene.get();
 
                 isPlaying = true;
                 isPaused = false;
@@ -915,10 +919,12 @@ int main()
             if (editor.ConsumeStopRequest() &&
                 isPlaying)
             {
-                physics.Stop();
+                // Disconnect the spatial query before stopping physics.
+                runtimeScene->SetSpatialQuery(nullptr);
 
-                runtimeScene->
-                    OnRuntimeStop();
+                runtimeScene->OnRuntimeStop();
+
+                physics.Stop();
 
                 runtimeScene.reset();
 
@@ -1336,7 +1342,18 @@ int main()
         // ------------------------------------------------------------
         // Shutdown
         // ------------------------------------------------------------
+        if (runtimeScene)
+        {
+            runtimeScene->SetSpatialQuery(nullptr);
+            runtimeScene->OnRuntimeStop();
 
+            physics.Stop();
+
+            runtimeScene.reset();
+            activeScene = &editorScene;
+            editor.SetScene(activeScene);
+            editor.SetRuntimeState(false, false);
+        }
         editor.Shutdown();
 
         navMeshDebugRenderer.Clear();
