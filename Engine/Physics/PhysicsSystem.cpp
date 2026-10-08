@@ -611,13 +611,16 @@ namespace NoJob
         if (firstCheck || blocked != previousBlocked)
         {
             std::cout
-                << "[AI LOS] Observer: " << observerID
-                << " | Target: " << targetID
-                << " | Blocked: " << (blocked ? "YES" : "NO")
+                << "[AI LOS] "
+                << "Blocked: " << (blocked ? "YES" : "NO")
                 << " | Origin: "
-                << origin.x << ", " << origin.y << ", " << origin.z
+                << origin.x << ", "
+                << origin.y << ", "
+                << origin.z
                 << " | Destination: "
-                << destination.x << ", " << destination.y << ", " << destination.z
+                << destination.x << ", "
+                << destination.y << ", "
+                << destination.z
                 << '\n';
 
             previousBlocked = blocked;

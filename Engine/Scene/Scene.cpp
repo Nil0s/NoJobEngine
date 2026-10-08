@@ -623,10 +623,20 @@ namespace NoJob
                 {
                     const std::uint64_t observerID = data.ID.ID;
                     const std::uint64_t targetID = targetData.ID.ID;
+                    // Eye position in world space.
+                    // EyeHeight is a vertical offset from the entity origin.
+                    const float eyeHeight =
+                        std::max(perception.EyeHeight, 0.0f);
+
+                    const glm::vec3 eyePosition =
+                        observerPosition + glm::vec3(0.0f, eyeHeight, 0.0f);
+
+                    const glm::vec3 targetAimPosition =
+                        targetPosition + glm::vec3(0.0f, eyeHeight, 0.0f);
 
                     const bool blocked = m_SpatialQuery->HasObstacleBetween(
-                        observerPosition,
-                        targetPosition,
+                        eyePosition,
+                        targetAimPosition,
                         observerID,
                         targetID
                     );

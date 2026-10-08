@@ -247,7 +247,9 @@ namespace NoJob
 
         float DetectionRadius = 10.0f;
         float FieldOfView = 120.0f;
-
+        // Vertical offset of the observer's eyes
+        // relative to the entity's world position.
+        float EyeHeight = 1.6f;
      
         float MemoryDuration = 3.0f;
 

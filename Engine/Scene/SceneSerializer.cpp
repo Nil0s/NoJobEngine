@@ -84,6 +84,12 @@ namespace NoJob
                 << rel.Parent
                 << '\n';
 
+            if (e.HasComponent<LayerComponent>())
+            {
+                const auto& layer = e.GetComponent<LayerComponent>();
+                out << "LAYER " << layer.Layer << '\n';
+            }
+
             if (e.HasComponent<CameraComponent>())
             {
                 auto& c =
@@ -318,6 +324,21 @@ namespace NoJob
                     << '\n';
             }
 
+            if (e.HasComponent<PerceptionComponent>())
+            {
+                const auto& c = e.GetComponent<PerceptionComponent>();
+
+                out << "PERCEPTION_V1 "
+                    << c.Enabled << ' '
+                    << c.DetectionMask << ' '
+                    << c.DetectionRadius << ' '
+                    << c.FieldOfView << ' '
+                    << c.EyeHeight << ' '
+                    << c.MemoryDuration << ' '
+                    << c.UpdateInterval << ' '
+                    << c.DebugDraw << '\n';
+            }
+
             if (e.HasComponent<BoxColliderComponent>())
             {
                 auto& c =
@@ -546,6 +567,18 @@ namespace NoJob
             else if (!current)
             {
                 continue;
+            }
+            else if (k == "LAYER")
+            {
+                std::uint32_t layer = EntityLayers::Default;
+                if (s >> layer)
+                {
+                    layer = std::min(layer, EntityLayers::MaxLayers - 1);
+                    if (current.HasComponent<LayerComponent>())
+                        current.GetComponent<LayerComponent>().Layer = layer;
+                    else
+                        current.AddComponent<LayerComponent>().Layer = layer;
+                }
             }
             else if (k == "TRANSFORM")
             {
@@ -949,31 +982,54 @@ namespace NoJob
 
             else if (k == "NAV_AGENT" ||
                 k == "NAV_AGENT_V2")
+            {
+                NavAgentComponent c;
+
+                s >> c.Enabled
+                    >> c.Speed
+                    >> c.StoppingDistance;
+
+                ReadV3(s, c.Destination);
+
+                s >> c.HasDestination;
+
+                if (k == "NAV_AGENT_V2")
+                    s >> c.RepathInterval;
+
+                c.Speed =
+                    std::max(c.Speed, 0.0f);
+
+                c.StoppingDistance =
+                    std::max(c.StoppingDistance, 0.0f);
+
+                c.RepathInterval =
+                    std::clamp(c.RepathInterval, 0.05f, 10.0f);
+
+                current.AddComponent<NavAgentComponent>(c);
+            }
+
+            else if (k == "PERCEPTION_V1")
+            {
+                PerceptionComponent c;
+
+                if (s >> c.Enabled
+                    >> c.DetectionMask
+                    >> c.DetectionRadius
+                    >> c.FieldOfView
+                    >> c.EyeHeight
+                    >> c.MemoryDuration
+                    >> c.UpdateInterval
+                    >> c.DebugDraw)
                 {
-                    NavAgentComponent c;
+                    c.DetectionRadius = std::max(0.0f, c.DetectionRadius);
+                    c.FieldOfView = std::clamp(c.FieldOfView, 0.0f, 360.0f);
+                    c.EyeHeight = std::clamp(c.EyeHeight, 0.0f, 100.0f);
+                    c.MemoryDuration = std::max(0.0f, c.MemoryDuration);
+                    c.UpdateInterval = std::clamp(c.UpdateInterval, 0.01f, 60.0f);
 
-                    s >> c.Enabled
-                        >> c.Speed
-                        >> c.StoppingDistance;
-
-                    ReadV3(s, c.Destination);
-
-                    s >> c.HasDestination;
-
-                    if (k == "NAV_AGENT_V2")
-                        s >> c.RepathInterval;
-
-                    c.Speed =
-                        std::max(c.Speed, 0.0f);
-
-                    c.StoppingDistance =
-                        std::max(c.StoppingDistance, 0.0f);
-
-                    c.RepathInterval =
-                        std::clamp(c.RepathInterval, 0.05f, 10.0f);
-
-                    current.AddComponent<NavAgentComponent>(c);
-                    }
+                    current.AddComponent<PerceptionComponent>(c);
+                }
+            }
 
             else if (k == "BOX")
             {

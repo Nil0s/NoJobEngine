@@ -413,6 +413,14 @@ namespace NoJob
                         0.1f, 0.0f, 10000.0f, "%.2f");
                     ImGui::SliderFloat("Field of View##Perception", &perception.FieldOfView,
                         0.0f, 360.0f, "%.1f deg");
+                    ImGui::DragFloat(
+                        "Eye Height##Perception",
+                        &perception.EyeHeight,
+                        0.05f,
+                        0.0f,
+                        100.0f,
+                        "%.2f"
+                    );
                     ImGui::DragFloat("Memory Duration##Perception", &perception.MemoryDuration,
                         0.05f, 0.0f, 3600.0f, "%.2f s");
                     ImGui::DragFloat("Update Interval##Perception", &perception.UpdateInterval,
@@ -420,6 +428,8 @@ namespace NoJob
                     ImGui::Checkbox("Debug Draw##Perception", &perception.DebugDraw);
                     perception.DetectionRadius = std::max(0.0f, perception.DetectionRadius);
                     perception.FieldOfView = std::clamp(perception.FieldOfView, 0.0f, 360.0f);
+                    perception.EyeHeight =
+                        std::clamp(perception.EyeHeight, 0.0f, 100.0f);
                     perception.MemoryDuration = std::max(0.0f, perception.MemoryDuration);
                     perception.UpdateInterval = std::clamp(perception.UpdateInterval, 0.01f, 60.0f);
                     if (ImGui::Button("Remove Perception"))
