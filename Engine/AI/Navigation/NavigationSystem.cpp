@@ -42,7 +42,7 @@ namespace NoJob
             std::move(generatedNavMesh);
 
         m_HasNavMesh = true;
-
+        ++m_NavMeshVersion;
         return true;
     }
 
@@ -50,6 +50,7 @@ namespace NoJob
     {
         m_NavMesh = NavMesh{};
         m_HasNavMesh = false;
+        ++m_NavMeshVersion;
     }
 
     NavPolygonID NavigationSystem::FindPolygon(

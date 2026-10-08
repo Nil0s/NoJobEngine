@@ -25,6 +25,41 @@ namespace NoJob
         std::string Tag;
     };
 
+    // ---------------------------------------------------------
+    // Global Entity Layers
+    // ---------------------------------------------------------
+
+    using LayerMask = std::uint32_t;
+
+    using LayerMask = std::uint32_t;
+
+    namespace EntityLayers
+    {
+        constexpr std::uint32_t Default = 0;
+        constexpr std::uint32_t Player = 1;
+        constexpr std::uint32_t Enemy = 2;
+        constexpr std::uint32_t Environment = 3;
+        constexpr std::uint32_t Interactable = 4;
+
+        constexpr std::uint32_t MaxLayers = 32;
+
+        constexpr LayerMask All = 0xFFFFFFFFu;
+        constexpr LayerMask None = 0u;
+
+        constexpr LayerMask Bit(std::uint32_t layer)
+        {
+            return layer < MaxLayers
+                ? (LayerMask{ 1 } << layer)
+                : None;
+        }
+    }
+
+    struct LayerComponent
+    {
+        std::uint32_t Layer = EntityLayers::Default;
+    };
+
+
     struct TransformComponent
     {
         glm::vec3 Position{ 0.0f, 0.0f, 0.0f };
@@ -202,7 +237,28 @@ namespace NoJob
         glm::vec3 Destination{ 0.0f };
 
         bool HasDestination = false;
+
+        float RepathInterval = 0.5f;
     };
+    struct PerceptionComponent
+    {
+        bool Enabled = true;
+        LayerMask DetectionMask = EntityLayers::All;
+
+        float DetectionRadius = 10.0f;
+        float FieldOfView = 120.0f;
+
+     
+        float MemoryDuration = 3.0f;
+
+        
+        float UpdateInterval = 0.1f;
+
+        bool DebugDraw = true;
+
+
+    };
+
     struct PhysicsMaterial
     {
         float Friction = 0.5f;

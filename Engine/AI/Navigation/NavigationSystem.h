@@ -5,6 +5,7 @@
 #include "Engine/AI/Navigation/NavMeshGenerator.h"
 
 #include <glm/glm.hpp>
+#include <cstdint>
 
 namespace NoJob
 {
@@ -44,6 +45,10 @@ namespace NoJob
         {
             return m_GenerationSettings;
         }
+        std::uint64_t GetNavMeshVersion() const
+        {
+            return m_NavMeshVersion;
+        }
 
     private:
         static bool IsPointInsidePolygonXZ(
@@ -54,7 +59,7 @@ namespace NoJob
     private:
         NavMesh m_NavMesh;
         NavMeshGenerationSettings m_GenerationSettings;
-
+        std::uint64_t m_NavMeshVersion = 0;
         bool m_HasNavMesh = false;
     };
 }

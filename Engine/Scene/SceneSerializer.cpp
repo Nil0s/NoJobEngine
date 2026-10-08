@@ -305,17 +305,16 @@ namespace NoJob
                 auto& c =
                     e.GetComponent<NavAgentComponent>();
 
-                out << "NAV_AGENT "
+                out << "NAV_AGENT_V2 "
                     << c.Enabled << ' '
                     << c.Speed << ' '
                     << c.StoppingDistance << ' ';
 
-                V3(
-                    out,
-                    c.Destination);
+                V3(out, c.Destination);
 
                 out << ' '
-                    << c.HasDestination
+                    << c.HasDestination << ' '
+                    << c.RepathInterval
                     << '\n';
             }
 
@@ -948,33 +947,33 @@ namespace NoJob
             // V1.8 Native Gameplay AI
             // -------------------------------------------------
 
-            else if (k == "NAV_AGENT")
-            {
-                NavAgentComponent c;
+            else if (k == "NAV_AGENT" ||
+                k == "NAV_AGENT_V2")
+                {
+                    NavAgentComponent c;
 
-                s >> c.Enabled
-                    >> c.Speed
-                    >> c.StoppingDistance;
+                    s >> c.Enabled
+                        >> c.Speed
+                        >> c.StoppingDistance;
 
-                ReadV3(
-                    s,
-                    c.Destination);
+                    ReadV3(s, c.Destination);
 
-                s >> c.HasDestination;
+                    s >> c.HasDestination;
 
-                c.Speed =
-                    std::max(
-                        c.Speed,
-                        0.0f);
+                    if (k == "NAV_AGENT_V2")
+                        s >> c.RepathInterval;
 
-                c.StoppingDistance =
-                    std::max(
-                        c.StoppingDistance,
-                        0.0f);
+                    c.Speed =
+                        std::max(c.Speed, 0.0f);
 
-                current.AddComponent<
-                    NavAgentComponent>(c);
-            }
+                    c.StoppingDistance =
+                        std::max(c.StoppingDistance, 0.0f);
+
+                    c.RepathInterval =
+                        std::clamp(c.RepathInterval, 0.05f, 10.0f);
+
+                    current.AddComponent<NavAgentComponent>(c);
+                    }
 
             else if (k == "BOX")
             {

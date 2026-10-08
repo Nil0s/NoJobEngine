@@ -351,14 +351,26 @@ namespace NoJob
 
         m_ParticleStates.clear();
         m_NavAgentStates.clear();
+        m_PerceptionStates.clear();
 
         AudioEngine::Init();
 
-        for (const auto& [handle, data] :
-            m_Entities)
+        std::vector<std::uint32_t> startupHandles;
+        startupHandles.reserve(m_Entities.size());
+        for (const auto& [handle, data] : m_Entities)
+            startupHandles.push_back(handle);
+
+        for (const auto handle : startupHandles)
         {
-            CreateScriptInstance(
-                handle);
+            if (!IsValid(handle))
+                continue;
+
+            CreateScriptInstance(handle);
+
+            if (!IsValid(handle))
+                continue;
+
+            const auto& data = m_Entities.at(handle);
 
             if (data.AudioSource &&
                 data.AudioSource
@@ -397,6 +409,10 @@ namespace NoJob
                     handle,
                     std::move(state));
             }
+            if (data.Perception)
+            {
+                m_PerceptionStates.try_emplace(handle);
+            }
         }
     }
 
@@ -406,6 +422,7 @@ namespace NoJob
 
         m_ParticleStates.clear();
         m_NavAgentStates.clear();
+        m_PerceptionStates.clear();
 
         AudioEngine::StopAll();
 
@@ -419,6 +436,190 @@ namespace NoJob
         }
     }
 
+    std::vector<Scene::PerceptionTargetInfo>
+        Scene::GetPerceivedTargets(std::uint32_t observerHandle) const
+    {
+        std::vector<PerceptionTargetInfo> results;
+
+        // Comprobamos que el observador tiene estado de percepción.
+        const auto stateIt = m_PerceptionStates.find(observerHandle);
+
+        if (stateIt == m_PerceptionStates.end())
+            return results;
+
+        const auto& state = stateIt->second;
+
+        // Reservamos memoria para evitar realojamientos.
+        results.reserve(state.Targets.size());
+
+        for (const auto& [targetHandle, target] : state.Targets)
+        {
+            if (!IsValid(targetHandle))
+                continue;
+
+            PerceptionTargetInfo info;
+
+            info.EntityHandle = target.EntityHandle;
+            info.LastKnownPosition = target.LastKnownPosition;
+            info.TimeSinceLastSeen = target.TimeSinceLastSeen;
+            info.IsVisible = target.IsVisible;
+
+            results.push_back(info);
+        }
+
+        return results;
+    }
+
+    void Scene::UpdatePerception(float deltaTime)
+    {
+        const float dt = std::max(deltaTime, 0.0f);
+
+        for (auto& [handle, data] : m_Entities)
+        {
+            if (!data.Perception)
+            {
+                m_PerceptionStates.erase(handle);
+                continue;
+            }
+
+            const auto& perception = *data.Perception;
+
+            if (!perception.Enabled)
+            {
+                m_PerceptionStates.erase(handle);
+                continue;
+            }
+
+            auto& state = m_PerceptionStates[handle];
+
+            for (auto it = state.Targets.begin();
+                it != state.Targets.end();)
+            {
+                auto& target = it->second;
+
+                if (!IsValid(target.EntityHandle))
+                {
+                    it = state.Targets.erase(it);
+                    continue;
+                }
+
+                if (!target.IsVisible)
+                {
+                    target.TimeSinceLastSeen += dt;
+
+                    if (target.TimeSinceLastSeen >=
+                        std::max(perception.MemoryDuration, 0.0f))
+                    {
+                        it = state.Targets.erase(it);
+                        continue;
+                    }
+                }
+
+                ++it;
+            }
+            state.UpdateTimer += dt;
+
+            const float interval =
+                std::max(perception.UpdateInterval, 0.01f);
+
+            if (state.UpdateTimer < interval)
+                continue;
+
+            state.UpdateTimer = 0.0f;
+
+            for (auto& [targetHandle, target] : state.Targets)
+            {
+                target.IsVisible = false;
+            }
+
+            const glm::mat4 observerWorld =
+                GetWorldTransform(Entity(handle, this));
+
+            const glm::vec3 observerPosition(observerWorld[3]);
+
+            // Forward local  motor: -Z.
+            // Transform dir global space.
+            glm::vec3 forward = -glm::vec3(observerWorld[2]);
+
+            // Perception horizontal  plane XZ.
+            forward.y = 0.0f;
+
+            const float forwardLengthSquared =
+                glm::dot(forward, forward);
+
+            if (forwardLengthSquared < 0.000001f)
+                forward = glm::vec3(0.0f, 0.0f, -1.0f);
+            else
+                forward /= std::sqrt(forwardLengthSquared);
+
+            const float fov =
+                std::clamp(perception.FieldOfView, 0.0f, 360.0f);
+
+            const float halfFovRadians =
+                glm::radians(fov * 0.5f);
+
+            const float minimumDot =
+                std::cos(halfFovRadians);
+
+            const float radius =
+                std::max(perception.DetectionRadius, 0.0f);
+
+            const float radiusSquared = radius * radius;
+
+            for (const auto& [targetHandle, targetData] : m_Entities)
+            {
+                if (targetHandle == handle)
+                    continue;
+
+                const LayerMask targetMask =
+                    EntityLayers::Bit(targetData.Layer.Layer);
+
+                if ((targetMask & perception.DetectionMask) == 0)
+                    continue;
+
+                const glm::mat4 targetWorld =
+                    GetWorldTransform(Entity(targetHandle, this));
+
+                const glm::vec3 targetPosition(targetWorld[3]);
+
+                const glm::vec3 offset =
+                    targetPosition - observerPosition;
+
+                const float distanceSquared =
+                    glm::dot(offset, offset);
+
+                if (distanceSquared > radiusSquared)
+                    continue;
+                // Prove the Horizontal angle  to frontal direction agent 
+                glm::vec3 horizontalOffset = offset;
+                horizontalOffset.y = 0.0f;
+
+                const float horizontalDistanceSquared =
+                    glm::dot(horizontalOffset, horizontalOffset);
+
+                if (horizontalDistanceSquared > 0.000001f &&
+                    fov < 360.0f)
+                {
+                    const glm::vec3 directionToTarget =
+                        horizontalOffset /
+                        std::sqrt(horizontalDistanceSquared);
+
+                    const float dot =
+                        glm::dot(forward, directionToTarget);
+
+                    if (dot < minimumDot)
+                        continue;
+                }
+                auto& targetState = state.Targets[targetHandle];
+
+                targetState.EntityHandle = targetHandle;
+                targetState.LastKnownPosition = targetPosition;
+                targetState.TimeSinceLastSeen = 0.0f;
+                targetState.IsVisible = true;
+       
+            }
+        }
+    }
     void Scene::OnUpdate(
         float deltaTime)
     {
@@ -490,62 +691,48 @@ namespace NoJob
         // V1.8 Native NavAgents
         // -----------------------------------------------------
 
-        if (m_NavigationSystem &&
-            m_NavigationSystem->HasNavMesh())
+       // -----------------------------------------------------
+// V1.8 Native NavAgents - Dynamic Repath
+// -----------------------------------------------------
+
+        if (m_NavigationSystem)
         {
-            for (auto& [handle, data] :
-                m_Entities)
+
+
+            const bool hasNavMesh =
+                m_NavigationSystem->HasNavMesh();
+
+            const std::uint64_t navMeshVersion =
+                m_NavigationSystem->GetNavMeshVersion();
+
+            for (auto& [handle, data] : m_Entities)
             {
                 if (!data.NavAgent)
                     continue;
 
-                auto& component =
-                    *data.NavAgent;
+                auto& component = *data.NavAgent;
+                auto& state = m_NavAgentStates[handle];
 
-                auto& state =
-                    m_NavAgentStates[
-                        handle];
-
-                // Component values remain authoritative.
                 state.Agent.Speed() =
-                    std::max(
-                        component.Speed,
-                        0.0f);
+                    std::max(component.Speed, 0.0f);
 
-                state.Agent
-                    .StoppingDistance() =
-                    std::max(
-                        component
-                        .StoppingDistance,
-                        0.0f);
+                state.Agent.StoppingDistance() =
+                    std::max(component.StoppingDistance, 0.0f);
 
-                if (!component.Enabled)
+                if (!component.Enabled ||
+                    !component.HasDestination)
                 {
                     state.Agent.Stop();
-
-                    state.HasRequestedDestination =
-                        false;
-
+                    state.HasRequestedDestination = false;
+                    state.PathQueryFailed = false;
+                    state.RepathTimer = 0.0f;
                     continue;
                 }
 
-                if (!component.HasDestination)
-                {
-                    state.Agent.Stop();
-
-                    state.HasRequestedDestination =
-                        false;
-
-                    continue;
-                }
-
-                Entity entity(
-                    handle,
-                    this);
+                Entity entity(handle, this);
 
                 const glm::mat4 worldTransform =
-                    GetWorldTransform(
-                        entity);
+                    GetWorldTransform(entity);
 
                 const glm::vec3 currentPosition(
                     worldTransform[3]);
@@ -556,11 +743,24 @@ namespace NoJob
                         state.RequestedDestination,
                         component.Destination);
 
-                if (destinationChanged)
+                const bool navMeshChanged =
+                    state.PathNavMeshVersion != navMeshVersion;
+
+                // No path can remain valid without a NavMesh.
+                if (!hasNavMesh)
                 {
-                    const bool pathFound =
-                        state.Agent
-                        .SetDestination(
+                    state.Agent.Stop();
+                    state.PathQueryFailed = true;
+                    state.RepathTimer = 0.0f;
+                    continue;
+                }
+
+                // New destination or changed navigation geometry:
+                // calculate immediately.
+                if (destinationChanged || navMeshChanged)
+                {
+                    const bool found =
+                        state.Agent.SetDestination(
                             *m_NavigationSystem,
                             currentPosition,
                             component.Destination);
@@ -568,24 +768,65 @@ namespace NoJob
                     state.RequestedDestination =
                         component.Destination;
 
-                    state.HasRequestedDestination =
-                        true;
+                    state.HasRequestedDestination = true;
+                    state.PathNavMeshVersion = navMeshVersion;
+                    state.PathQueryFailed = !found;
+                    state.RepathTimer = 0.0f;
 
-                    if (!pathFound)
-                    {
+                    if (!found)
                         continue;
+                }
+                else
+                {
+                    // Retry failed paths periodically.
+                    // Also refresh active routes at a controlled rate.
+                    state.RepathTimer +=
+                        std::max(deltaTime, 0.0f);
+
+                    if (state.RepathTimer >= std::max(component.RepathInterval, 0.05f))
+                    {
+                        state.RepathTimer = 0.0f;
+
+                        if (state.PathQueryFailed)
+                        {
+                            const bool found =
+                                state.Agent.SetDestination(
+                                    *m_NavigationSystem,
+                                    currentPosition,
+                                    component.Destination);
+
+                            state.PathQueryFailed = !found;
+
+                            if (!found)
+                                continue;
+                        }
+                        else if (!state.Agent.HasReachedDestination())
+                        {
+                            const bool found =
+                                state.Agent.RecalculatePath(
+                                    *m_NavigationSystem,
+                                    currentPosition);
+
+                            // The previous path is retained by
+                            // RecalculatePath() on failure.
+                            // Do not follow it blindly.
+                            if (!found)
+                            {
+                                state.Agent.Stop();
+                                state.PathQueryFailed = true;
+                                continue;
+                            }
+                        }
                     }
                 }
 
-                if (state.Agent
-                    .HasReachedDestination())
+                if (state.PathQueryFailed)
+                    continue;
+
+                if (state.Agent.HasReachedDestination())
                 {
-                    component.HasDestination =
-                        false;
-
-                    state.HasRequestedDestination =
-                        false;
-
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
                     continue;
                 }
 
@@ -594,35 +835,30 @@ namespace NoJob
                         currentPosition,
                         deltaTime);
 
-                if (glm::dot(
-                    movement,
-                    movement) >
-                    0.0f)
+                if (glm::dot(movement, movement) > 0.0f)
                 {
-                    glm::mat4 movedWorld =
-                        worldTransform;
+                    glm::mat4 movedWorld = worldTransform;
 
                     movedWorld[3] +=
-                        glm::vec4(
-                            movement,
-                            0.0f);
+                        glm::vec4(movement, 0.0f);
 
                     SetWorldTransform(
                         entity,
                         movedWorld);
                 }
 
-                if (state.Agent
-                    .HasReachedDestination())
+                if (state.Agent.HasReachedDestination())
                 {
-                    component.HasDestination =
-                        false;
-
-                    state.HasRequestedDestination =
-                        false;
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
                 }
             }
         }
+        // -----------------------------------------------------
+        // V1.8 AI Perception
+        // -----------------------------------------------------
+
+        UpdatePerception(deltaTime);
 
         // -----------------------------------------------------
         // V1.6 CPU Particle Simulation

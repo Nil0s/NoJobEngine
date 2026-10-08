@@ -617,13 +617,79 @@ namespace NoJob
                 viewProjection, viewportMin, viewportSize, color, thickness);
         }
 
+        // Editor-only AI perception overlay. Geometry is expressed in world units,
+        // so DetectionRadius is not accidentally multiplied by entity scale.
+        void DrawPerceptionWire(
+            ImDrawList* drawList,
+            const glm::mat4& world,
+            const PerceptionComponent& perception,
+            const glm::mat4& viewProjection,
+            const ImVec2& viewportMin,
+            const ImVec2& viewportSize,
+            ImU32 radiusColor,
+            ImU32 fovColor,
+            float thickness)
+        {
+            if (!perception.Enabled || !perception.DebugDraw)
+                return;
+
+            const float radius = std::max(0.0f, perception.DetectionRadius);
+            if (radius <= 0.0001f)
+                return;
+
+            const glm::vec3 origin = ColliderTransformPoint(world, { 0, 0, 0 });
+            glm::vec3 forward = glm::vec3(world * glm::vec4(0, 0, -1, 0));
+            forward.y = 0.0f;
+            if (glm::length(forward) < 0.0001f)
+                forward = { 0, 0, -1 };
+            else
+                forward = glm::normalize(forward);
+
+            // Horizontal right vector; independent of nonuniform object scale.
+            const glm::vec3 right = glm::normalize(
+                glm::cross(forward, glm::vec3(0, 1, 0)));
+
+            constexpr int circleSegments = 64;
+            for (int i = 0; i < circleSegments; ++i)
+            {
+                const float a = glm::two_pi<float>() * float(i) / float(circleSegments);
+                const float b = glm::two_pi<float>() * float(i + 1) / float(circleSegments);
+                const glm::vec3 pa = origin + radius *
+                    (forward * std::cos(a) + right * std::sin(a));
+                const glm::vec3 pb = origin + radius *
+                    (forward * std::cos(b) + right * std::sin(b));
+                DrawColliderLine(drawList, pa, pb, viewProjection,
+                    viewportMin, viewportSize, radiusColor, thickness);
+            }
+
+            const float halfFov = glm::radians(
+                glm::clamp(perception.FieldOfView, 0.0f, 360.0f) * 0.5f);
+            constexpr int arcSegments = 32;
+            glm::vec3 previous{};
+            for (int i = 0; i <= arcSegments; ++i)
+            {
+                const float t = float(i) / float(arcSegments);
+                const float angle = -halfFov + (2.0f * halfFov) * t;
+                const glm::vec3 point = origin + radius *
+                    (forward * std::cos(angle) + right * std::sin(angle));
+                if (i > 0)
+                    DrawColliderLine(drawList, previous, point, viewProjection,
+                        viewportMin, viewportSize, fovColor, thickness);
+                if (i == 0 || i == arcSegments)
+                    DrawColliderLine(drawList, origin, point, viewProjection,
+                        viewportMin, viewportSize, fovColor, thickness);
+                previous = point;
+            }
+        }
+
         void DrawSceneColliderGizmos(
             Scene& scene,
             Entity selectedEntity,
             const glm::mat4& view,
             const glm::mat4& projection,
             const ImVec2& viewportMin,
-            const ImVec2& viewportSize)
+            const ImVec2& viewportSize,
+            bool isPlaying)
         {
             if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f)
                 return;
@@ -642,6 +708,7 @@ namespace NoJob
 
             for (Entity entity : scene.GetEntities())
             {
+
                 const std::uint64_t entityID =
                     entity.GetComponent<IDComponent>().ID;
                 const bool selected =
@@ -657,7 +724,7 @@ namespace NoJob
 
                 const glm::mat4 world = scene.GetWorldTransform(entity);
 
-                if (entity.HasComponent<BoxColliderComponent>())
+                if (!isPlaying && entity.HasComponent<BoxColliderComponent>())
                 {
                     const auto& c =
                         entity.GetComponent<BoxColliderComponent>();
@@ -668,7 +735,7 @@ namespace NoJob
                         thickness);
                 }
 
-                if (entity.HasComponent<SphereColliderComponent>())
+                if (!isPlaying && entity.HasComponent<SphereColliderComponent>())
                 {
                     const auto& c =
                         entity.GetComponent<SphereColliderComponent>();
@@ -679,7 +746,7 @@ namespace NoJob
                         thickness);
                 }
 
-                if (entity.HasComponent<CapsuleColliderComponent>())
+                if (!isPlaying && entity.HasComponent<CapsuleColliderComponent>())
                 {
                     const auto& c =
                         entity.GetComponent<CapsuleColliderComponent>();
@@ -699,6 +766,80 @@ namespace NoJob
                     forward = glm::normalize(forward);
                 else
                     forward = { 0.0f, 0.0f, -1.0f };
+                if (entity.HasComponent<PerceptionComponent>())
+                {
+                    const auto& perception =
+                        entity.GetComponent<PerceptionComponent>();
+
+                    // Dibujamos el radio y el FOV como hasta ahora.
+                    DrawPerceptionWire(
+                        drawList, world, perception,
+                        viewProjection, viewportMin, viewportSize,
+                        selected ? IM_COL32(75, 205, 255, 255)
+                        : IM_COL32(65, 155, 205, 115),
+                        selected ? IM_COL32(255, 165, 65, 255)
+                        : IM_COL32(235, 140, 60, 170),
+                        thickness);
+
+                    // Mostramos los resultados reales del runtime
+                    // únicamente para el agente seleccionado.
+                    if (selected && perception.Enabled && perception.DebugDraw)
+                    {
+                        const auto targets =
+                            scene.GetPerceivedTargets(entity.GetHandle());
+
+                        for (const auto& target : targets)
+                        {
+                            // Los objetivos visibles se dibujan en su
+                            // posición actual; los recordados, en la última
+                            // posición que conocía el agente.
+                            glm::vec3 markerPosition =
+                                target.LastKnownPosition;
+
+                            if (target.IsVisible &&
+                                scene.IsValid(target.EntityHandle))
+                            {
+                                markerPosition = glm::vec3(
+                                    scene.GetWorldTransform(
+                                        Entity(target.EntityHandle, &scene))[3]);
+                            }
+
+                            bool onScreen = false;
+
+                            const ImVec2 screenPosition =
+                                ProjectColliderPoint(
+                                    markerPosition,
+                                    viewProjection,
+                                    viewportMin,
+                                    viewportSize,
+                                    onScreen);
+
+                            if (!onScreen)
+                                continue;
+
+                            const ImU32 markerColor = target.IsVisible
+                                ? IM_COL32(50, 230, 110, 255)
+                                : IM_COL32(255, 205, 65, 255);
+
+                            drawList->AddCircleFilled(
+                                screenPosition,
+                                7.0f,
+                                markerColor,
+                                16);
+
+                            drawList->AddCircle(
+                                screenPosition,
+                                10.0f,
+                                markerColor,
+                                16,
+                                2.0f);
+                        }
+                    }
+                }
+
+                // During Play only AI perception debug overlays are drawn.
+                if (isPlaying)
+                    continue;
 
                 const ImU32 cameraColor =
                     selected ? IM_COL32(100, 220, 255, 255)
@@ -1491,6 +1632,12 @@ namespace NoJob
                     dst.Materials = src.Materials;
                 }
 
+                if (source.HasComponent<PerceptionComponent>())
+                    copy.AddComponent<PerceptionComponent>(
+                        source.GetComponent<PerceptionComponent>());
+                if (source.HasComponent<NavAgentComponent>())
+                    copy.AddComponent<NavAgentComponent>(
+                        source.GetComponent<NavAgentComponent>());
                 if (source.HasComponent<NativeScriptComponent>())
                     copy.AddComponent<NativeScriptComponent>(
                         source.GetComponent<NativeScriptComponent>());
@@ -2182,11 +2329,9 @@ namespace NoJob
                 ImVec2(1.0f, 0.0f));
         }
 
-        // Unity-style collider wireframes. These are editor-only overlays
-        // and never become part of the game framebuffer.
-        // Scene gizmos belong to Edit Mode only. During Play the viewport
-        // must contain only the game camera render, like Unity's Game view.
-        if (m_Scene && !m_IsPlaying)
+        // Gizmos are editor overlays, never part of the game framebuffer.
+        // In Play, draw only AI perception debugging (when enabled).
+        if (m_Scene && m_SelectedEntity)
         {
             DrawSceneColliderGizmos(
                 *m_Scene,
@@ -2194,7 +2339,8 @@ namespace NoJob
                 m_EditorView,
                 m_EditorProjection,
                 viewportMin,
-                ImVec2(m_ViewportWidth, m_ViewportHeight));
+                ImVec2(m_ViewportWidth, m_ViewportHeight),
+                m_IsPlaying);
         }
 
         if (!m_IsPlaying &&

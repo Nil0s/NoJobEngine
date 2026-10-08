@@ -180,7 +180,8 @@ namespace NoJob
             PointLightComponent,
             SpotLightComponent,
             AnimatorComponent,
-            NavAgentComponent>;
+            NavAgentComponent,
+            PerceptionComponent>;
 
         ComponentClipboard
             m_ComponentClipboard;

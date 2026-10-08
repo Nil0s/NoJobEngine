@@ -18,6 +18,10 @@ namespace NoJob
             const glm::vec3& currentPosition,
             const glm::vec3& destination);
 
+        bool RecalculatePath(
+            const NavigationSystem& navigationSystem,
+            const glm::vec3& currentPosition);
+
         glm::vec3 Update(
             const glm::vec3& currentPosition,
             float deltaTime);

@@ -21,6 +21,16 @@ namespace NoJob
     class Scene
     {
     public:
+        struct PerceptionTargetInfo
+        {
+            std::uint32_t EntityHandle = 0;
+
+            glm::vec3 LastKnownPosition{ 0.0f };
+
+            float TimeSinceLastSeen = 0.0f;
+
+            bool IsVisible = false;
+        };
         Scene();
         Scene(const Scene& other);
         Scene& operator=(const Scene&) = delete;
@@ -38,7 +48,8 @@ namespace NoJob
         void OnRuntimeStart();
         void OnRuntimeStop();
         void OnUpdate(float deltaTime);
-
+        std::vector<PerceptionTargetInfo> GetPerceivedTargets(
+            std::uint32_t observerHandle) const;
         float GetDeltaTime() const
         {
             return m_DeltaTime;
@@ -110,6 +121,7 @@ namespace NoJob
             Entity entity,
             const glm::mat4& worldTransform);
 
+
     private:
 
         struct EntityData
@@ -118,6 +130,7 @@ namespace NoJob
             TagComponent Tag;
             TransformComponent Transform;
             RelationshipComponent Relationship;
+            LayerComponent Layer;
 
             std::optional<MeshComponent> Mesh;
             std::optional<AnimatorComponent> Animator;
@@ -127,8 +140,10 @@ namespace NoJob
 
             std::optional<RigidbodyComponent> Rigidbody;
 
-            // V1.8 Native Gameplay AI
+        
+           // V1.8 Native Gameplay AI
             std::optional<NavAgentComponent> NavAgent;
+            std::optional<PerceptionComponent> Perception;
 
             std::optional<BoxColliderComponent> BoxCollider;
             std::optional<SphereColliderComponent> SphereCollider;
@@ -167,6 +182,9 @@ namespace NoJob
             else if constexpr (std::is_same_v<T, RelationshipComponent>)
                 return data.Relationship;
 
+            else if constexpr (std::is_same_v<T, LayerComponent>)
+                return data.Layer;
+
             else if constexpr (std::is_same_v<T, MeshComponent>)
                 return data.Mesh.value();
 
@@ -187,6 +205,9 @@ namespace NoJob
 
             else if constexpr (std::is_same_v<T, NavAgentComponent>)
                 return data.NavAgent.value();
+
+            else if constexpr (std::is_same_v<T, PerceptionComponent>)
+                return data.Perception.value();
 
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.value();
@@ -262,6 +283,9 @@ namespace NoJob
             else if constexpr (std::is_same_v<T, NavAgentComponent>)
                 return data.NavAgent.value();
 
+            else if constexpr (std::is_same_v<T, PerceptionComponent>)
+                return data.Perception.value();
+
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.value();
 
@@ -321,6 +345,9 @@ namespace NoJob
             else if constexpr (std::is_same_v<T, RelationshipComponent>)
                 return data.Relationship;
 
+            else if constexpr (std::is_same_v<T, LayerComponent>)
+                return data.Layer;
+
             else if constexpr (std::is_same_v<T, MeshComponent>)
             {
                 data.Mesh.emplace(
@@ -376,7 +403,13 @@ namespace NoJob
 
                 return data.NavAgent.value();
             }
+            else if constexpr (std::is_same_v<T, PerceptionComponent>)
+            {
+                data.Perception.emplace(
+                    T{ std::forward<Args>(args)... });
 
+                return data.Perception.value();
+            }
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
             {
                 data.BoxCollider.emplace(
@@ -489,7 +522,11 @@ namespace NoJob
                 data.NavAgent.reset();
                 m_NavAgentStates.erase(handle);
             }
-
+            else if constexpr (std::is_same_v<T, PerceptionComponent>)
+            {
+                data.Perception.reset();
+                m_PerceptionStates.erase(handle);
+            }
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 data.BoxCollider.reset();
 
@@ -546,7 +583,8 @@ namespace NoJob
                 std::is_same_v<T, IDComponent> ||
                 std::is_same_v<T, TagComponent> ||
                 std::is_same_v<T, TransformComponent> ||
-                std::is_same_v<T, RelationshipComponent>)
+                std::is_same_v<T, RelationshipComponent> ||
+                std::is_same_v<T, LayerComponent>)
             {
                 return true;
             }
@@ -571,6 +609,9 @@ namespace NoJob
 
             else if constexpr (std::is_same_v<T, NavAgentComponent>)
                 return data.NavAgent.has_value();
+
+            else if constexpr (std::is_same_v<T, PerceptionComponent>)
+                return data.Perception.has_value();
 
             else if constexpr (std::is_same_v<T, BoxColliderComponent>)
                 return data.BoxCollider.has_value();
@@ -652,8 +693,11 @@ namespace NoJob
             NavAgent Agent;
 
             glm::vec3 RequestedDestination{ 0.0f };
-
             bool HasRequestedDestination = false;
+
+            std::uint64_t PathNavMeshVersion = 0;
+            float RepathTimer = 0.0f;
+            bool PathQueryFailed = false;
         };
 
         std::unordered_map<
@@ -661,6 +705,30 @@ namespace NoJob
             NavAgentRuntimeState>
             m_NavAgentStates;
 
+        // AI Perception runtime state
+        struct PerceptionTargetState
+        {
+            std::uint32_t EntityHandle = 0;
+
+            glm::vec3 LastKnownPosition{ 0.0f };
+
+            float TimeSinceLastSeen = 0.0f;
+
+            bool IsVisible = false;
+        };
+
+        struct PerceptionRuntimeState
+        {
+            float UpdateTimer = 0.0f;
+
+            std::unordered_map<
+                std::uint32_t,
+                PerceptionTargetState> Targets;
+        };
+
+        std::unordered_map<
+            std::uint32_t,
+            PerceptionRuntimeState> m_PerceptionStates;
         // ---------------------------------------------------------
         // Native scripting runtime state
         // ---------------------------------------------------------
@@ -676,8 +744,11 @@ namespace NoJob
         void DestroyScriptInstance(
             std::uint32_t handle);
 
+        void UpdatePerception(float deltaTime);
+
         friend class Entity;
-    };
+
+        };
 
     inline Entity::operator bool() const
     {

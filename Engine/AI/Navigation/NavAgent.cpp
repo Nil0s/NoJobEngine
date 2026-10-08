@@ -12,32 +12,51 @@ namespace NoJob
         const glm::vec3& currentPosition,
         const glm::vec3& destination)
     {
-        Stop();
-
-        NavPointPath pointPath =
+        NavPointPath newPath =
             navigationSystem.CalculatePath(
                 currentPosition,
                 destination);
 
-        if (!pointPath.IsValid())
+        if (!newPath.IsValid())
+        {
+            Stop();
             return false;
+        }
 
-        m_Path =
-            std::move(pointPath);
+        m_Path = std::move(newPath);
+        m_Destination = destination;
 
-        m_Destination =
-            destination;
-
-        if (m_Path.Points.size() > 1)
-            m_CurrentWaypoint = 1;
-        else
-            m_CurrentWaypoint = 0;
+        m_CurrentWaypoint =
+            m_Path.Points.size() > 1 ? 1 : 0;
 
         m_ReachedDestination = false;
 
         return true;
     }
 
+    bool NavAgent::RecalculatePath(
+        const NavigationSystem& navigationSystem,
+        const glm::vec3& currentPosition)
+    {
+        if (m_ReachedDestination || !HasPath())
+            return false;
+
+        NavPointPath newPath =
+            navigationSystem.CalculatePath(
+                currentPosition,
+                m_Destination);
+
+        if (!newPath.IsValid())
+            return false;
+
+        // Commit only after successful path calculation.
+        m_Path = std::move(newPath);
+
+        m_CurrentWaypoint =
+            m_Path.Points.size() > 1 ? 1 : 0;
+
+        return true;
+    }
     glm::vec3 NavAgent::Update(
         const glm::vec3& currentPosition,
         float deltaTime)
