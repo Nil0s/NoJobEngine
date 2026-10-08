@@ -466,12 +466,28 @@ namespace NoJob
             info.EntityHandle = target.EntityHandle;
             info.LastKnownPosition = target.LastKnownPosition;
             info.TimeSinceLastSeen = target.TimeSinceLastSeen;
+            info.VisibleDuration = target.VisibleDuration;
+            info.TrackedDuration = target.TrackedDuration;
             info.IsVisible = target.IsVisible;
 
             results.push_back(info);
         }
 
         return results;
+    }
+
+    std::optional<Scene::LastSeenTargetInfo> Scene::GetLastSeenTarget(std::uint32_t observerHandle) const
+    {
+        const auto it = m_PerceptionStates.find(observerHandle);
+        if (it == m_PerceptionStates.end() || !it->second.LastSeenHandle ||
+            !IsValid(it->second.LastSeenHandle))
+            return std::nullopt;
+        const auto& state = it->second;
+        bool visible = false;
+        if (auto target = state.Targets.find(state.LastSeenHandle); target != state.Targets.end())
+            visible = target->second.IsVisible;
+        return LastSeenTargetInfo{ state.LastSeenHandle, state.LastSeenPosition,
+                                   state.LastSeenElapsed, visible };
     }
 
     void Scene::UpdatePerception(float deltaTime)
@@ -496,10 +512,15 @@ namespace NoJob
 
             auto& state = m_PerceptionStates[handle];
 
+            if (state.LastSeenHandle)
+                state.LastSeenElapsed += dt;
+
             for (auto it = state.Targets.begin();
                 it != state.Targets.end();)
             {
                 auto& target = it->second;
+                target.TrackedDuration += dt;
+                if (target.IsVisible) target.VisibleDuration += dt;
 
                 if (!IsValid(target.EntityHandle))
                 {
@@ -649,6 +670,9 @@ namespace NoJob
 
                 targetState.EntityHandle = targetHandle;
                 targetState.LastKnownPosition = targetPosition;
+                state.LastSeenHandle = targetHandle;
+                state.LastSeenPosition = targetPosition;
+                state.LastSeenElapsed = 0.0f;
                 targetState.TimeSinceLastSeen = 0.0f;
                 targetState.IsVisible = true;
        

@@ -637,7 +637,8 @@ namespace NoJob
             if (radius <= 0.0001f)
                 return;
 
-            const glm::vec3 origin = ColliderTransformPoint(world, { 0, 0, 0 });
+            const glm::vec3 origin = glm::vec3(world[3]) +
+                glm::vec3(0.0f, std::max(0.0f, perception.EyeHeight), 0.0f);
             glm::vec3 forward = glm::vec3(world * glm::vec4(0, 0, -1, 0));
             forward.y = 0.0f;
             if (glm::length(forward) < 0.0001f)
@@ -689,7 +690,10 @@ namespace NoJob
             const glm::mat4& projection,
             const ImVec2& viewportMin,
             const ImVec2& viewportSize,
-            bool isPlaying)
+            bool isPlaying,
+            bool showAIDebugger,
+            bool showLastSeenMarker,
+            std::uint32_t debugAgent)
         {
             if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f)
                 return;
@@ -804,6 +808,17 @@ namespace NoJob
                                         Entity(target.EntityHandle, &scene))[3]);
                             }
 
+                            // Actual LOS endpoint, using the same eye offset as runtime.
+                            const glm::vec3 eye = glm::vec3(world[3]) +
+                                glm::vec3(0.0f, std::max(0.0f, perception.EyeHeight), 0.0f);
+                            const glm::vec3 aim = markerPosition +
+                                glm::vec3(0.0f, std::max(0.0f, perception.EyeHeight), 0.0f);
+                            const ImU32 rayColor = target.IsVisible
+                                ? IM_COL32(50, 230, 110, 255)
+                                : IM_COL32(255, 205, 65, 210);
+                            DrawColliderLine(drawList, eye, aim, viewProjection,
+                                viewportMin, viewportSize, rayColor, 2.0f);
+
                             bool onScreen = false;
 
                             const ImVec2 screenPosition =
@@ -834,6 +849,37 @@ namespace NoJob
                                 16,
                                 2.0f);
                         }
+                    }
+                }
+
+                // Optional last-seen marker: driven exclusively by the AI Debugger.
+                if (isPlaying && showAIDebugger && showLastSeenMarker &&
+                    entity.GetHandle() == debugAgent)
+                {
+                    const auto lastSeen = scene.GetLastSeenTarget(entity.GetHandle());
+                    if (lastSeen)
+                    {
+                        const glm::vec3 p = lastSeen->Position;
+                        const ImU32 yellow = IM_COL32(255, 205, 65, 255);
+                        constexpr float radius = 0.35f;
+                        constexpr int segments = 24;
+                        for (int i = 0; i < segments; ++i)
+                        {
+                            const float a = glm::two_pi<float>() * float(i) / float(segments);
+                            const float b = glm::two_pi<float>() * float(i + 1) / float(segments);
+                            DrawColliderLine(drawList,
+                                p + glm::vec3(std::cos(a) * radius, 0.05f, std::sin(a) * radius),
+                                p + glm::vec3(std::cos(b) * radius, 0.05f, std::sin(b) * radius),
+                                viewProjection, viewportMin, viewportSize, yellow, 2.5f);
+                        }
+                        DrawColliderLine(drawList, p + glm::vec3(0, 0.05f, 0),
+                            p + glm::vec3(0, 1.2f, 0), viewProjection,
+                            viewportMin, viewportSize, yellow, 2.5f);
+                        bool onScreen = false;
+                        const ImVec2 projected = ProjectColliderPoint(p + glm::vec3(0, 1.35f, 0),
+                            viewProjection, viewportMin, viewportSize, onScreen);
+                        if (onScreen)
+                            drawList->AddText(projected, yellow, "LAST SEEN");
                     }
                 }
 
@@ -1264,6 +1310,7 @@ namespace NoJob
         if (m_ShowGraphicsSettings)
             DrawGraphicsSettings();
         DrawRendererProfiler();
+        DrawAIDebugger();
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
             DeleteSelectedEntity();
@@ -1905,6 +1952,8 @@ namespace NoJob
             }
             if (ImGui::BeginMenu("AI"))
             {
+                ImGui::MenuItem("AI Debugger", nullptr, &m_ShowAIDebugger);
+                ImGui::Separator();
                 if (ImGui::BeginMenu("Navigation"))
                 {
                     if (ImGui::MenuItem(
@@ -1944,6 +1993,7 @@ namespace NoJob
                 ImGui::MenuItem("Console");
                 ImGui::MenuItem("Graphics Settings", nullptr, &m_ShowGraphicsSettings);
                 ImGui::MenuItem("Renderer Profiler", nullptr, &m_ShowRendererProfiler);
+                ImGui::MenuItem("AI Debugger", nullptr, &m_ShowAIDebugger);
                 ImGui::EndMenu();
             }
 
@@ -1955,6 +2005,7 @@ namespace NoJob
     {
         m_Scene = scene;
         m_SelectedEntity = {};
+        m_AIDebugAgent = 0;
     }
 
     bool EditorLayer::ConsumePlayRequest()
@@ -2340,7 +2391,10 @@ namespace NoJob
                 m_EditorProjection,
                 viewportMin,
                 ImVec2(m_ViewportWidth, m_ViewportHeight),
-                m_IsPlaying);
+                m_IsPlaying,
+                m_ShowAIDebugger,
+                m_AIDebugShowLastSeenMarker,
+                m_AIDebugAgent);
         }
 
         if (!m_IsPlaying &&
@@ -2634,6 +2688,117 @@ namespace NoJob
 
         ImGui::Separator();
         ImGui::TextWrapped("ACES filmic tone mapping and final gamma conversion are applied once at the end of the HDR pipeline.");
+        ImGui::End();
+    }
+
+    void EditorLayer::DrawAIDebugger()
+    {
+        if (!m_ShowAIDebugger) return;
+        if (!ImGui::Begin("AI Debugger", &m_ShowAIDebugger)) { ImGui::End(); return; }
+        if (!m_Scene) { ImGui::TextDisabled("No scene loaded."); ImGui::End(); return; }
+
+        ImGui::TextColored(m_IsPlaying ? ImVec4(0.3f, 0.9f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
+            "%s", m_IsPlaying ? (m_IsPaused ? "PAUSED" : "LIVE - PLAY MODE") : "EDIT MODE - runtime data unavailable");
+        ImGui::SameLine();
+        ImGui::Checkbox("Active only", &m_AIDebugOnlyActive);
+        ImGui::Separator();
+        auto entities = m_Scene->GetEntities();
+        std::vector<Entity> agents;
+        int visibleTotal = 0, rememberedTotal = 0;
+        for (auto entity : entities)
+        {
+            if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>()) continue;
+            if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
+            agents.push_back(entity);
+            if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
+                for (const auto& target : m_Scene->GetPerceivedTargets(entity.GetHandle()))
+                    target.IsVisible ? ++visibleTotal : ++rememberedTotal;
+        }
+        ImGui::Text("Agents: %d    Visible: %d    Remembered: %d", (int)agents.size(), visibleTotal, rememberedTotal);
+        ImGui::Separator();
+        if (ImGui::BeginChild("##AI_Agents", ImVec2(190, 0), true))
+        {
+            for (auto agent : agents)
+            {
+                const auto& name = agent.GetComponent<TagComponent>().Tag;
+                const std::string label = name + "##AI" + std::to_string(agent.GetHandle());
+                if (ImGui::Selectable(label.c_str(), m_AIDebugAgent == agent.GetHandle()))
+                    m_AIDebugAgent = agent.GetHandle();
+            }
+        }
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        if (!m_Scene->IsValid(m_AIDebugAgent) ||
+            std::none_of(agents.begin(), agents.end(), [&](Entity e) { return e.GetHandle() == m_AIDebugAgent; }))
+            m_AIDebugAgent = agents.empty() ? 0 : agents.front().GetHandle();
+        if (m_AIDebugAgent)
+        {
+            Entity agent(m_AIDebugAgent, m_Scene);
+            ImGui::Text("Agent: %s", agent.GetComponent<TagComponent>().Tag.c_str());
+            if (ImGui::Button("Select in Hierarchy")) SetSelectedEntity(agent);
+            if (agent.HasComponent<PerceptionComponent>())
+            {
+                const auto& perception = agent.GetComponent<PerceptionComponent>();
+                ImGui::SeparatorText("Perception");
+                ImGui::Text("Enabled: %s | Debug: %s", perception.Enabled ? "Yes" : "No", perception.DebugDraw ? "On" : "Off");
+                ImGui::Text("Radius: %.2f m | FOV: %.1f deg", perception.DetectionRadius, perception.FieldOfView);
+                ImGui::Text("Eye: %.2f m | Interval: %.2f s", perception.EyeHeight, perception.UpdateInterval);
+                ImGui::Text("Memory: %.2f s | Layer mask: 0x%08X", perception.MemoryDuration, (unsigned)perception.DetectionMask);
+                ImGui::SeparatorText("Last Seen Target");
+                ImGui::Checkbox("Show Last Seen Position in Scene", &m_AIDebugShowLastSeenMarker);
+                if (!m_IsPlaying)
+                    ImGui::TextDisabled("Available during Play.");
+                else if (const auto lastSeen = m_Scene->GetLastSeenTarget(m_AIDebugAgent))
+                {
+                    const std::string name = m_Scene->IsValid(lastSeen->EntityHandle)
+                        ? Entity(lastSeen->EntityHandle, m_Scene).GetComponent<TagComponent>().Tag
+                        : "Unknown";
+                    ImGui::Text("Last target: %s (%u)", name.c_str(), lastSeen->EntityHandle);
+                    ImGui::TextColored(lastSeen->IsVisible ? ImVec4(0.3f, 0.9f, 0.4f, 1) : ImVec4(1, 0.8f, 0.3f, 1),
+                        "%s", lastSeen->IsVisible ? "VISIBLE" : "LOST SIGHT");
+                    ImGui::Text("Last detected: %.2f s ago", lastSeen->TimeSinceLastSeen);
+                    ImGui::Text("Last known position: X %.2f  Y %.2f  Z %.2f",
+                        lastSeen->Position.x, lastSeen->Position.y, lastSeen->Position.z);
+                }
+                else
+                    ImGui::TextDisabled("No target seen yet.");
+                ImGui::SeparatorText("Tracked targets");
+                const auto targets = m_IsPlaying ? m_Scene->GetPerceivedTargets(m_AIDebugAgent) : std::vector<Scene::PerceptionTargetInfo>{};
+                if (targets.empty()) ImGui::TextDisabled("No tracked targets.");
+                for (const auto& target : targets)
+                {
+                    const std::string name = m_Scene->IsValid(target.EntityHandle)
+                        ? Entity(target.EntityHandle, m_Scene).GetComponent<TagComponent>().Tag : "Unknown";
+                    ImGui::PushID((int)target.EntityHandle);
+                    if (ImGui::TreeNodeEx("Target", ImGuiTreeNodeFlags_DefaultOpen, "%s (%u)", name.c_str(), target.EntityHandle))
+                    {
+                        ImGui::TextColored(target.IsVisible ? ImVec4(0.3f, 0.9f, 0.4f, 1) : ImVec4(1, 0.8f, 0.3f, 1),
+                            "%s", target.IsVisible ? "VISIBLE" : "REMEMBERED");
+                        ImGui::Text("Visible for: %.2f s", target.VisibleDuration);
+                        ImGui::Text("Tracked for: %.2f s", target.TrackedDuration);
+                        ImGui::Text("Last seen: %.2f s ago", target.TimeSinceLastSeen);
+                        ImGui::Text("Last position: %.2f, %.2f, %.2f", target.LastKnownPosition.x, target.LastKnownPosition.y, target.LastKnownPosition.z);
+                        const float remaining = target.IsVisible ? 1.0f :
+                            (perception.MemoryDuration > 0 ? std::clamp(1.0f - target.TimeSinceLastSeen / perception.MemoryDuration, 0.0f, 1.0f) : 0.0f);
+                        ImGui::ProgressBar(remaining, ImVec2(-1, 0), "Memory remaining");
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+            }
+            if (agent.HasComponent<NavAgentComponent>())
+            {
+                const auto& nav = agent.GetComponent<NavAgentComponent>();
+                ImGui::SeparatorText("Navigation");
+                ImGui::Text("Enabled: %s | Speed: %.2f", nav.Enabled ? "Yes" : "No", nav.Speed);
+                ImGui::Text("Destination: %s", nav.HasDestination ? "Set" : "None");
+                if (nav.HasDestination) ImGui::Text("(%.2f, %.2f, %.2f)", nav.Destination.x, nav.Destination.y, nav.Destination.z);
+                ImGui::Text("Stopping distance: %.2f", nav.StoppingDistance);
+            }
+        }
+        else ImGui::TextDisabled("No AI agents in this scene.");
+        ImGui::EndGroup();
         ImGui::End();
     }
 

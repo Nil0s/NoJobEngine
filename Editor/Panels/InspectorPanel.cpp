@@ -432,6 +432,29 @@ namespace NoJob
                         std::clamp(perception.EyeHeight, 0.0f, 100.0f);
                     perception.MemoryDuration = std::max(0.0f, perception.MemoryDuration);
                     perception.UpdateInterval = std::clamp(perception.UpdateInterval, 0.01f, 60.0f);
+                    ImGui::SeparatorText("Runtime Perception");
+                    if (m_IsPlaying && perception.Enabled)
+                    {
+                        const auto targets = m_Scene->GetPerceivedTargets(m_SelectedEntity.GetHandle());
+                        int visibleCount = 0;
+                        for (const auto& target : targets)
+                            if (target.IsVisible) ++visibleCount;
+                        ImGui::Text("Visible: %d | Remembered: %d", visibleCount,
+                            static_cast<int>(targets.size()) - visibleCount);
+                        for (const auto& target : targets)
+                        {
+                            ImGui::PushID(static_cast<int>(target.EntityHandle));
+                            ImGui::TextColored(target.IsVisible
+                                ? ImVec4(0.25f, 0.9f, 0.4f, 1.0f)
+                                : ImVec4(1.0f, 0.8f, 0.25f, 1.0f),
+                                "%s | Entity %u | Last seen %.2fs ago",
+                                target.IsVisible ? "VISIBLE" : "MEMORY",
+                                target.EntityHandle, target.TimeSinceLastSeen);
+                            ImGui::PopID();
+                        }
+                    }
+                    else
+                        ImGui::TextDisabled("Available in Play Mode");
                     if (ImGui::Button("Remove Perception"))
                     {
                         CaptureUndoSnapshot();

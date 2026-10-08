@@ -118,6 +118,7 @@ namespace NoJob
         void DrawProjectPanel();
         void DrawGraphicsSettings();
         void DrawRendererProfiler();
+        void DrawAIDebugger();
         void DrawComponentTools();
 
         std::string OpenInspectorAudioFileDialog();
@@ -247,6 +248,10 @@ namespace NoJob
 
         bool m_ShowGraphicsSettings = true;
         bool m_ShowRendererProfiler = true;
+        bool m_ShowAIDebugger = true;
+        std::uint32_t m_AIDebugAgent = 0;
+        bool m_AIDebugOnlyActive = false;
+        bool m_AIDebugShowLastSeenMarker = false;
 
         FramebufferSpecification
             m_GraphicsSettings{};

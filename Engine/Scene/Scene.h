@@ -30,9 +30,20 @@ namespace NoJob
             glm::vec3 LastKnownPosition{ 0.0f };
 
             float TimeSinceLastSeen = 0.0f;
+            float VisibleDuration = 0.0f;
+            float TrackedDuration = 0.0f;
 
             bool IsVisible = false;
         };
+        struct LastSeenTargetInfo
+        {
+            std::uint32_t EntityHandle = 0;
+            glm::vec3 Position{ 0.0f };
+            float TimeSinceLastSeen = 0.0f;
+            bool IsVisible = false;
+        };
+        std::optional<LastSeenTargetInfo> GetLastSeenTarget(std::uint32_t observerHandle) const;
+
         Scene();
         Scene(const Scene& other);
         Scene& operator=(const Scene&) = delete;
@@ -729,12 +740,17 @@ namespace NoJob
             glm::vec3 LastKnownPosition{ 0.0f };
 
             float TimeSinceLastSeen = 0.0f;
+            float VisibleDuration = 0.0f;
+            float TrackedDuration = 0.0f;
 
             bool IsVisible = false;
         };
 
         struct PerceptionRuntimeState
         {
+            std::uint32_t LastSeenHandle = 0;
+            glm::vec3 LastSeenPosition{ 0.0f };
+            float LastSeenElapsed = 0.0f;
             float UpdateTimer = 0.0f;
 
             std::unordered_map<
