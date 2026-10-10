@@ -34,6 +34,7 @@ namespace NoJob
         explicit operator bool() const;
 
         std::uint32_t GetHandle() const { return m_Handle; }
+        Scene* GetScene() const { return m_Scene; }
 
         bool operator==(const Entity& other) const
         {
