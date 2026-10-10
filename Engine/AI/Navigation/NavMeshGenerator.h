@@ -12,6 +12,7 @@ namespace NoJob
     struct NavMeshGenerationSettings
     {
         float MaxSlopeAngle = 45.0f;
+        bool MergePolygons = true;
 
         // Maximum world-space distance at which two source vertices
         // are considered the same navigation vertex.

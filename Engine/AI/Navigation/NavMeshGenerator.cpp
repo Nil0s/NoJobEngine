@@ -49,7 +49,7 @@ namespace NoJob
                 // separate meshes and adjacent scene entities.
                 //
                 for (NavVertexID candidateID = 0;
-                    candidateID < navMesh.GetVertexCount();
+                    weldTolerance > 0.0f && candidateID < navMesh.GetVertexCount();
                     ++candidateID)
                 {
                     const NavVertex* candidate =
@@ -168,7 +168,7 @@ namespace NoJob
 
         navMesh.BuildAdjacency();
 
-        MergeConvexPolygons(
+        if (settings.MergePolygons) MergeConvexPolygons(
             navMesh,
             std::max(
                 settings.MergePlanarityTolerance,

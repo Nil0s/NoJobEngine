@@ -87,8 +87,15 @@ namespace NoJob
                 m_CurrentWaypoint + 1 >=
                 m_Path.Points.size();
 
-            if (distance <=
-                m_StoppingDistance)
+            // Intermediate waypoints must be reached accurately.
+            // Using the final stopping distance here makes agents
+            // cut corners and potentially collide with walls.
+            constexpr float WaypointTolerance = 0.10f;
+            const float tolerance = isLastWaypoint
+                ? std::max(m_StoppingDistance, 0.0f)
+                : WaypointTolerance;
+
+            if (distance <= tolerance)
             {
                 if (isLastWaypoint)
                 {
@@ -110,7 +117,7 @@ namespace NoJob
                 distance;
 
             const float maxMovement =
-                m_Speed *
+                std::max(m_Speed, 0.0f) *
                 deltaTime;
 
             const float movementDistance =

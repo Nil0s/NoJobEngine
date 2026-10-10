@@ -1,6 +1,7 @@
 #include "Engine/AI/Navigation/NavMesh.h"
 
 #include <unordered_set>
+#include <unordered_map>
 
 namespace NoJob
 {
@@ -96,40 +97,28 @@ namespace NoJob
 
     void NavMesh::BuildAdjacency()
     {
-        for (NavPolygon& polygon : m_Polygons)
+        // O(E) edge lookup instead of comparing every polygon pair.
+        std::unordered_map<std::uint64_t, std::pair<NavPolygonID, size_t>> edges;
+        for (NavPolygonID id = 0; id < m_Polygons.size(); ++id)
         {
-            for (NavEdge& edge : polygon.Edges)
+            auto& polygon = m_Polygons[id];
+            for (size_t i = 0; i < polygon.Edges.size(); ++i)
             {
+                auto& edge = polygon.Edges[i];
                 edge.NeighborPolygon = InvalidNavPolygonID;
-            }
-        }
-
-        for (size_t polygonIndexA = 0;
-            polygonIndexA < m_Polygons.size();
-            ++polygonIndexA)
-        {
-            NavPolygon& polygonA = m_Polygons[polygonIndexA];
-
-            for (size_t polygonIndexB = polygonIndexA + 1;
-                polygonIndexB < m_Polygons.size();
-                ++polygonIndexB)
-            {
-                NavPolygon& polygonB = m_Polygons[polygonIndexB];
-
-                for (NavEdge& edgeA : polygonA.Edges)
+                const std::uint64_t reverse =
+                    (std::uint64_t(edge.EndVertex) << 32) | edge.StartVertex;
+                auto it = edges.find(reverse);
+                if (it != edges.end())
                 {
-                    for (NavEdge& edgeB : polygonB.Edges)
-                    {
-                        if (edgeA.StartVertex == edgeB.EndVertex &&
-                            edgeA.EndVertex == edgeB.StartVertex)
-                        {
-                            edgeA.NeighborPolygon =
-                                static_cast<NavPolygonID>(polygonIndexB);
-
-                            edgeB.NeighborPolygon =
-                                static_cast<NavPolygonID>(polygonIndexA);
-                        }
-                    }
+                    edge.NeighborPolygon = it->second.first;
+                    m_Polygons[it->second.first].Edges[it->second.second].NeighborPolygon = id;
+                }
+                else
+                {
+                    const std::uint64_t key =
+                        (std::uint64_t(edge.StartVertex) << 32) | edge.EndVertex;
+                    edges.emplace(key, std::make_pair(id, i));
                 }
             }
         }

@@ -14,6 +14,7 @@
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
@@ -785,6 +786,8 @@ namespace NoJob
                     state.HasRequestedDestination = false;
                     state.PathQueryFailed = false;
                     state.RepathTimer = 0.0f;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = false;
                     continue;
                 }
 
@@ -795,6 +798,43 @@ namespace NoJob
 
                 const glm::vec3 currentPosition(
                     worldTransform[3]);
+
+                // Check actual world-space progress, not the requested
+                // movement vector (physics can prevent the movement).
+                if (!state.ProgressInitialized)
+                {
+                    state.LastProgressPosition = currentPosition;
+                    state.ProgressInitialized = true;
+                    state.StuckTimer = 0.0f;
+                }
+                else
+                {
+                    glm::vec3 progress = currentPosition - state.LastProgressPosition;
+                    progress.y = 0.0f;
+                    if (glm::dot(progress, progress) >= 0.15f * 0.15f)
+                    {
+                        state.LastProgressPosition = currentPosition;
+                        state.StuckTimer = 0.0f;
+                    }
+                    else
+                    {
+                        state.StuckTimer += std::max(deltaTime, 0.0f);
+                    }
+                }
+
+                // Release an unreachable destination. AI scripts can then
+                // select a new patrol/flee destination instead of pushing
+                // against the same corner indefinitely.
+                if (state.StuckTimer >= 2.5f && component.Speed > 0.01f)
+                {
+                    state.Agent.Stop();
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
+                    state.PathQueryFailed = false;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = false;
+                    continue;
+                }
 
                 const bool destinationChanged =
                     !state.HasRequestedDestination ||
@@ -831,6 +871,9 @@ namespace NoJob
                     state.PathNavMeshVersion = navMeshVersion;
                     state.PathQueryFailed = !found;
                     state.RepathTimer = 0.0f;
+                    state.LastProgressPosition = currentPosition;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = true;
 
                     if (!found)
                         continue;
@@ -894,16 +937,55 @@ namespace NoJob
                         currentPosition,
                         deltaTime);
 
-                if (glm::dot(movement, movement) > 0.0f)
+                if (glm::dot(movement, movement) > 0.0000001f)
                 {
                     glm::mat4 movedWorld = worldTransform;
 
-                    movedWorld[3] +=
-                        glm::vec4(movement, 0.0f);
+                    glm::vec3 moveDirection = movement;
+                    moveDirection.y = 0.0f;
 
-                    SetWorldTransform(
-                        entity,
-                        movedWorld);
+                    const float moveLength = glm::length(moveDirection);
+                    if (moveLength > 0.0001f)
+                    {
+                        moveDirection /= moveLength;
+
+                        // Perception considers -Z the forward axis.
+                        glm::vec3 forward = -glm::vec3(worldTransform[2]);
+                        forward.y = 0.0f;
+
+                        const float forwardLength = glm::length(forward);
+                        if (forwardLength > 0.0001f)
+                        {
+                            forward /= forwardLength;
+
+                            const float dotValue = glm::clamp(
+                                glm::dot(forward, moveDirection),
+                                -1.0f, 1.0f);
+
+                            const float crossY =
+                                glm::cross(forward, moveDirection).y;
+
+                            const float angle = std::atan2(crossY, dotValue);
+                            const float maxRotation =
+                                glm::radians(360.0f) * std::max(deltaTime, 0.0f);
+
+                            const float rotationStep = glm::clamp(
+                                angle, -maxRotation, maxRotation);
+
+                            const glm::mat4 rotationDelta = glm::rotate(
+                                glm::mat4(1.0f),
+                                rotationStep,
+                                glm::vec3(0.0f, 1.0f, 0.0f));
+
+                            movedWorld = rotationDelta * worldTransform;
+                        }
+                    }
+
+                    // Rotate around the agent, not around the world origin.
+                    movedWorld[3] =
+                        worldTransform[3] + glm::vec4(movement, 0.0f);
+
+                    SetWorldTransform(entity, movedWorld);
                 }
 
                 if (state.Agent.HasReachedDestination())

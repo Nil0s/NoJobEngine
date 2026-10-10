@@ -1,6 +1,7 @@
 #include "Engine/AI/Navigation/NavigationSystem.h"
 
 #include "Engine/AI/Navigation/NavMeshGeometryExtractor.h"
+#include "Engine/AI/Navigation/NavMeshVoxelizer.h"
 #include "Engine/AI/Navigation/NavMeshPathfinder.h"
 #include "Engine/Scene/Scene.h"
 
@@ -17,8 +18,9 @@ namespace NoJob
 
     bool NavigationSystem::Bake(Scene& scene)
     {
-        NavMeshSourceGeometry geometry =
-            NavMeshGeometryExtractor::Extract(scene);
+        NavMeshSourceGeometry geometry = NavMeshVoxelizer::Rasterize(
+            scene, NavMeshGeometryExtractor::Extract(scene),
+            0.35f, 0.75f, 1.8f, m_GenerationSettings.MaxSlopeAngle);
 
         if (geometry.Vertices.empty() ||
             geometry.Indices.size() < 3)
@@ -27,10 +29,10 @@ namespace NoJob
             return false;
         }
 
-        NavMesh generatedNavMesh =
-            NavMeshGenerator::Generate(
-                geometry,
-                m_GenerationSettings);
+        NavMeshGenerationSettings voxelSettings = m_GenerationSettings;
+        voxelSettings.MergePolygons = false;
+        voxelSettings.VertexWeldTolerance = 0.0f;
+        NavMesh generatedNavMesh = NavMeshGenerator::Generate(geometry, voxelSettings);
 
         if (generatedNavMesh.GetPolygonCount() == 0)
         {

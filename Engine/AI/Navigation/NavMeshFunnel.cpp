@@ -1,5 +1,6 @@
 #include "Engine/AI/Navigation/NavMeshFunnel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -236,6 +237,21 @@ namespace NoJob
             {
                 portals.clear();
                 return false;
+            }
+
+            // Keep waypoints away from the exact portal vertices.
+            // This reduces corner grazing on voxelized NavMeshes.
+            // Never invert a narrow portal.
+            glm::vec3 portalWidth = portal.Right - portal.Left;
+            portalWidth.y = 0.0f;
+            const float width = glm::length(portalWidth);
+            if (width > 0.0001f)
+            {
+                constexpr float desiredInset = 0.12f;
+                const float inset = std::min(desiredInset, width * 0.20f);
+                const glm::vec3 along = (portal.Right - portal.Left) / width;
+                portal.Left += along * inset;
+                portal.Right -= along * inset;
             }
 
             portals.push_back(

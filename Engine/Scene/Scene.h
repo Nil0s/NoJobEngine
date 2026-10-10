@@ -725,6 +725,11 @@ namespace NoJob
             std::uint64_t PathNavMeshVersion = 0;
             float RepathTimer = 0.0f;
             bool PathQueryFailed = false;
+
+            // Detect agents that cannot make progress along their path.
+            glm::vec3 LastProgressPosition{ 0.0f };
+            float StuckTimer = 0.0f;
+            bool ProgressInitialized = false;
         };
 
         std::unordered_map<
