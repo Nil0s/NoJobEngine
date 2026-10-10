@@ -19,6 +19,7 @@ public:
     void OnDestroy() override;
 private:
     enum class State { Patrol, Chase, Search };
+    void SetState(State state);
     State m_State = State::Patrol;
     std::mt19937 m_Rng{std::random_device{}()};
     float m_Timer = 0.0f;

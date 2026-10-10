@@ -12,8 +12,16 @@ float DistanceXZ(const glm::vec3& a, const glm::vec3& b) {
     return glm::length(glm::vec2(a.x-b.x, a.z-b.z));
 }
 }
+void PlayerAI::SetState(State state) {
+    if (m_State == state && !GetAIDebugState().empty()) return;
+    m_State = state;
+    switch (state) {
+        case State::Wander: SetAIDebugState("WANDER"); break;
+        case State::Flee: SetAIDebugState("FLEE"); break;
+    }
+}
 void PlayerAI::OnCreate() {
-    m_State = State::Wander;
+    SetState(State::Wander);
     m_WaitTimer = 0.0f;
     m_RepathTimer = 0.0f;
     ChooseWanderDestination();
@@ -91,6 +99,7 @@ void PlayerAI::UpdateFlee(float dt, const glm::vec3& threat) {
     // Keep the previous valid destination if no new escape is found.
 }
 void PlayerAI::OnUpdate(float dt) {
+    TickAIDebug(dt);
     if (!HasComponent<NavAgentComponent>()) return;
     Scene* scene = GetEntity().GetScene();
     if (!scene) return;
@@ -107,7 +116,7 @@ void PlayerAI::OnUpdate(float dt) {
     }
     if (threatVisible) {
         if (m_State != State::Flee) {
-            m_State = State::Flee;
+            SetState(State::Flee);
             m_RepathTimer = 0.0f;
             m_WaitTimer = 0.0f;
             agent.HasDestination = false;
@@ -116,7 +125,7 @@ void PlayerAI::OnUpdate(float dt) {
         return;
     }
     if (m_State == State::Flee) {
-        m_State = State::Wander;
+        SetState(State::Wander);
         m_WaitTimer = 0.0f;
         agent.HasDestination = false;
         agent.Speed = WanderSpeed;

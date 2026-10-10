@@ -43,6 +43,17 @@ namespace NoJob
             bool IsVisible = false;
         };
         std::optional<LastSeenTargetInfo> GetLastSeenTarget(std::uint32_t observerHandle) const;
+        struct AIDebugStateInfo
+        {
+            std::string Current;
+            std::string Previous;
+            float TimeInState = 0.0f;
+            float RuntimeSeconds = 0.0f;
+            struct Transition { std::string From; std::string To; float AtSeconds = 0.0f; };
+            std::vector<Transition> History;
+        };
+        std::optional<AIDebugStateInfo> GetAIDebugState(std::uint32_t entityHandle) const;
+
 
         Scene();
         Scene(const Scene& other);

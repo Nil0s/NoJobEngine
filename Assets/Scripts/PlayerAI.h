@@ -17,6 +17,7 @@ public:
     void OnDestroy() override;
 private:
     enum class State { Wander, Flee };
+    void SetState(State state);
     State m_State = State::Wander;
     std::mt19937 m_Rng{std::random_device{}()};
     float m_WaitTimer = 0.0f;

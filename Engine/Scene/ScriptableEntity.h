@@ -1,5 +1,8 @@
 #pragma once
 #include "Engine/Scene/Scene.h"
+#include <string>
+#include <vector>
+#include <algorithm>
 
 namespace NoJob
 {
@@ -13,6 +16,19 @@ namespace NoJob
         virtual void OnUpdate(float deltaTime) { (void)deltaTime; }
         virtual void OnDestroy() {}
 
+        // Read-only gameplay AI diagnostics; independent of any decision framework.
+        struct AIStateTransition
+        {
+            std::string From;
+            std::string To;
+            float RuntimeSeconds = 0.0f;
+        };
+        const std::string& GetAIDebugState() const { return m_AIDebugState; }
+        const std::string& GetAIDebugPreviousState() const { return m_AIDebugPreviousState; }
+        float GetAIDebugTimeInState() const { return m_AIDebugTimeInState; }
+        float GetAIDebugRuntimeSeconds() const { return m_AIDebugRuntimeSeconds; }
+        const std::vector<AIStateTransition>& GetAIDebugTransitions() const { return m_AIDebugTransitions; }
+
         template<typename T>
         T& GetComponent() { return m_Entity.GetComponent<T>(); }
 
@@ -22,6 +38,27 @@ namespace NoJob
         Entity GetEntity() const { return m_Entity; }
 
     protected:
+        void TickAIDebug(float dt)
+        {
+            if (dt > 0.0f)
+            {
+                m_AIDebugRuntimeSeconds += dt;
+                m_AIDebugTimeInState += dt;
+            }
+        }
+        void SetAIDebugState(const char* state)
+        {
+            if (!state || m_AIDebugState == state) return;
+            if (!m_AIDebugState.empty())
+            {
+                m_AIDebugPreviousState = m_AIDebugState;
+                m_AIDebugTransitions.push_back({m_AIDebugState, state, m_AIDebugRuntimeSeconds});
+                if (m_AIDebugTransitions.size() > 16)
+                    m_AIDebugTransitions.erase(m_AIDebugTransitions.begin());
+            }
+            m_AIDebugState = state;
+            m_AIDebugTimeInState = 0.0f;
+        }
         NativeScriptComponent& ScriptComponent()
         {
             return m_Entity.GetComponent<NativeScriptComponent>();
@@ -49,6 +86,11 @@ namespace NoJob
         }
 
     private:
+        std::string m_AIDebugState;
+        std::string m_AIDebugPreviousState;
+        float m_AIDebugTimeInState = 0.0f;
+        float m_AIDebugRuntimeSeconds = 0.0f;
+        std::vector<AIStateTransition> m_AIDebugTransitions;
         Entity m_Entity;
         friend class Scene;
     };

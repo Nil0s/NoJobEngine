@@ -2737,6 +2737,28 @@ namespace NoJob
             Entity agent(m_AIDebugAgent, m_Scene);
             ImGui::Text("Agent: %s", agent.GetComponent<TagComponent>().Tag.c_str());
             if (ImGui::Button("Select in Hierarchy")) SetSelectedEntity(agent);
+            ImGui::SeparatorText("Behavior State");
+            if (!m_IsPlaying)
+                ImGui::TextDisabled("Available during Play.");
+            else if (const auto debug = m_Scene->GetAIDebugState(m_AIDebugAgent))
+            {
+                const ImVec4 stateColor =
+                    debug->Current == "FLEE" ? ImVec4(1.0f, 0.4f, 0.35f, 1.0f) :
+                    debug->Current == "CHASE" ? ImVec4(1.0f, 0.78f, 0.25f, 1.0f) :
+                    ImVec4(0.4f, 0.85f, 0.55f, 1.0f);
+                ImGui::TextColored(stateColor, "CURRENT: %s", debug->Current.c_str());
+                ImGui::Text("Previous: %s", debug->Previous.empty() ? "-" : debug->Previous.c_str());
+                ImGui::Text("Time in state: %.2f s", debug->TimeInState);
+                if (ImGui::TreeNode("State Transitions"))
+                {
+                    if (debug->History.empty()) ImGui::TextDisabled("No transitions yet.");
+                    for (auto it = debug->History.rbegin(); it != debug->History.rend(); ++it)
+                        ImGui::Text("%.1f s  %s -> %s", it->AtSeconds, it->From.c_str(), it->To.c_str());
+                    ImGui::TreePop();
+                }
+            }
+            else
+                ImGui::TextDisabled("No runtime AI state (script missing or inactive).");
             if (agent.HasComponent<PerceptionComponent>())
             {
                 const auto& perception = agent.GetComponent<PerceptionComponent>();

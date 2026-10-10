@@ -11,8 +11,17 @@ float DistanceXZ(const glm::vec3& a, const glm::vec3& b) {
     return glm::length(glm::vec2(a.x-b.x, a.z-b.z));
 }
 }
+void GuardAI::SetState(State state) {
+    if (m_State == state && !GetAIDebugState().empty()) return;
+    m_State = state;
+    switch (state) {
+        case State::Patrol: SetAIDebugState("PATROL"); break;
+        case State::Chase: SetAIDebugState("CHASE"); break;
+        case State::Search: SetAIDebugState("SEARCH"); break;
+    }
+}
 void GuardAI::OnCreate() {
-    m_State = State::Patrol;
+    SetState(State::Patrol);
     m_Timer = 0.0f;
     m_Repath = 0.0f;
     m_HasLastSeen = false;
@@ -44,6 +53,7 @@ bool GuardAI::ChoosePatrolDestination() {
     return false;
 }
 void GuardAI::OnUpdate(float dt) {
+    TickAIDebug(dt);
     if (!HasComponent<NavAgentComponent>()) return;
     Scene* scene = GetEntity().GetScene();
     if (!scene) return;
@@ -61,7 +71,7 @@ void GuardAI::OnUpdate(float dt) {
     }
     if (visible) {
         if (m_State != State::Chase) m_Repath = 0.0f;
-        m_State = State::Chase;
+        SetState(State::Chase);
         m_LastSeen = seenPosition;
         m_HasLastSeen = true;
         agent.Enabled = true;
@@ -76,7 +86,7 @@ void GuardAI::OnUpdate(float dt) {
         return;
     }
     if (m_State == State::Chase) {
-        m_State = State::Search;
+        SetState(State::Search);
         m_Timer = SearchDuration;
         agent.Speed = PatrolSpeed;
         agent.StoppingDistance = ArrivalDistance;
@@ -88,7 +98,7 @@ void GuardAI::OnUpdate(float dt) {
     if (m_State == State::Search) {
         m_Timer -= dt;
         if (m_Timer > 0.0f) return;
-        m_State = State::Patrol;
+        SetState(State::Patrol);
         m_Timer = 0.0f;
         agent.HasDestination = false;
     }

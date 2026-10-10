@@ -245,6 +245,24 @@ namespace NoJob
         return result;
     }
 
+    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(std::uint32_t entityHandle) const
+    {
+        const auto it = m_ScriptInstances.find(entityHandle);
+        if (it == m_ScriptInstances.end() || !it->second ||
+            it->second->GetAIDebugState().empty())
+            return std::nullopt;
+
+        const auto& script = *it->second;
+        AIDebugStateInfo result;
+        result.Current = script.GetAIDebugState();
+        result.Previous = script.GetAIDebugPreviousState();
+        result.TimeInState = script.GetAIDebugTimeInState();
+        result.RuntimeSeconds = script.GetAIDebugRuntimeSeconds();
+        for (const auto& event : script.GetAIDebugTransitions())
+            result.History.push_back({event.From, event.To, event.RuntimeSeconds});
+        return result;
+    }
+
     void Scene::CreateScriptInstance(
         std::uint32_t handle)
     {
