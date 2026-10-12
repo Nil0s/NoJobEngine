@@ -10,6 +10,8 @@
 #include <optional>
 #include <cstdint>
 #include <functional>
+#include <unordered_map>
+#include <algorithm>
 #include <glm/vec3.hpp>
 
 namespace NoJob {
@@ -49,6 +51,8 @@ struct BTDebugSnapshot {
     struct Event { std::uint64_t Tick; std::uint64_t Node; std::string Kind; std::string Detail; };
     std::vector<Node> Nodes;
     std::vector<Event> Events;
+    std::vector<BTBlackboard::DebugEntry> BlackboardEntries;
+    std::uint64_t BlackboardRevision = 0;
     std::optional<std::uint32_t> TargetHandle;
     std::optional<glm::vec3> TargetPosition;
 };
@@ -61,8 +65,12 @@ public:
         auto tree = CreateTree();
         if (!tree) throw std::runtime_error("BTScriptController: CreateTree returned null");
         m_Instance = std::make_unique<BTInstance>(std::move(tree));
-        m_Instance->Context().BindScript(this);
-        OnTreeStarted(m_Instance->Context());
+        auto& ctx = m_Instance->Context();
+        ctx.BindScript(this);
+        m_BlackboardPrevious.clear();
+        m_BlackboardChanges.clear();
+        m_DebugTick = 0;
+        OnTreeStarted(ctx);
         CaptureDebugSnapshot();
     }
 
@@ -78,6 +86,8 @@ public:
         // Reset nodes while the script/entity is still valid.
         m_Instance->Reset();
         OnTreeStopped(m_Instance->Context());
+        m_BlackboardPrevious.clear();
+        m_BlackboardChanges.clear();
         m_Instance->Context().UnbindScript();
         m_Instance.reset();
         m_DebugSnapshot = {};
@@ -113,14 +123,51 @@ private:
             for (const auto* child : children) if (child) visit(*child, depth + 1);
         };
         visit(m_Instance->Tree().Root(), 0);
+        // Track the Blackboard by comparing value snapshots. This is independent
+        // of observer callbacks and survives frequent BT execution events.
+        const auto entries = ctx.Blackboard().DebugEntries();
+        std::unordered_map<std::string, std::string> now;
+        now.reserve(entries.size());
+        for (const auto& entry : entries)
+            now.emplace(entry.Key, entry.Value);
+        const auto& runtimeEvents = ctx.Events();
+        const std::uint64_t tick = runtimeEvents.empty() ? m_DebugTick : runtimeEvents.back().Tick;
+        auto record = [&](const std::string& key, const std::string& before, const std::string& after) {
+            m_BlackboardChanges.push_back({tick, 0, "Blackboard", key + ": " + before + " -> " + after});
+            constexpr std::size_t limit = 48;
+            if (m_BlackboardChanges.size() > limit)
+                m_BlackboardChanges.erase(m_BlackboardChanges.begin(),
+                    m_BlackboardChanges.begin() + (m_BlackboardChanges.size() - limit));
+        };
+        for (const auto& [key, value] : now) {
+            const auto it = m_BlackboardPrevious.find(key);
+            if (it == m_BlackboardPrevious.end()) record(key, "<unset>", value);
+            else if (it->second != value) record(key, it->second, value);
+        }
+        for (const auto& [key, value] : m_BlackboardPrevious)
+            if (!now.contains(key)) record(key, value, "<removed>");
+        m_BlackboardPrevious = std::move(now);
+        ++m_DebugTick;
         for (const auto& event : ctx.Events())
             next.Events.push_back({event.Tick, event.Node, event.Kind, event.Detail});
+        // Merge the separate per-agent Blackboard history for the timeline.
+        // Keep BT execution events intact and order changes by tick.
+        next.Events.insert(next.Events.end(), m_BlackboardChanges.begin(), m_BlackboardChanges.end());
+        std::stable_sort(next.Events.begin(), next.Events.end(),
+            [](const BTDebugSnapshot::Event& a, const BTDebugSnapshot::Event& b) {
+                return a.Tick < b.Tick;
+            });
+        next.BlackboardEntries = entries;
+        next.BlackboardRevision = ctx.Blackboard().Revision();
         if (const auto* target = ctx.Blackboard().TryGet<std::uint32_t>("TargetHandle"))
             next.TargetHandle = *target;
         if (const auto* position = ctx.Blackboard().TryGet<glm::vec3>("TargetPosition"))
             next.TargetPosition = *position;
         m_DebugSnapshot = std::move(next);
     }
+    std::uint64_t m_DebugTick = 0;
+    std::unordered_map<std::string, std::string> m_BlackboardPrevious;
+    std::vector<BTDebugSnapshot::Event> m_BlackboardChanges;
     BTDebugSnapshot m_DebugSnapshot;
     std::unique_ptr<BTInstance> m_Instance;
     BTStatus m_LastStatus = BTStatus::Failure;

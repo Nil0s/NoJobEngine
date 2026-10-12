@@ -1,6 +1,7 @@
 #pragma once
 
 #include <any>
+#include <algorithm>
 #include <functional>
 #include <cstdint>
 #include <vector>
@@ -24,6 +25,9 @@ public:
         static_assert(std::is_copy_constructible_v<Stored>,
             "Blackboard values must be copy constructible");
         if (key.empty()) throw std::invalid_argument("Blackboard key cannot be empty");
+        const auto existing = m_Values.find(key);
+        if (existing != m_Values.end() && existing->second.type() != typeid(Stored))
+            throw std::invalid_argument("Blackboard type mismatch for key: " + key);
         m_Values.insert_or_assign(key, std::any(std::forward<T>(value)));
         Notify(key);
     }
@@ -94,6 +98,31 @@ public:
     bool Unobserve(ObserverID id) { return m_Observers.erase(id) != 0; }
     std::uint64_t Revision() const noexcept { return m_Revision; }
     std::size_t Size() const { return m_Values.size(); }
+
+    struct DebugEntry { std::string Key, Type, Value; };
+    std::vector<DebugEntry> DebugEntries() const {
+        std::vector<DebugEntry> entries;
+        entries.reserve(m_Values.size());
+        for (const auto& [key, value] : m_Values) {
+            DebugEntry e{key, value.type().name(), "<unsupported type>"};
+            if (const auto* boolValue = std::any_cast<bool>(&value)) {
+                e.Type = "bool"; e.Value = *boolValue ? "true" : "false";
+            } else if (const auto* intValue = std::any_cast<int>(&value)) {
+                e.Type = "int"; e.Value = std::to_string(*intValue);
+            } else if (const auto* uintValue = std::any_cast<std::uint32_t>(&value)) {
+                e.Type = "uint32"; e.Value = std::to_string(*uintValue);
+            } else if (const auto* floatValue = std::any_cast<float>(&value)) {
+                e.Type = "float"; e.Value = std::to_string(*floatValue);
+            } else if (const auto* doubleValue = std::any_cast<double>(&value)) {
+                e.Type = "double"; e.Value = std::to_string(*doubleValue);
+            } else if (const auto* stringValue = std::any_cast<std::string>(&value)) {
+                e.Type = "string"; e.Value = *stringValue;
+            }
+            entries.push_back(std::move(e));
+        }
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.Key < b.Key; });
+        return entries;
+    }
 
     // For debugging and future editor tooling; returns typeid(void) if absent.
     std::type_index TypeOf(std::string_view key) const {

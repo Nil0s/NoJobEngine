@@ -54,6 +54,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <unordered_map>
+#include <functional>
 #include <iomanip>
 #include <atomic>
 #include <mutex>
@@ -2765,6 +2766,41 @@ namespace NoJob
         ImGui::TextUnformatted("Native Decision System - V1.9");
         ImGui::Text("Current asset: %s%s",currentName.c_str(),dirty ? " *" : "");
         const std::vector<std::string> available = ListBTAssetNames();
+        // Restore the last opened asset on the first editor frame. Previously
+        // BTAsset::Default() was displayed even when a saved .njbt existed.
+        static bool initialAssetLoaded = false;
+        const auto lastAssetPath = folder / ".last-opened-bt";
+        const auto rememberAsset = [&](const std::string& name) {
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            if (ec) return;
+            std::ofstream out(lastAssetPath, std::ios::trunc);
+            if (out) out << name << '\n';
+        };
+        if (!initialAssetLoaded) {
+            initialAssetLoaded = true;
+            std::string preferred;
+            { std::ifstream in(lastAssetPath); std::getline(in, preferred); }
+            const auto existsInList = [&](const std::string& name) {
+                return std::find(available.begin(), available.end(), name) != available.end();
+            };
+            if (!existsInList(preferred))
+                preferred = existsInList(currentName) ? currentName
+                    : (available.empty() ? std::string{} : available.front());
+            if (!preferred.empty()) {
+                try {
+                    BTAsset loaded = BTAsset::Load(assetPath(preferred));
+                    asset = std::move(loaded);
+                    currentName = preferred;
+                    std::snprintf(assetName, sizeof(assetName), "%s", preferred.c_str());
+                    selected = static_cast<int>(asset.Nodes.front().ID);
+                    dirty = false;
+                    message = "Restored " + assetPath(preferred).string();
+                } catch (const std::exception& ex) {
+                    message = "Could not restore saved tree: " + std::string(ex.what());
+                }
+            }
+        }
         if (ImGui::BeginCombo("Saved trees",currentName.c_str())) {
             for (const auto& name : available) {
                 if (ImGui::Selectable(name.c_str(),name == currentName)) {
@@ -2773,7 +2809,7 @@ namespace NoJob
                         asset = std::move(loaded); currentName = name;
                         std::snprintf(assetName,sizeof(assetName),"%s",name.c_str());
                         selected = static_cast<int>(asset.Nodes.front().ID);
-                        dirty = false; message = "Loaded " + assetPath(name).string();
+                        dirty = false; rememberAsset(name); message = "Loaded " + assetPath(name).string();
                     } catch (const std::exception& ex) { message = ex.what(); }
                 }
             }
@@ -2785,14 +2821,14 @@ namespace NoJob
                 auto loaded = BTAsset::Load(assetPath(assetName));
                 asset = std::move(loaded); currentName = assetName;
                 selected = static_cast<int>(asset.Nodes.front().ID);
-                dirty = false; message = "Loaded " + assetPath(currentName).string();
+                dirty = false; rememberAsset(currentName); message = "Loaded " + assetPath(currentName).string();
             } catch (const std::exception& ex) { message = ex.what(); }
         }
         ImGui::SameLine();
         if (ImGui::Button("Save")) {
             try {
                 if (!validName(currentName)) throw std::runtime_error("Invalid tree name");
-                asset.Save(assetPath(currentName)); dirty = false;
+                asset.Save(assetPath(currentName)); dirty = false; rememberAsset(currentName);
                 message = "Saved " + std::filesystem::absolute(assetPath(currentName)).string();
             } catch (const std::exception& ex) { message = ex.what(); }
         }
@@ -2803,7 +2839,7 @@ namespace NoJob
                 if (!validName(name)) throw std::runtime_error("Invalid tree name");
                 if (name != currentName && std::filesystem::exists(assetPath(name)))
                     throw std::runtime_error("A tree with that name already exists");
-                asset.Save(assetPath(name)); currentName = name; dirty = false;
+                asset.Save(assetPath(name)); currentName = name; dirty = false; rememberAsset(name);
                 message = "Saved " + std::filesystem::absolute(assetPath(name)).string();
             } catch (const std::exception& ex) { message = ex.what(); }
         }
@@ -3067,65 +3103,214 @@ namespace NoJob
         if (m_AIDebugAgent)
         {
             Entity agent(m_AIDebugAgent, m_Scene);
+            if (ImGui::CollapsingHeader("Agent Information")) {
             ImGui::Text("Agent: %s", agent.GetComponent<TagComponent>().Tag.c_str());
+            }
             if (ImGui::Button("Select in Hierarchy")) SetSelectedEntity(agent);
+            if (ImGui::CollapsingHeader("Behavior Tree", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (m_IsPlaying) {
                 if (const auto bt=m_Scene->GetBehaviorTreeDebug(m_AIDebugAgent)) {
-                    ImGui::SeparatorText("Behavior Tree (per-agent)");
+                    ImGui::TextDisabled("Per-agent runtime snapshot (read-only)");
                     const char* result=bt->LastResult==0?"Success":bt->LastResult==1?"Failure":"Running";
                     ImGui::Text("Root: %s",result);
-                    ImGui::TextDisabled("Per-agent execution timeline");
-                    ImGui::BeginChild("##BTExecution", ImVec2(0, 165), true);
-                    for (const auto& node : bt->Nodes) {
-                        const bool success = node.Status == 0;
-                        const bool failure = node.Status == 1;
-                        const bool active = node.Active;
-                        const bool inactive = node.Status < 0;
-                        const ImVec4 color = inactive ? ImVec4(.55f,.59f,.64f,1.f)
-                            : success ? ImVec4(.24f,.72f,.39f,1.f)
-                            : failure ? ImVec4(.88f,.33f,.32f,1.f)
-                            : ImVec4(.95f,.75f,.24f,1.f);
-                        const char* state = inactive ? "IDLE" : success ? "SUCCESS" : failure ? "FAILURE" : "RUNNING";
-                        ImGui::PushID(static_cast<int>(node.ID));
-                        ImGui::Indent(static_cast<float>(node.Depth) * 12.f);
-                        ImGui::TextColored(color,"%s",node.Depth ? "|--" : "o");
-                        ImGui::SameLine();
-                        ImGui::Text("%s%s", active ? "[ACTIVE] " : "", node.Label.c_str());
-                        ImGui::TextColored(color,"#%llu  %s  (%zu ticks)",
-                            static_cast<unsigned long long>(node.ID),state,node.Ticks);
-                        ImGui::Unindent(static_cast<float>(node.Depth) * 12.f);
-                        ImGui::Separator();
-                        ImGui::PopID();
+                    // The graph and timeline observe the SAME per-agent runtime snapshot.
+                    // Never tick the BT from the editor; never mistake historical events
+                    // for complete historical snapshots of every node.
+                    static std::uint32_t timelineAgent = 0;
+                    static std::uint64_t timelineNode = 0;
+                    static std::uint64_t timelineTick = 0;
+                    static std::string timelineKind;
+                    static float graphZoom = 1.0f;
+                    if (timelineAgent != m_AIDebugAgent) {
+                        timelineAgent = m_AIDebugAgent;
+                        timelineNode = 0;
+                        timelineTick = 0;
+                        timelineKind.clear();
                     }
-                    ImGui::EndChild();
-                    ImGui::SeparatorText("Live decision flow");
-                    ImGui::TextDisabled("ACTIVE = executed this tick; history records transitions and aborts");
-                    ImGui::BeginChild("##BTEventHistory", ImVec2(0, 180), true);
-                    for (auto it = bt->Events.rbegin(); it != bt->Events.rend(); ++it) {
-                        const auto& e = *it;
-                        const ImVec4 tint = e.Kind == "Aborted" ? ImVec4(.95f,.42f,.32f,1.f)
-                            : e.Kind == "BlackboardChanged" || e.Kind == "PriorityChanged" || e.Kind == "Reevaluation"
-                                ? ImVec4(.45f,.75f,1.f,1.f)
+                    ImGui::SetNextItemWidth(145.0f);
+                    ImGui::SliderFloat("Graph zoom", &graphZoom, 0.65f, 1.65f, "%.2fx");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Clear event selection")) {
+                        timelineNode = 0;
+                        timelineTick = 0;
+                        timelineKind.clear();
+                    }
+                    if (bt->Nodes.empty()) {
+                        ImGui::TextDisabled("No compiled nodes to display.");
+                    } else {
+                        // Preorder + Depth are captured from the compiled BT runtime.
+                        // Compute subtree widths bottom-up so sibling branches do not overlap.
+                        const int count = static_cast<int>(bt->Nodes.size());
+                        std::vector<int> parents(count, -1);
+                        std::vector<std::vector<int>> children(count);
+                        std::vector<int> stack;
+                        for (int i = 0; i < count; ++i) {
+                            const int depth = std::max(0, bt->Nodes[i].Depth);
+                            while (static_cast<int>(stack.size()) > depth) stack.pop_back();
+                            if (!stack.empty()) {
+                                parents[i] = stack.back();
+                                children[stack.back()].push_back(i);
+                            }
+                            stack.push_back(i);
+                        }
+                        std::vector<float> widths(count, 1.0f), centers(count, 0.0f);
+                        for (int i = count - 1; i >= 0; --i) {
+                            if (!children[i].empty()) {
+                                float total = 0.0f;
+                                for (int child : children[i]) total += widths[child];
+                                widths[i] = std::max(1.0f, total);
+                            }
+                        }
+                        float cursor = 0.0f;
+                        std::function<void(int, float)> layout = [&](int index, float left) {
+                            centers[index] = left + widths[index] * 0.5f;
+                            float childLeft = left;
+                            for (int child : children[index]) {
+                                layout(child, childLeft);
+                                childLeft += widths[child];
+                            }
+                            if (!children[index].empty())
+                                centers[index] = (centers[children[index].front()] + centers[children[index].back()]) * 0.5f;
+                        };
+                        int maxDepth = 0;
+                        for (int i = 0; i < count; ++i) {
+                            maxDepth = std::max(maxDepth, std::max(0, bt->Nodes[i].Depth));
+                            if (parents[i] < 0) { layout(i, cursor); cursor += widths[i]; }
+                        }
+                        const float nodeW = 156.0f * graphZoom;
+                        const float nodeH = 49.0f * graphZoom;
+                        const float stepX = 180.0f * graphZoom;
+                        const float stepY = 90.0f * graphZoom;
+                        const float canvasW = std::max(330.0f, (cursor + 0.4f) * stepX);
+                        const float canvasH = (maxDepth + 1) * stepY + 36.0f * graphZoom;
+                        ImGui::BeginChild("##BTLiveGraph", ImVec2(0, 320), true,
+                            ImGuiWindowFlags_HorizontalScrollbar);
+                        const ImVec2 origin = ImGui::GetCursorScreenPos();
+                        ImGui::InvisibleButton("##BTGraphCanvas", ImVec2(canvasW, canvasH));
+                        ImDrawList* draw = ImGui::GetWindowDrawList();
+                        auto pos = [&](int i) {
+                            return ImVec2(origin.x + centers[i] * stepX,
+                                origin.y + 12.0f * graphZoom + std::max(0, bt->Nodes[i].Depth) * stepY);
+                        };
+                        for (int i = 0; i < count; ++i) {
+                            if (parents[i] < 0) continue;
+                            const ImVec2 a = pos(parents[i]), b = pos(i);
+                            const ImVec2 start(a.x, a.y + nodeH);
+                            const ImVec2 end(b.x, b.y);
+                            const float middle = (start.y + end.y) * 0.5f;
+                            const ImU32 lineColor = IM_COL32(105, 116, 137, 210);
+                            draw->AddLine(start, ImVec2(start.x, middle), lineColor, 1.5f);
+                            draw->AddLine(ImVec2(start.x, middle), ImVec2(end.x, middle), lineColor, 1.5f);
+                            draw->AddLine(ImVec2(end.x, middle), end, lineColor, 1.5f);
+                        }
+                        for (int i = 0; i < count; ++i) {
+                            const auto& node = bt->Nodes[i];
+                            const ImVec2 center = pos(i);
+                            const ImVec2 lo(center.x - nodeW * 0.5f, center.y);
+                            const ImVec2 hi(center.x + nodeW * 0.5f, center.y + nodeH);
+                            const bool selected = timelineNode == node.ID && timelineTick != 0;
+                            const ImU32 tint = node.Status < 0 ? IM_COL32(120, 130, 144, 255)
+                                : node.Status == 0 ? IM_COL32(60, 195, 110, 255)
+                                : node.Status == 1 ? IM_COL32(225, 85, 78, 255)
+                                : IM_COL32(92, 162, 245, 255);
+                            draw->AddRectFilled(lo, hi, IM_COL32(38, 44, 57, 255), 7.0f);
+                            draw->AddRect(lo, hi, selected ? IM_COL32(255, 215, 100, 255) : tint,
+                                7.0f, 0, selected ? 3.0f : (node.Active ? 2.5f : 1.5f));
+                            const float fontScale = graphZoom < 0.85f ? 0.85f : 1.0f;
+                            (void)fontScale;
+                            std::string label = node.Label;
+                            if (label.size() > 24) label = label.substr(0, 21) + "...";
+                            const char* state = node.Status < 0 ? "IDLE" : node.Status == 0 ? "SUCCESS"
+                                : node.Status == 1 ? "FAILURE" : "RUNNING";
+                            draw->AddText(ImVec2(lo.x + 8.0f, lo.y + 7.0f), IM_COL32(240, 242, 247, 255), label.c_str());
+                            draw->AddText(ImVec2(lo.x + 8.0f, lo.y + 26.0f * graphZoom), tint, state);
+                            if (node.Active)
+                                draw->AddCircleFilled(ImVec2(hi.x - 11.0f, lo.y + 11.0f), 4.0f, tint);
+                            if (ImGui::IsMouseHoveringRect(lo, hi, true)) {
+                                ImGui::SetTooltip("%s\nNode ID: %llu\nTicks: %zu\nExecuted this tick: %s",
+                                    node.Label.c_str(), static_cast<unsigned long long>(node.ID),
+                                    node.Ticks, node.Active ? "Yes" : "No");
+                                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                                    timelineNode = node.ID;
+                                    timelineTick = 0;
+                                    timelineKind.clear();
+                                }
+                            }
+                        }
+                        ImGui::EndChild();
+                        ImGui::TextDisabled("Blue Running  |  Green Success  |  Red Failure  |  Gray Idle");
+                        ImGui::TextDisabled("Scroll to pan; Shift+wheel for horizontal scroll. Click a node for details.");
+                        if (timelineNode != 0) {
+                            for (const auto& node : bt->Nodes) if (node.ID == timelineNode) {
+                                ImGui::SeparatorText("Selected node");
+                                ImGui::Text("%s  |  ID %llu  |  Ticks %zu", node.Label.c_str(),
+                                    static_cast<unsigned long long>(node.ID), node.Ticks);
+                                if (timelineTick != 0)
+                                    ImGui::Text("Selected event: tick %llu (%s)",
+                                        static_cast<unsigned long long>(timelineTick), timelineKind.c_str());
+                                ImGui::TextDisabled("Node color represents the LIVE snapshot, not the historical event.");
+                                break;
+                            }
+                        }
+                    }
+                    if (ImGui::CollapsingHeader("Execution Timeline", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::TextDisabled("Per-agent bounded event history (latest first; ticks, not wall-clock time)");
+                        ImGui::BeginChild("##BTEventTimeline", ImVec2(0, 190), true);
+                        if (bt->Events.empty()) ImGui::TextDisabled("No events recorded yet.");
+                        int eventIndex = 0;
+                        for (auto it = bt->Events.rbegin(); it != bt->Events.rend(); ++it, ++eventIndex) {
+                            const auto& e = *it;
+                            const ImVec4 tint = e.Kind == "Blackboard" ? ImVec4(.55f,.82f,.98f,1.f)
+                                : e.Kind == "Aborted" || e.Kind == "Failed"
+                                ? ImVec4(.95f,.42f,.32f,1.f)
                                 : e.Kind == "Succeeded" ? ImVec4(.3f,.85f,.5f,1.f)
+                                : e.Kind == "Running" ? ImVec4(.4f,.68f,1.f,1.f)
                                 : ImVec4(.95f,.8f,.35f,1.f);
-                        std::string label = "Blackboard / Tree";
-                        for (const auto& node : bt->Nodes)
-                            if (node.ID == e.Node) { label = node.Label; break; }
-                        ImGui::PushID(static_cast<int>(e.Tick * 131 + e.Node));
-                        ImGui::TextColored(tint, "[%llu] %s", static_cast<unsigned long long>(e.Tick), e.Kind.c_str());
-                        ImGui::TextWrapped("%s%s%s", label.c_str(), e.Detail.empty()?"":" - ", e.Detail.c_str());
-                        ImGui::Separator();
-                        ImGui::PopID();
+                            std::string nodeLabel = "Blackboard / Tree";
+                            for (const auto& node : bt->Nodes)
+                                if (node.ID == e.Node) { nodeLabel = node.Label; break; }
+                            ImGui::PushID(eventIndex);
+                            const std::string caption = "Tick " + std::to_string(e.Tick) + " | " + e.Kind + " | " + nodeLabel;
+                            const bool chosen = timelineTick == e.Tick && timelineNode == e.Node && timelineKind == e.Kind;
+                            if (ImGui::Selectable(caption.c_str(), chosen)) {
+                                timelineNode = e.Node;
+                                timelineTick = e.Tick;
+                                timelineKind = e.Kind;
+                            }
+                            if (ImGui::IsItemHovered() && !e.Detail.empty()) ImGui::SetTooltip("%s", e.Detail.c_str());
+                            if (!e.Detail.empty()) {
+                                ImGui::Indent();
+                                ImGui::TextColored(tint, "%s", e.Detail.c_str());
+                                ImGui::Unindent();
+                            }
+                            ImGui::PopID();
+                        }
+                        ImGui::EndChild();
                     }
-                    ImGui::EndChild();
-                    ImGui::SeparatorText("Blackboard");
-                    if (bt->TargetHandle) ImGui::Text("TargetHandle: %u",*bt->TargetHandle);
-                    if (bt->TargetPosition) ImGui::Text("TargetPosition: %.2f, %.2f, %.2f",
-                        bt->TargetPosition->x,bt->TargetPosition->y,bt->TargetPosition->z);
-                    if (!bt->TargetHandle && !bt->TargetPosition) ImGui::TextDisabled("No gameplay keys set");
-                }
+                    if (ImGui::CollapsingHeader("Blackboard")) {
+                        ImGui::TextDisabled("Agent memory | %zu keys | revision %llu", bt->BlackboardEntries.size(),
+                            static_cast<unsigned long long>(bt->BlackboardRevision));
+                        if (bt->BlackboardEntries.empty()) ImGui::TextDisabled("No Blackboard keys set");
+                        else if (ImGui::BeginTable("##BTBlackboard", 3,
+                            ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                            ImVec2(0, 180))) {
+                            ImGui::TableSetupColumn("Key");
+                            ImGui::TableSetupColumn("Type");
+                            ImGui::TableSetupColumn("Value");
+                            ImGui::TableHeadersRow();
+                            for (const auto& entry : bt->BlackboardEntries) {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(entry.Key.c_str());
+                                ImGui::TableSetColumnIndex(1); ImGui::TextDisabled("%s", entry.Type.c_str());
+                                ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(entry.Value.c_str());
+                            }
+                            ImGui::EndTable();
+                        }
+                    }
+                } else ImGui::TextDisabled("No Behavior Tree debug data for this agent.");
+            } else ImGui::TextDisabled("Available during Play.");
             }
-            ImGui::SeparatorText("Behavior State");
+            if (ImGui::CollapsingHeader("Behavior State")) {
             if (!m_IsPlaying)
                 ImGui::TextDisabled("Available during Play.");
             else if (const auto debug = m_Scene->GetAIDebugState(m_AIDebugAgent))
@@ -3147,10 +3332,11 @@ namespace NoJob
             }
             else
                 ImGui::TextDisabled("No runtime AI state (script missing or inactive).");
+            }
             if (agent.HasComponent<PerceptionComponent>())
             {
                 const auto& perception = agent.GetComponent<PerceptionComponent>();
-                ImGui::SeparatorText("Perception");
+                if (ImGui::CollapsingHeader("Perception")) {
                 ImGui::Text("Enabled: %s | Debug: %s", perception.Enabled ? "Yes" : "No", perception.DebugDraw ? "On" : "Off");
                 ImGui::Text("Radius: %.2f m | FOV: %.1f deg", perception.DetectionRadius, perception.FieldOfView);
                 ImGui::Text("Eye: %.2f m | Interval: %.2f s", perception.EyeHeight, perception.UpdateInterval);
@@ -3181,7 +3367,7 @@ namespace NoJob
                     const std::string name = m_Scene->IsValid(target.EntityHandle)
                         ? Entity(target.EntityHandle, m_Scene).GetComponent<TagComponent>().Tag : "Unknown";
                     ImGui::PushID((int)target.EntityHandle);
-                    if (ImGui::TreeNodeEx("Target", ImGuiTreeNodeFlags_DefaultOpen, "%s (%u)", name.c_str(), target.EntityHandle))
+                    if (ImGui::TreeNodeEx("Target", ImGuiTreeNodeFlags_None, "%s (%u)", name.c_str(), target.EntityHandle))
                     {
                         ImGui::TextColored(target.IsVisible ? ImVec4(0.3f, 0.9f, 0.4f, 1) : ImVec4(1, 0.8f, 0.3f, 1),
                             "%s", target.IsVisible ? "VISIBLE" : "REMEMBERED");
@@ -3196,15 +3382,17 @@ namespace NoJob
                     }
                     ImGui::PopID();
                 }
+                }
             }
             if (agent.HasComponent<NavAgentComponent>())
             {
                 const auto& nav = agent.GetComponent<NavAgentComponent>();
-                ImGui::SeparatorText("Navigation");
+                if (ImGui::CollapsingHeader("Navigation")) {
                 ImGui::Text("Enabled: %s | Speed: %.2f", nav.Enabled ? "Yes" : "No", nav.Speed);
                 ImGui::Text("Destination: %s", nav.HasDestination ? "Set" : "None");
                 if (nav.HasDestination) ImGui::Text("(%.2f, %.2f, %.2f)", nav.Destination.x, nav.Destination.y, nav.Destination.z);
                 ImGui::Text("Stopping distance: %.2f", nav.StoppingDistance);
+                }
             }
         }
         else ImGui::TextDisabled("No AI agents in this scene.");

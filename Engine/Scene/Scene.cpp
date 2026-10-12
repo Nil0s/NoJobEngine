@@ -367,6 +367,8 @@ namespace NoJob
                 result.Nodes.push_back({n.ID, n.Status, n.Ticks, n.Label, n.Depth, n.Active});
             for (const auto& e : snapshot.Events)
                 result.Events.push_back({e.Tick, e.Node, e.Kind, e.Detail});
+            result.BlackboardEntries = snapshot.BlackboardEntries;
+            result.BlackboardRevision = snapshot.BlackboardRevision;
             result.TargetHandle = snapshot.TargetHandle;
             result.TargetPosition = snapshot.TargetPosition;
             return result;

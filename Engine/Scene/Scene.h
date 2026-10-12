@@ -3,6 +3,7 @@
 #include "Engine/Scene/Components.h"
 #include "Engine/Scene/Entity.h"
 #include "Engine/AI/Navigation/NavAgent.h"
+#include "Engine/AI/BehaviorTree/BTBlackboard.h"
 
 #include <cstdint>
 #include <memory>
@@ -60,6 +61,8 @@ namespace NoJob
             std::vector<Node> Nodes;
             struct Event { std::uint64_t Tick = 0, Node = 0; std::string Kind, Detail; };
             std::vector<Event> Events;
+            std::vector<BTBlackboard::DebugEntry> BlackboardEntries;
+            std::uint64_t BlackboardRevision = 0;
             std::optional<std::uint32_t> TargetHandle;
             std::optional<glm::vec3> TargetPosition;
         };
