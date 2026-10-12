@@ -27,10 +27,14 @@ namespace NoJob
     inline ScriptFieldValue MakeScriptFieldValue(const glm::vec3& value)
     { return ScriptFieldValue::MakeVec3(value); }
 
+    inline ScriptFieldValue MakeScriptFieldValue(const std::string& value)
+    { return ScriptFieldValue::MakeString(value); }
+
     template<typename T> inline T ReadScriptFieldValue(const ScriptFieldValue& value);
     template<> inline float ReadScriptFieldValue<float>(const ScriptFieldValue& value) { return value.Float; }
     template<> inline int ReadScriptFieldValue<int>(const ScriptFieldValue& value) { return value.Int; }
     template<> inline bool ReadScriptFieldValue<bool>(const ScriptFieldValue& value) { return value.Bool; }
+    template<> inline std::string ReadScriptFieldValue<std::string>(const ScriptFieldValue& value) { return value.String; }
     template<> inline glm::vec3 ReadScriptFieldValue<glm::vec3>(const ScriptFieldValue& value) { return value.Vec3; }
 
     template<typename TScript, typename T>
@@ -54,12 +58,31 @@ namespace NoJob
         return field;
     }
 
+    // Editor-only metadata. No BTNativeRegistry, std::function or script instances.
+    struct BTCallbackMetadata
+    {
+        std::string Name;
+        bool IsCondition = false;
+    };
+
+    // Project scripts opt in by declaring a static DescribeBehaviorTreeBindings().
+    // The same names must be registered in RegisterBehaviorTreeBindings().
+    template<typename TScript>
+    std::vector<BTCallbackMetadata> DescribeScriptBTCallbacks()
+    {
+        if constexpr (requires { TScript::DescribeBehaviorTreeBindings(); })
+            return TScript::DescribeBehaviorTreeBindings();
+        else
+            return {};
+    }
+
     struct ScriptDefinition
     {
         std::string Name;
         std::string Category = "Gameplay";
         std::vector<ScriptFieldDefinition> Fields;
         std::function<std::unique_ptr<Script>()> Factory;
+        std::vector<BTCallbackMetadata> BehaviorTreeCallbacks;
     };
 
     class ScriptRegistry
@@ -88,11 +111,37 @@ namespace NoJob
             Registry().erase(name);
         }
 
+        // Return a value-only catalog. Do not keep pointers into ScriptRegistry:
+        // Unload() can invalidate those pointers during project DLL hot reload.
+        static std::vector<BTCallbackMetadata> AllBehaviorTreeCallbacks()
+        {
+            std::vector<BTCallbackMetadata> callbacks;
+            for (const auto& [scriptName, definition] : Registry())
+            {
+                (void)scriptName;
+                callbacks.insert(callbacks.end(), definition.BehaviorTreeCallbacks.begin(),
+                                 definition.BehaviorTreeCallbacks.end());
+            }
+            return callbacks;
+        }
+
         static void ApplyDefaults(NativeScriptComponent& component)
         {
             const auto* def = Find(component.ScriptName);
             if (!def) return;
 
+            // V1.9 migration: numeric TreeSlot -> named .njbt asset.
+            if (component.ScriptName == "BTAssetAgent" &&
+                !component.Fields.contains("BehaviorTreeAsset"))
+            {
+                const auto old = component.Fields.find("TreeSlot");
+                if (old != component.Fields.end() && old->second.Type == ScriptFieldType::Int)
+                {
+                    const int slot = old->second.Int;
+                    component.Fields["BehaviorTreeAsset"] = ScriptFieldValue::MakeString(
+                        slot == 0 ? "Default" : "Tree_" + std::to_string(slot));
+                }
+            }
             std::unordered_map<std::string, ScriptFieldValue> migrated;
             for (const auto& field : def->Fields)
             {
@@ -152,8 +201,16 @@ namespace NoJob
     { \
         hostRegister({ \
             #ScriptClass, Category, { __VA_ARGS__ }, \
-            [] { return std::make_unique<::NoJob::ScriptClass>(); } \
+            [] { return std::make_unique<::NoJob::ScriptClass>(); }, \
+            ::NoJob::DescribeScriptBTCallbacks<::NoJob::ScriptClass>() \
         }); \
+    } \
+    extern "C" __declspec(dllexport) void NoJobBTMetadata_##ScriptClass( \
+        void(*emit)(const char*, int)) \
+    { \
+        if (!emit) return; \
+        for (const auto& callback : ::NoJob::DescribeScriptBTCallbacks<::NoJob::ScriptClass>()) \
+            emit(callback.Name.c_str(), callback.IsCondition ? 1 : 0); \
     }
 #else
 #define NOJOB_REGISTER_SCRIPT(ScriptClass, Category, ...)

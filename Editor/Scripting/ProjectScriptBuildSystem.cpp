@@ -24,6 +24,16 @@ namespace NoJob
         std::atomic_bool s_ReloadPending{ false };
         std::uint64_t s_Generation = 0;
 
+        // Backup protection for abnormal exit paths that bypass EditorLayer::Shutdown().
+        // Declared after the worker so its destructor runs before s_Worker is destroyed.
+        struct WorkerLifetimeGuard final
+        {
+            ~WorkerLifetimeGuard() noexcept
+            {
+                if (s_Worker.joinable()) s_Worker.join();
+            }
+        } s_WorkerLifetimeGuard;
+
         void Log(std::string message)
         {
             if (s_Log) s_Log(std::move(message));

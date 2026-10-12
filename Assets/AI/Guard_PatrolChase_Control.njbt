@@ -1,0 +1,6 @@
+NJOB_BT 2
+NODE 1 0 Selector - - 0.5
+NODE 2 1 Sequence - - 0.5
+NODE 3 2 Condition CanSeeTarget - 0.5
+NODE 4 2 Action ChaseTarget - 0.5
+NODE 5 1 Action Patrol - 0.5

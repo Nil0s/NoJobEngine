@@ -6,6 +6,7 @@
 
 namespace NoJob
 {
+    struct BTCallbackMetadata;
     class ProjectScriptManager
     {
     public:
@@ -16,6 +17,7 @@ namespace NoJob
         static void Unload();
         static bool IsLoaded();
         static std::size_t LoadedScriptCount();
+        static std::vector<BTCallbackMetadata> BehaviorTreeCallbackCatalog();
 
     private:
         static void RegisterScript(struct ScriptDefinition definition);

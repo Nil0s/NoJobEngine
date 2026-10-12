@@ -1,0 +1,6 @@
+NJOB_BT 1
+NODE 1 0 Selector -
+NODE 2 1 Sequence -
+NODE 3 2 Condition CanSeeTarget
+NODE 4 2 Action ChaseTarget
+NODE 5 1 Action StopMoving

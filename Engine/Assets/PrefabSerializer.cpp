@@ -91,6 +91,7 @@ void WriteEntity(std::ostream& o,Entity e,Scene& scene,int parentLocal,int& next
    if(value.Type==ScriptFieldType::Float)o<<value.Float;
    else if(value.Type==ScriptFieldType::Int)o<<value.Int;
    else if(value.Type==ScriptFieldType::Bool)o<<value.Bool;
+   else if(value.Type==ScriptFieldType::String)o<<std::quoted(value.String);
    else o<<value.Vec3.x<<' '<<value.Vec3.y<<' '<<value.Vec3.z;
    o<<"\n";
   }
@@ -223,6 +224,7 @@ Entity PrefabSerializer::Instantiate(Scene& s,const std::filesystem::path& p,con
     if(value.Type==ScriptFieldType::Float)i>>value.Float;
     else if(value.Type==ScriptFieldType::Int)i>>value.Int;
     else if(value.Type==ScriptFieldType::Bool)i>>value.Bool;
+    else if(value.Type==ScriptFieldType::String)i>>std::quoted(value.String);
     else i>>value.Vec3.x>>value.Vec3.y>>value.Vec3.z;
     nativeScript.Fields[fieldName]=value;
    }

@@ -235,3 +235,46 @@ set_target_properties(NoJobRuntime PROPERTIES
 if(MSVC)
     target_compile_options(NoJobRuntime PRIVATE /W4 /permissive-)
 endif()
+add_executable(BTSequenceTests
+    Engine/AI/BehaviorTree/Tests/BTSequenceTests.cpp
+)
+
+target_include_directories(BTSequenceTests PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(BTSequenceTests PRIVATE cxx_std_20)
+add_executable(BTSelectorTests
+    Engine/AI/BehaviorTree/Tests/BTSelectorTests.cpp
+)
+
+target_include_directories(BTSelectorTests PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(BTSelectorTests PRIVATE cxx_std_20)
+add_executable(BTBlackboardTests
+    Engine/AI/BehaviorTree/Tests/BTBlackboardTests.cpp
+)
+
+target_compile_features(BTBlackboardTests PRIVATE cxx_std_20)
+
+target_include_directories(BTBlackboardTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+add_executable(BTNativeTests
+    Engine/AI/BehaviorTree/Tests/BTNativeTests.cpp
+)
+
+target_compile_features(BTNativeTests PRIVATE cxx_std_20)
+
+target_include_directories(BTNativeTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+add_executable(BTAssetTests Engine/AI/BehaviorTree/Tests/BTAssetTests.cpp)
+target_include_directories(BTAssetTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(BTAssetTests PRIVATE cxx_std_20)
+
+add_executable(BTReactiveTests Engine/AI/BehaviorTree/Tests/BTReactiveTests.cpp)
+target_include_directories(BTReactiveTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(BTReactiveTests PRIVATE cxx_std_20)

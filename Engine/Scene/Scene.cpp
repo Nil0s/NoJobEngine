@@ -1,3 +1,6 @@
+#include <cstdio>
+#include <exception>
+#include "Engine/AI/BehaviorTree/BTGameplay.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/NativeScripts.h"
 
@@ -245,102 +248,140 @@ namespace NoJob
         return result;
     }
 
-    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(std::uint32_t entityHandle) const
+    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(std::uint32_t handle) const
     {
-        const auto it = m_ScriptInstances.find(entityHandle);
-        if (it == m_ScriptInstances.end() || !it->second ||
-            it->second->GetAIDebugState().empty())
-            return std::nullopt;
-
-        const auto& script = *it->second;
-        AIDebugStateInfo result;
-        result.Current = script.GetAIDebugState();
-        result.Previous = script.GetAIDebugPreviousState();
-        result.TimeInState = script.GetAIDebugTimeInState();
-        result.RuntimeSeconds = script.GetAIDebugRuntimeSeconds();
-        for (const auto& event : script.GetAIDebugTransitions())
-            result.History.push_back({event.From, event.To, event.RuntimeSeconds});
-        return result;
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return std::nullopt;
+        for (const auto& ptr : it->second)
+        {
+            if (!ptr || ptr->GetAIDebugState().empty()) continue;
+            AIDebugStateInfo result;
+            result.Current = ptr->GetAIDebugState();
+            result.Previous = ptr->GetAIDebugPreviousState();
+            result.TimeInState = ptr->GetAIDebugTimeInState();
+            result.RuntimeSeconds = ptr->GetAIDebugRuntimeSeconds();
+            for (const auto& e : ptr->GetAIDebugTransitions())
+                result.History.push_back({e.From, e.To, e.RuntimeSeconds});
+            return result;
+        }
+        return std::nullopt;
     }
 
-    void Scene::CreateScriptInstance(
-        std::uint32_t handle)
+    void Scene::CreateScriptInstance(std::uint32_t handle)
     {
-        if (!IsValid(handle) ||
-            m_ScriptInstances.contains(
-                handle))
-        {
-            return;
-        }
-
-        auto& component =
-            m_Entities
-            .at(handle)
-            .NativeScript;
-
-        if (!component ||
-            !component->Enabled)
-        {
-            return;
-        }
-
+        if (!IsValid(handle) || m_ScriptInstances.contains(handle)) return;
         RegisterBuiltinScripts();
-
-        ScriptRegistry::ApplyDefaults(
-            *component);
-
-        const auto* definition =
-            ScriptRegistry::Find(
-                component->ScriptName);
-
-        if (!definition ||
-            !definition->Factory)
+        RegisterBTAssetAgent();
+        auto& data = m_Entities.at(handle);
+        auto& instances = m_ScriptInstances[handle];
+        auto create = [&](NativeScriptComponent& component)
         {
-            return;
+            std::fprintf(stderr, "[BT DIAG] Entity %u configured script '%s', enabled=%d\n",
+                handle, component.ScriptName.c_str(), component.Enabled ? 1 : 0);
+            if (!component.Enabled) return;
+            ScriptRegistry::ApplyDefaults(component);
+            const auto* definition = ScriptRegistry::Find(component.ScriptName);
+            if (!definition || !definition->Factory) {
+                std::fprintf(stderr, "[BT DIAG] Entity %u script '%s' MISSING FACTORY in runtime ScriptRegistry (DLL not loaded/registered?)\n",
+                    handle, component.ScriptName.c_str());
+                return;
+            }
+            std::fprintf(stderr, "[BT DIAG] Entity %u script '%s' factory FOUND\n", handle, component.ScriptName.c_str());
+            auto instance = definition->Factory();
+            instance->m_Entity = Entity(handle, this);
+            instance->m_BoundScript = &component;
+            ScriptRegistry::ApplyFieldsToInstance(component, *instance);
+            // Store before OnCreate, so shutdown can clean up even if OnCreate throws.
+            instances.push_back(std::move(instance));
+        };
+        if (data.NativeScript) create(*data.NativeScript);
+        for (auto& script : data.AdditionalNativeScripts) create(script);
+        // Two-phase initialization: all scripts must exist before a BT agent
+        // resolves actions exposed by its sibling scripts.
+        // Initialize non-BT scripts first, even if the BTAssetAgent was listed first.
+        // Every instance is already constructed before either pass.
+        for (int pass = 0; pass < 2; ++pass)
+        for (auto& instance : instances) if (instance && instance->m_BoundScript &&
+            ((instance->m_BoundScript->ScriptName == "BTAssetAgent") == (pass == 1))) {
+            std::fprintf(stderr, "[BT DIAG] Entity %u OnCreate '%s' (pass %d)\n",
+                handle, instance->m_BoundScript->ScriptName.c_str(), pass);
+            try { instance->OnCreate(); }
+            catch (const std::exception& ex) {
+                std::fprintf(stderr, "[Native Script] Entity %u, script %s: %s\n",
+                    handle, instance->m_BoundScript ? instance->m_BoundScript->ScriptName.c_str() : "unknown", ex.what());
+                // A failed BT initialization must not terminate the whole editor.
+            }
         }
-
-        auto instance =
-            definition->Factory();
-
-        instance->m_Entity =
-            Entity(
-                handle,
-                this);
-
-        ScriptRegistry::
-            ApplyFieldsToInstance(
-                *component,
-                *instance);
-
-        m_ScriptInstances.emplace(
-            handle,
-            std::move(instance));
-
-        m_ScriptInstances
-            .at(handle)
-            ->OnCreate();
     }
 
-    void Scene::DestroyScriptInstance(
-        std::uint32_t handle)
+    ScriptableEntity* Scene::FindRuntimeScript(std::uint32_t handle, const std::string& scriptName) const
     {
-        auto it =
-            m_ScriptInstances.find(
-                handle);
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return nullptr;
+        for (const auto& script : it->second)
+            if (script && script->m_BoundScript && script->m_BoundScript->ScriptName == scriptName)
+                return script.get();
+        return nullptr;
+    }
 
-        if (it ==
-            m_ScriptInstances.end())
-        {
+    void Scene::RegisterEntityBehaviorTreeBindings(std::uint32_t handle, BTNativeRegistry& registry) const
+    {
+        std::fprintf(stderr, "[BT TRACE] ENTER Scene::RegisterEntityBehaviorTreeBindings entity=%u\n", handle);
+        std::fflush(stderr);
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) {
+            std::fprintf(stderr, "[BT DIAG] Entity %u has NO runtime script instances\n", handle);
             return;
         }
+        std::fprintf(stderr, "[BT DIAG] Entity %u has %zu runtime script instance(s)\n",
+            handle, it->second.size());
+        for (const auto& script : it->second) {
+            if (!script) continue;
+            const char* name = script->m_BoundScript ? script->m_BoundScript->ScriptName.c_str() : "<unbound>";
+            std::fprintf(stderr, "[BT DIAG] Entity %u registering BT callbacks from '%s'\n", handle, name);
+            std::fprintf(stderr, "[BT TRACE] BEFORE virtual binding script='%s' ptr=%p\n", name, static_cast<const void*>(script.get()));
+            std::fflush(stderr);
+            script->RegisterBehaviorTreeBindings(registry);
+            std::fprintf(stderr, "[BT TRACE] AFTER virtual binding script='%s' action=%d condition=%d\n",
+                name, registry.HasAction("Guard.Attack") ? 1 : 0,
+                registry.HasCondition("Guard.HasTarget") ? 1 : 0);
+            std::fflush(stderr);
+            std::fprintf(stderr, "[BT DIAG] Entity %u after '%s': Guard.Attack=%d, Guard.HasTarget=%d\n",
+                handle, name, registry.HasAction("Guard.Attack") ? 1 : 0,
+                registry.HasCondition("Guard.HasTarget") ? 1 : 0);
+        }
+    }
 
-        auto instance =
-            std::move(
-                it->second);
+    std::optional<Scene::BTDebugInfo> Scene::GetBehaviorTreeDebug(std::uint32_t handle) const
+    {
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return std::nullopt;
+        for (const auto& ptr : it->second)
+        {
+            const auto* controller = ptr ? dynamic_cast<const BTScriptController*>(ptr.get()) : nullptr;
+            if (!controller || !controller->GetBehaviorTreeInstance()) continue;
+            const auto& snapshot = controller->GetDebugSnapshot();
+            BTDebugInfo result;
+            result.LastResult = snapshot.LastResult;
+            for (const auto& n : snapshot.Nodes)
+                result.Nodes.push_back({n.ID, n.Status, n.Ticks, n.Label, n.Depth, n.Active});
+            for (const auto& e : snapshot.Events)
+                result.Events.push_back({e.Tick, e.Node, e.Kind, e.Detail});
+            result.TargetHandle = snapshot.TargetHandle;
+            result.TargetPosition = snapshot.TargetPosition;
+            return result;
+        }
+        return std::nullopt;
+    }
 
+    void Scene::DestroyScriptInstance(std::uint32_t handle)
+    {
+        auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return;
+        auto instances = std::move(it->second);
         m_ScriptInstances.erase(it);
-
-        instance->OnDestroy();
+        for (auto rit = instances.rbegin(); rit != instances.rend(); ++rit)
+            if (*rit) (*rit)->OnDestroy();
     }
 
     const std::vector<
@@ -1433,53 +1474,45 @@ namespace NoJob
                 handle);
         }
 
-        for (const auto handle :
-            handles)
+        for (const auto handle : handles)
         {
-            if (!IsValid(handle))
-                continue;
-
-            if (!m_Entities
-                .at(handle)
-                .NativeScript ||
-                !m_Entities
-                .at(handle)
-                .NativeScript
-                ->Enabled)
+            if (!IsValid(handle)) continue;
+            // Recreate on component changes to keep script pointers valid.
+            // Editor normally changes script configuration outside Play.
+            CreateScriptInstance(handle);
+            auto it = m_ScriptInstances.find(handle);
+            if (it == m_ScriptInstances.end()) continue;
+            auto& data = m_Entities.at(handle);
+            std::vector<NativeScriptComponent*> components;
+            if (data.NativeScript && data.NativeScript->Enabled)
+                components.push_back(&*data.NativeScript);
+            for (auto& script : data.AdditionalNativeScripts)
+                if (script.Enabled) components.push_back(&script);
+            bool bindingsChanged = components.size() != it->second.size();
+            if (!bindingsChanged)
+                for (std::size_t i = 0; i < components.size(); ++i)
+                    if (it->second[i]->m_BoundScript != components[i])
+                        { bindingsChanged = true; break; }
+            if (bindingsChanged)
             {
-                DestroyScriptInstance(
-                    handle);
-
-                continue;
+                DestroyScriptInstance(handle);
+                CreateScriptInstance(handle);
+                it = m_ScriptInstances.find(handle);
+                if (it == m_ScriptInstances.end()) continue;
             }
-
-            CreateScriptInstance(
-                handle);
-
-            auto it =
-                m_ScriptInstances.find(
-                    handle);
-
-            if (it !=
-                m_ScriptInstances.end())
+            // Iterate over a stable index; scripts can remove their own entity.
+            for (std::size_t i = 0; i < components.size(); ++i)
             {
-                auto& component =
-                    *m_Entities
-                    .at(handle)
-                    .NativeScript;
-
-                ScriptRegistry::
-                    ApplyFieldsToInstance(
-                        component,
-                        *it->second);
-
-                it->second->OnUpdate(
-                    deltaTime);
-
-                ScriptRegistry::
-                    ReadFieldsFromInstance(
-                        component,
-                        *it->second);
+                if (!IsValid(handle)) break;
+                auto current = m_ScriptInstances.find(handle);
+                if (current == m_ScriptInstances.end() || i >= current->second.size()) break;
+                auto* instance = current->second[i].get();
+                auto* component = components[i];
+                if (!instance || !component) continue;
+                ScriptRegistry::ApplyFieldsToInstance(*component, *instance);
+                instance->OnUpdate(deltaTime);
+                if (IsValid(handle) && m_ScriptInstances.contains(handle))
+                    ScriptRegistry::ReadFieldsFromInstance(*component, *instance);
             }
         }
     }

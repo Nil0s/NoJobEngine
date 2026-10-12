@@ -6,6 +6,7 @@
 
 namespace NoJob
 {
+    class BTNativeRegistry;
     // Native C++ gameplay base class. Instances only exist while the Scene is
     // running; serialized state lives in NativeScriptComponent.
     class ScriptableEntity
@@ -15,6 +16,10 @@ namespace NoJob
         virtual void OnCreate() {}
         virtual void OnUpdate(float deltaTime) { (void)deltaTime; }
         virtual void OnDestroy() {}
+
+        // Register reusable BT action/condition names. Never capture this in callbacks:
+        // use BTRegisterScriptAction / BTRegisterScriptCondition instead.
+        virtual void RegisterBehaviorTreeBindings(BTNativeRegistry&) const {}
 
         // Read-only gameplay AI diagnostics; independent of any decision framework.
         struct AIStateTransition
@@ -61,27 +66,27 @@ namespace NoJob
         }
         NativeScriptComponent& ScriptComponent()
         {
-            return m_Entity.GetComponent<NativeScriptComponent>();
+            return m_BoundScript ? *m_BoundScript : m_Entity.GetComponent<NativeScriptComponent>();
         }
 
         float GetFloat(const std::string& name, float fallback = 0.0f) const
         {
-            const auto& fields = m_Entity.GetComponent<NativeScriptComponent>().Fields;
+            const auto& fields = (m_BoundScript ? *m_BoundScript : m_Entity.GetComponent<NativeScriptComponent>()).Fields;
             auto it=fields.find(name); return it==fields.end()?fallback:it->second.Float;
         }
         int GetInt(const std::string& name, int fallback = 0) const
         {
-            const auto& fields = m_Entity.GetComponent<NativeScriptComponent>().Fields;
+            const auto& fields = (m_BoundScript ? *m_BoundScript : m_Entity.GetComponent<NativeScriptComponent>()).Fields;
             auto it=fields.find(name); return it==fields.end()?fallback:it->second.Int;
         }
         bool GetBool(const std::string& name, bool fallback = false) const
         {
-            const auto& fields = m_Entity.GetComponent<NativeScriptComponent>().Fields;
+            const auto& fields = (m_BoundScript ? *m_BoundScript : m_Entity.GetComponent<NativeScriptComponent>()).Fields;
             auto it=fields.find(name); return it==fields.end()?fallback:it->second.Bool;
         }
         glm::vec3 GetVec3(const std::string& name, glm::vec3 fallback = {}) const
         {
-            const auto& fields = m_Entity.GetComponent<NativeScriptComponent>().Fields;
+            const auto& fields = (m_BoundScript ? *m_BoundScript : m_Entity.GetComponent<NativeScriptComponent>()).Fields;
             auto it=fields.find(name); return it==fields.end()?fallback:it->second.Vec3;
         }
 
@@ -92,6 +97,7 @@ namespace NoJob
         float m_AIDebugRuntimeSeconds = 0.0f;
         std::vector<AIStateTransition> m_AIDebugTransitions;
         Entity m_Entity;
+        NativeScriptComponent* m_BoundScript = nullptr;
         friend class Scene;
     };
 

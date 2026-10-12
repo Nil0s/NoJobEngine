@@ -17,6 +17,7 @@ namespace NoJob
 {
     class ScriptableEntity;
     class NavigationSystem;
+    class BTNativeRegistry;
 
     class ISpatialQuery;
 
@@ -53,6 +54,21 @@ namespace NoJob
             std::vector<Transition> History;
         };
         std::optional<AIDebugStateInfo> GetAIDebugState(std::uint32_t entityHandle) const;
+        struct BTDebugInfo {
+            int LastResult = 1;
+            struct Node { std::uint64_t ID; int Status; std::size_t Ticks; std::string Label; int Depth = 0; bool Active = false; };
+            std::vector<Node> Nodes;
+            struct Event { std::uint64_t Tick = 0, Node = 0; std::string Kind, Detail; };
+            std::vector<Event> Events;
+            std::optional<std::uint32_t> TargetHandle;
+            std::optional<glm::vec3> TargetPosition;
+        };
+        std::optional<BTDebugInfo> GetBehaviorTreeDebug(std::uint32_t entityHandle) const;
+
+        // Runtime-only script lookup; pointers must not be retained across Play/Stop.
+        ScriptableEntity* FindRuntimeScript(std::uint32_t entityHandle, const std::string& scriptName) const;
+        void RegisterEntityBehaviorTreeBindings(std::uint32_t entityHandle, BTNativeRegistry& registry) const;
+
 
 
         Scene();
@@ -68,6 +84,8 @@ namespace NoJob
 
         bool IsValid(std::uint32_t handle) const;
         std::vector<Entity> GetEntities();
+        std::vector<NativeScriptComponent>& GetAdditionalNativeScripts(std::uint32_t handle) { return m_Entities.at(handle).AdditionalNativeScripts; }
+        const std::vector<NativeScriptComponent>& GetAdditionalNativeScripts(std::uint32_t handle) const { return m_Entities.at(handle).AdditionalNativeScripts; }
 
         void OnRuntimeStart();
         void OnRuntimeStop();
@@ -172,6 +190,7 @@ namespace NoJob
             std::optional<PrefabInstanceComponent> PrefabInstance;
             std::optional<MeshRendererComponent> MeshRenderer;
             std::optional<NativeScriptComponent> NativeScript;
+            std::vector<NativeScriptComponent> AdditionalNativeScripts;
 
             std::optional<RigidbodyComponent> Rigidbody;
 
@@ -783,7 +802,7 @@ namespace NoJob
 
         std::unordered_map<
             std::uint32_t,
-            std::unique_ptr<ScriptableEntity>>
+            std::vector<std::unique_ptr<ScriptableEntity>>>
             m_ScriptInstances;
 
         void CreateScriptInstance(

@@ -289,7 +289,7 @@ namespace NoJob
         PhysicsMaterial Material;
     };
 
-    enum class ScriptFieldType { Float = 0, Int, Bool, Vec3 };
+    enum class ScriptFieldType { Float = 0, Int, Bool, Vec3, String };
 
     struct ScriptFieldValue
     {
@@ -297,11 +297,13 @@ namespace NoJob
         float Float = 0.0f;
         int Int = 0;
         bool Bool = false;
+        std::string String;
         glm::vec3 Vec3{ 0.0f };
 
         static ScriptFieldValue MakeFloat(float value) { ScriptFieldValue v; v.Type=ScriptFieldType::Float; v.Float=value; return v; }
         static ScriptFieldValue MakeInt(int value) { ScriptFieldValue v; v.Type=ScriptFieldType::Int; v.Int=value; return v; }
         static ScriptFieldValue MakeBool(bool value) { ScriptFieldValue v; v.Type=ScriptFieldType::Bool; v.Bool=value; return v; }
+        static ScriptFieldValue MakeString(std::string value) { ScriptFieldValue v; v.Type=ScriptFieldType::String; v.String=std::move(value); return v; }
         static ScriptFieldValue MakeVec3(glm::vec3 value) { ScriptFieldValue v; v.Type=ScriptFieldType::Vec3; v.Vec3=value; return v; }
     };
 

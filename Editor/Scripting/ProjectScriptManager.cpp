@@ -18,6 +18,14 @@ namespace NoJob
         HMODULE s_Module = nullptr;
 #endif
         std::vector<std::string> s_Names;
+        std::vector<BTCallbackMetadata> s_BTCallbackCatalog;
+        thread_local std::vector<BTCallbackMetadata>* s_CollectingBTCallbacks = nullptr;
+
+        void CollectBTCallback(const char* name, int isCondition)
+        {
+            if (s_CollectingBTCallbacks && name && *name)
+                s_CollectingBTCallbacks->push_back({name, isCondition != 0});
+        }
         ProjectScriptManager::LogFunction s_Log;
 
         void Log(std::string message)
@@ -42,6 +50,7 @@ namespace NoJob
         for (const auto& name : s_Names)
             ScriptRegistry::Unregister(name);
         s_Names.clear();
+        s_BTCallbackCatalog.clear();
 
 #ifdef _WIN32
         if (s_Module)
@@ -115,12 +124,30 @@ namespace NoJob
                 auto fn = reinterpret_cast<RegisterProjectScriptFn>(
                     GetProcAddress(s_Module, symbol.c_str()));
                 if (fn) fn(&ProjectScriptManager::RegisterScript);
+
+                // C ABI only: copy names while the DLL is loaded. No STL
+                // containers, callbacks or script instances cross this boundary.
+                using EnumerateBTMetadataFn = void(*)(void(*)(const char*, int));
+                const auto metadataSymbol = "NoJobBTMetadata_" + entry.path().stem().string();
+                auto metadataFn = reinterpret_cast<EnumerateBTMetadataFn>(
+                    GetProcAddress(s_Module, metadataSymbol.c_str()));
+                if (metadataFn)
+                {
+                    s_CollectingBTCallbacks = &s_BTCallbackCatalog;
+                    metadataFn(&CollectBTCallback);
+                    s_CollectingBTCallbacks = nullptr;
+                }
             }
         }
 
         Log("[Scripts] Loaded " + std::to_string(s_Names.size()) + " project script(s).");
         return true;
 #endif
+    }
+
+    std::vector<BTCallbackMetadata> ProjectScriptManager::BehaviorTreeCallbackCatalog()
+    {
+        return s_BTCallbackCatalog;
     }
 
     bool ProjectScriptManager::IsLoaded()

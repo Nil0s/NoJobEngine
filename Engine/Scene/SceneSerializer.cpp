@@ -248,10 +248,8 @@ namespace NoJob
                     << '\n';
             }
 
-            if (e.HasComponent<NativeScriptComponent>())
+            auto writeScript = [&](const NativeScriptComponent& c)
             {
-                auto& c =
-                    e.GetComponent<NativeScriptComponent>();
 
                 out << "SCRIPT_V2 "
                     << c.Enabled << ' '
@@ -281,6 +279,10 @@ namespace NoJob
                     {
                         out << value.Bool;
                     }
+                    else if (value.Type == ScriptFieldType::String)
+                    {
+                        out << std::quoted(value.String);
+                    }
                     else
                     {
                         V3(out, value.Vec3);
@@ -288,7 +290,11 @@ namespace NoJob
 
                     out << '\n';
                 }
-            }
+            };
+            if (e.HasComponent<NativeScriptComponent>())
+                writeScript(e.GetComponent<NativeScriptComponent>());
+            for (const auto& extra : scene.GetAdditionalNativeScripts(e.GetHandle()))
+                writeScript(extra);
 
             if (e.HasComponent<RigidbodyComponent>())
             {
@@ -911,8 +917,10 @@ namespace NoJob
                         c.ScriptName)
                     >> fieldCount;
 
-                current.AddComponent<
-                    NativeScriptComponent>(c);
+                if (!current.HasComponent<NativeScriptComponent>())
+                    current.AddComponent<NativeScriptComponent>(c);
+                else
+                    scene.GetAdditionalNativeScripts(current.GetHandle()).push_back(std::move(c));
             }
             else if (
                 k == "SCRIPT_FIELD" &&
@@ -946,6 +954,10 @@ namespace NoJob
                 {
                     s >> v.Bool;
                 }
+                else if (v.Type == ScriptFieldType::String)
+                {
+                    s >> std::quoted(v.String);
+                }
                 else
                 {
                     ReadV3(
@@ -953,11 +965,9 @@ namespace NoJob
                         v.Vec3);
                 }
 
-                current
-                    .GetComponent<
-                    NativeScriptComponent>()
-                    .Fields[name] =
-                    v;
+                auto& extras = scene.GetAdditionalNativeScripts(current.GetHandle());
+                auto& script = extras.empty() ? current.GetComponent<NativeScriptComponent>() : extras.back();
+                script.Fields[name] = v;
             }
             else if (k == "RIGIDBODY")
             {

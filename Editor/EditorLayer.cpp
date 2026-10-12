@@ -1,3 +1,6 @@
+#include "Engine/AI/BehaviorTree/BTAsset.h"
+#include "Engine/AI/BehaviorTree/BTAssetPaths.h"
+#include "Engine/AI/BehaviorTree/BTGameplay.h"
 #include "Editor/EditorLayer.h"
 #include "Editor/Build/StandaloneBuilder.h"
 #include "Editor/Build/BuildSettings.h"
@@ -50,6 +53,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
+#include <unordered_map>
+#include <iomanip>
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -64,6 +69,8 @@ namespace NoJob
     // DockSpaceOverViewport itself creates a root node, so checking for a node
     // after that call cannot tell us whether a saved layout existed.
     static bool s_BuildDefaultDockLayout = false;
+    static bool s_ShowBTAssetEditor = false;
+    static void DrawBTAssetEditorWindow(bool* opened);
     namespace
     {
 #ifdef _WIN32
@@ -1311,6 +1318,7 @@ namespace NoJob
             DrawGraphicsSettings();
         DrawRendererProfiler();
         DrawAIDebugger();
+        if (s_ShowBTAssetEditor) DrawBTAssetEditorWindow(&s_ShowBTAssetEditor);
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
             DeleteSelectedEntity();
@@ -1952,6 +1960,7 @@ namespace NoJob
             }
             if (ImGui::BeginMenu("AI"))
             {
+                ImGui::MenuItem("Behavior Tree Editor", nullptr, &s_ShowBTAssetEditor);
                 ImGui::MenuItem("AI Debugger", nullptr, &m_ShowAIDebugger);
                 ImGui::Separator();
                 if (ImGui::BeginMenu("Navigation"))
@@ -2691,6 +2700,328 @@ namespace NoJob
         ImGui::End();
     }
 
+
+    // V1.9 native Behavior Tree asset graph editor. Nodes are stored in stable
+    // parent-first order; editor coordinates are derived from depth/order.
+    static void DrawBTAssetEditorWindow(bool* opened)
+    {
+        static BTAsset asset = BTAsset::Default();
+        static std::string currentName = "Default";
+        static char assetName[128] = "Default";
+        static int selected = 1;
+        // Per-parent child creation drafts. A draft is not a property of the
+        // currently selected node and must not leak between selections.
+        struct ChildDraft { int Kind = 0; char Native[128] = "StopMoving"; };
+        static std::unordered_map<BTNodeID, ChildDraft> childDrafts;
+        static std::string childDraftAsset;
+        static std::string message;
+        static bool dirty = false;
+        // Editor-only callback catalog. Never construct project-script instances here:
+        // project DLLs may have a different C++ ABI / lifetime than the editor.
+        // Names are metadata; execution callbacks belong exclusively to the runtime.
+        const auto registeredCallbacks = []() {
+            std::vector<std::string> actions{
+                "ChaseTarget", "MoveForward", "Patrol", "StopMoving"
+            };
+            std::vector<std::string> conditions{
+                "CanSeeTarget", "HasRememberedTarget"
+            };
+            // Metadata is copied out of ScriptRegistry; never instantiate scripts,
+            // build a temporary BTNativeRegistry, or capture DLL callbacks here.
+            for (const auto& entry : ProjectScriptManager::BehaviorTreeCallbackCatalog()) {
+                if (entry.Name.empty()) continue;
+                auto& destination = entry.IsCondition ? conditions : actions;
+                destination.push_back(entry.Name);
+            }
+            auto normalize = [](std::vector<std::string>& names) {
+                std::sort(names.begin(), names.end());
+                names.erase(std::unique(names.begin(), names.end()), names.end());
+            };
+            normalize(actions);
+            normalize(conditions);
+            return std::make_pair(std::move(actions), std::move(conditions));
+        }();
+        const auto callbackPicker = [&](const char* label, const char* kind, std::string& value) {
+            const bool condition = std::string_view(kind) == "Condition";
+            const auto& names = condition ? registeredCallbacks.second : registeredCallbacks.first;
+            if (ImGui::BeginCombo(label, value.c_str())) {
+                for (const auto& name : names) {
+                    if (ImGui::Selectable(name.c_str(), value == name)) {
+                        if (value != name) { value = name; dirty = true; }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (std::find(names.begin(), names.end(), value) == names.end() && value != "-")
+                ImGui::TextDisabled("Custom/unavailable callback: %s", value.c_str());
+        };
+        if (!ImGui::Begin("Behavior Tree Editor", opened)) { ImGui::End(); return; }
+        const std::filesystem::path folder = BTAssetDirectory();
+        const auto validName = [](const std::string& name) {
+            if (name.empty() || name == "." || name == ".." || name.back() == '.' || name.back() == ' ') return false;
+            return name.find_first_of("/\\:*?\"<>|") == std::string::npos;
+        };
+        const auto assetPath = [&](const std::string& name) { return BTAssetPath(name); };
+        ImGui::TextUnformatted("Native Decision System - V1.9");
+        ImGui::Text("Current asset: %s%s",currentName.c_str(),dirty ? " *" : "");
+        const std::vector<std::string> available = ListBTAssetNames();
+        if (ImGui::BeginCombo("Saved trees",currentName.c_str())) {
+            for (const auto& name : available) {
+                if (ImGui::Selectable(name.c_str(),name == currentName)) {
+                    try {
+                        auto loaded = BTAsset::Load(assetPath(name));
+                        asset = std::move(loaded); currentName = name;
+                        std::snprintf(assetName,sizeof(assetName),"%s",name.c_str());
+                        selected = static_cast<int>(asset.Nodes.front().ID);
+                        dirty = false; message = "Loaded " + assetPath(name).string();
+                    } catch (const std::exception& ex) { message = ex.what(); }
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::InputText("Tree name",assetName,sizeof(assetName));
+        if (ImGui::Button("Load")) {
+            try {
+                auto loaded = BTAsset::Load(assetPath(assetName));
+                asset = std::move(loaded); currentName = assetName;
+                selected = static_cast<int>(asset.Nodes.front().ID);
+                dirty = false; message = "Loaded " + assetPath(currentName).string();
+            } catch (const std::exception& ex) { message = ex.what(); }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Save")) {
+            try {
+                if (!validName(currentName)) throw std::runtime_error("Invalid tree name");
+                asset.Save(assetPath(currentName)); dirty = false;
+                message = "Saved " + std::filesystem::absolute(assetPath(currentName)).string();
+            } catch (const std::exception& ex) { message = ex.what(); }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Save As")) {
+            try {
+                const std::string name(assetName);
+                if (!validName(name)) throw std::runtime_error("Invalid tree name");
+                if (name != currentName && std::filesystem::exists(assetPath(name)))
+                    throw std::runtime_error("A tree with that name already exists");
+                asset.Save(assetPath(name)); currentName = name; dirty = false;
+                message = "Saved " + std::filesystem::absolute(assetPath(name)).string();
+            } catch (const std::exception& ex) { message = ex.what(); }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("New")) {
+            asset = BTAsset::Default(); selected = 1; dirty = true;
+            currentName = "Untitled";
+            std::snprintf(assetName,sizeof(assetName),"%s",currentName.c_str());
+            message = "New tree. Enter a name and click Save As.";
+        }
+        if (!message.empty()) ImGui::TextWrapped("%s",message.c_str());
+        ImGui::Separator();
+        // Layout lives in an editor-only sidecar. Runtime .njbt format stays unchanged.
+        static std::unordered_map<BTNodeID, ImVec2> layout;
+        static std::string layoutAsset;
+        static bool layoutDirty = false;
+        const auto layoutPath = [&](const std::string& name) { return folder / (name + ".njbt.layout"); };
+        const auto loadLayout = [&](const std::string& name) {
+            layout.clear();
+            std::ifstream in(layoutPath(name));
+            BTNodeID id; float x, y;
+            while (in >> id >> x >> y) layout[id] = ImVec2(x,y);
+            layoutDirty = false;
+        };
+        const auto saveLayout = [&](const std::string& name) {
+            std::filesystem::create_directories(folder);
+            std::ofstream out(layoutPath(name), std::ios::trunc);
+            if (!out) throw std::runtime_error("Cannot save visual layout");
+            for (const auto& [id, pos] : layout) out << id << ' ' << pos.x << ' ' << pos.y << '\n';
+            if (!out) throw std::runtime_error("Cannot write visual layout");
+            layoutDirty = false;
+        };
+        if (layoutAsset != currentName) { loadLayout(currentName); layoutAsset = currentName; }
+        if (ImGui::Button("Save Layout")) {
+            try { saveLayout(currentName); message = "Layout saved for " + currentName; }
+            catch (const std::exception& e) { message = e.what(); }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Auto Arrange")) { layout.clear(); layoutDirty = true; }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Drag nodes to arrange | Layout: %s", layoutDirty ? "unsaved" : "saved");
+        ImGui::BeginChild("BTCanvas", ImVec2(0, -155), true, ImGuiWindowFlags_HorizontalScrollbar);
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        constexpr float w = 188.f, h = 68.f, dx = 240.f, dy = 105.f;
+        std::unordered_map<BTNodeID,ImVec2> positions;
+        for (std::size_t i=0; i<asset.Nodes.size(); ++i) {
+            const auto& n=asset.Nodes[i];
+            int depth=0; BTNodeID ancestor=n.Parent;
+            while (ancestor && depth<32) {
+                ++depth; BTNodeID next=0;
+                for (const auto& parent:asset.Nodes) if (parent.ID==ancestor) {next=parent.Parent;break;}
+                ancestor=next;
+            }
+            if (!layout.contains(n.ID)) {
+                layout[n.ID] = ImVec2(24.f + depth*dx, 22.f + static_cast<float>(i)*dy);
+                layoutDirty = true;
+            }
+            positions[n.ID] = ImVec2(origin.x + layout.at(n.ID).x, origin.y + layout.at(n.ID).y);
+        }
+        auto* draw=ImGui::GetWindowDrawList();
+        const ImU32 wireColor = IM_COL32(130,150,175,220);
+        for (const auto& n:asset.Nodes) if (n.Parent && positions.contains(n.Parent)) {
+            const auto a=positions.at(n.Parent), b=positions.at(n.ID);
+            draw->AddBezierCubic(ImVec2(a.x+w,a.y+h/2), ImVec2(a.x+w+50,a.y+h/2),
+                ImVec2(b.x-50,b.y+h/2),ImVec2(b.x,b.y+h/2),wireColor,2.5f);
+        }
+        float maxX=800.f, maxY=400.f;
+        for (const auto& n:asset.Nodes) {
+            const ImVec2 at=positions.at(n.ID);
+            ImGui::SetCursorScreenPos(at);
+            ImGui::PushID(static_cast<int>(n.ID));
+            const bool active=selected==static_cast<int>(n.ID);
+            const ImVec4 tint = n.Kind=="Decorator" ? ImVec4(.58f,.31f,.13f,1.f)
+                : n.Kind=="Service" ? ImVec4(.16f,.43f,.55f,1.f)
+                : n.Kind=="Parallel" ? ImVec4(.47f,.25f,.49f,1.f)
+                : n.Kind=="Selector" ? ImVec4(.38f,.22f,.56f,1.f)
+                : n.Kind=="Sequence" ? ImVec4(.20f,.38f,.66f,1.f)
+                : n.Kind=="Condition" ? ImVec4(.65f,.43f,.14f,1.f)
+                : ImVec4(.17f,.48f,.37f,1.f);
+            ImGui::PushStyleColor(ImGuiCol_Button,tint);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(std::min(tint.x+.12f,1.f),std::min(tint.y+.12f,1.f),std::min(tint.z+.12f,1.f),1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,tint);
+            std::string label = n.Kind + "##node";
+            if (ImGui::Button(label.c_str(),ImVec2(w,h))) selected=static_cast<int>(n.ID);
+            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left,2.f)) {
+                const auto delta=ImGui::GetIO().MouseDelta;
+                auto& pos=layout[n.ID];
+                pos.x=std::max(0.f,pos.x+delta.x);
+                pos.y=std::max(0.f,pos.y+delta.y);
+                layoutDirty=true;
+                selected=static_cast<int>(n.ID);
+            }
+            ImGui::PopStyleColor(3);
+            if (active) draw->AddRect(ImVec2(at.x-3,at.y-3),ImVec2(at.x+w+3,at.y+h+3),IM_COL32(245,220,125,255),7.f,0,2.5f);
+            const std::string subtitle = (n.Native=="-" ? "Composite" : n.Native);
+            draw->AddText(ImVec2(at.x+12,at.y+38),IM_COL32(240,244,249,255),subtitle.c_str());
+            draw->AddCircleFilled(ImVec2(at.x+w,at.y+h/2),5.f,IM_COL32(225,232,245,255));
+            if (n.Parent) draw->AddCircleFilled(ImVec2(at.x,at.y+h/2),5.f,IM_COL32(225,232,245,255));
+            ImGui::PopID();
+            maxX=std::max(maxX,layout.at(n.ID).x+w+55.f);
+            maxY=std::max(maxY,layout.at(n.ID).y+h+55.f);
+        }
+        ImGui::SetCursorScreenPos(origin);
+        ImGui::Dummy(ImVec2(maxX,maxY));
+        ImGui::EndChild();
+        ImGui::SeparatorText("Selected node");
+        BTAssetNode* current=nullptr;
+        for (auto& n:asset.Nodes) if (n.ID==static_cast<BTNodeID>(selected)) current=&n;
+        if (current) {
+            if (childDraftAsset != currentName) {
+                childDrafts.clear();
+                childDraftAsset = currentName;
+            }
+            ChildDraft& childDraft = childDrafts[current->ID];
+            ImGui::Text("#%llu  %s",static_cast<unsigned long long>(current->ID),current->Kind.c_str());
+            // This changes the SELECTED node; Child type below only affects new nodes.
+            const char* nodeKinds[] = {"Sequence","Selector","Action","Condition","Decorator","Service","Parallel"};
+            int selectedKind = 0;
+            for (int k = 0; k < 7; ++k)
+                if (current->Kind == nodeKinds[k]) { selectedKind = k; break; }
+            if (ImGui::Combo("Node type##selected", &selectedKind, nodeKinds, 7)) {
+                const bool hasChildren = std::any_of(asset.Nodes.begin(), asset.Nodes.end(),
+                    [&](const BTAssetNode& n) { return n.Parent == current->ID; });
+                const bool leaf = selectedKind == 2 || selectedKind == 3;
+                if (leaf && hasChildren) {
+                    message = "Remove child nodes before converting this node to Action/Condition.";
+                } else {
+                    current->Kind = nodeKinds[selectedKind];
+                    if (selectedKind == 2 || selectedKind == 3) {
+                        if (current->Native == "-" || current->Native.empty())
+                            current->Native = selectedKind == 2 ? "StopMoving" : "CanSeeTarget";
+                    } else if (selectedKind == 0 || selectedKind == 1 || selectedKind == 6) {
+                        current->Native = "-";
+                    } else if (current->Native == "-" || current->Native.empty()) {
+                        current->Native = "StopMoving";
+                    }
+                    dirty = true;
+                }
+            }
+            if (current->Kind=="Action" || current->Kind=="Condition" ||
+                current->Kind=="Decorator" || current->Kind=="Service") {
+                ImGui::Text("Native callback: %s",current->Native.c_str());
+            }
+            if (current->Kind=="Decorator" || current->Kind=="Service") {
+                ImGui::TextDisabled("Decorator/Service must have exactly one child");
+            }
+            if (current->Kind=="Decorator" || current->Kind=="Service" ||
+                current->Kind=="Action" || current->Kind=="Condition") {
+                // The callback belongs to the selected BTAssetNode, never to a global field.
+                // Reload the edit buffer on node/asset changes (including same ID in another tree).
+                static BTNodeID editID = 0;
+                static std::string editAsset;
+                static std::string editKind;
+                static char editNative[128] = {};
+                static char editKey[128] = {};
+                if (editID != current->ID || editAsset != currentName || editKind != current->Kind) {
+                    editID = current->ID;
+                    editAsset = currentName;
+                    editKind = current->Kind;
+                    std::snprintf(editNative, sizeof(editNative), "%s", current->Native.c_str());
+                    std::snprintf(editKey, sizeof(editKey), "%s", current->Parameter.c_str());
+                }
+                callbackPicker("Registered callback##selected", current->Kind.c_str(), current->Native);
+                // Synchronize after selecting a registered name.
+                if (current->Native != editNative)
+                    std::snprintf(editNative, sizeof(editNative), "%s", current->Native.c_str());
+                if (ImGui::InputText("Native name##selected", editNative, sizeof(editNative))) {
+                    current->Native = editNative;
+                    dirty = true;
+                }
+                if (current->Kind=="Decorator" && ImGui::InputText("Observed Blackboard key",editKey,sizeof(editKey))) {
+                    current->Parameter=editKey[0] ? editKey : "-"; dirty=true;
+                }
+                if (current->Kind=="Service" && ImGui::DragFloat("Interval (seconds)",&current->Interval,.05f,.05f,60.f)) {
+                    current->Interval=std::max(.05f,current->Interval); dirty=true;
+                }
+            }
+            const char* kinds[]={"Sequence","Selector","Action","Condition","Decorator","Service","Parallel"};
+            ImGui::SeparatorText("Create child (not selected node properties)");
+            ImGui::PushID(static_cast<int>(current->ID));
+            ImGui::Combo("Child type", &childDraft.Kind, kinds, 7);
+            if (childDraft.Kind >= 2 && childDraft.Kind != 6) {
+                std::string proposed(childDraft.Native);
+                callbackPicker("Registered callback##new", kinds[childDraft.Kind], proposed);
+                if (proposed != childDraft.Native)
+                    std::snprintf(childDraft.Native, sizeof(childDraft.Native), "%s", proposed.c_str());
+                ImGui::InputText("New child native name", childDraft.Native, sizeof(childDraft.Native));
+            }
+            ImGui::PopID();
+            if (ImGui::Button("Add child")) {
+                if (current->Kind=="Action" || current->Kind=="Condition") message="Cannot add children to a leaf";
+                else {
+                    BTNodeID id=1; for (const auto& n:asset.Nodes) id=std::max(id,n.ID+1);
+                    asset.Nodes.push_back({id,static_cast<BTNodeID>(selected),kinds[childDraft.Kind],
+                        (childDraft.Kind>=2 && childDraft.Kind!=6)?childDraft.Native:"-"});
+                    selected=static_cast<int>(id); dirty=true;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Delete branch") && current->Parent) {
+                std::unordered_set<BTNodeID> removed{current->ID};
+                bool changed=true;
+                while (changed) {
+                    changed=false;
+                    for (const auto& n:asset.Nodes) if (removed.contains(n.Parent) && !removed.contains(n.ID)) {
+                        removed.insert(n.ID); changed=true;
+                    }
+                }
+                asset.Nodes.erase(std::remove_if(asset.Nodes.begin(),asset.Nodes.end(),
+                    [&](const BTAssetNode& n){return removed.contains(n.ID);}),asset.Nodes.end());
+                selected=static_cast<int>(asset.Nodes.front().ID);
+                for (BTNodeID id : removed) childDrafts.erase(id);
+                dirty = true;
+            }
+        }
+        ImGui::End();
+    }
+
     void EditorLayer::DrawAIDebugger()
     {
         if (!m_ShowAIDebugger) return;
@@ -2707,7 +3038,8 @@ namespace NoJob
         int visibleTotal = 0, rememberedTotal = 0;
         for (auto entity : entities)
         {
-            if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>()) continue;
+            if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
+                (!entity.HasComponent<NativeScriptComponent>() || entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent")) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -2737,6 +3069,62 @@ namespace NoJob
             Entity agent(m_AIDebugAgent, m_Scene);
             ImGui::Text("Agent: %s", agent.GetComponent<TagComponent>().Tag.c_str());
             if (ImGui::Button("Select in Hierarchy")) SetSelectedEntity(agent);
+            if (m_IsPlaying) {
+                if (const auto bt=m_Scene->GetBehaviorTreeDebug(m_AIDebugAgent)) {
+                    ImGui::SeparatorText("Behavior Tree (per-agent)");
+                    const char* result=bt->LastResult==0?"Success":bt->LastResult==1?"Failure":"Running";
+                    ImGui::Text("Root: %s",result);
+                    ImGui::TextDisabled("Per-agent execution timeline");
+                    ImGui::BeginChild("##BTExecution", ImVec2(0, 165), true);
+                    for (const auto& node : bt->Nodes) {
+                        const bool success = node.Status == 0;
+                        const bool failure = node.Status == 1;
+                        const bool active = node.Active;
+                        const bool inactive = node.Status < 0;
+                        const ImVec4 color = inactive ? ImVec4(.55f,.59f,.64f,1.f)
+                            : success ? ImVec4(.24f,.72f,.39f,1.f)
+                            : failure ? ImVec4(.88f,.33f,.32f,1.f)
+                            : ImVec4(.95f,.75f,.24f,1.f);
+                        const char* state = inactive ? "IDLE" : success ? "SUCCESS" : failure ? "FAILURE" : "RUNNING";
+                        ImGui::PushID(static_cast<int>(node.ID));
+                        ImGui::Indent(static_cast<float>(node.Depth) * 12.f);
+                        ImGui::TextColored(color,"%s",node.Depth ? "|--" : "o");
+                        ImGui::SameLine();
+                        ImGui::Text("%s%s", active ? "[ACTIVE] " : "", node.Label.c_str());
+                        ImGui::TextColored(color,"#%llu  %s  (%zu ticks)",
+                            static_cast<unsigned long long>(node.ID),state,node.Ticks);
+                        ImGui::Unindent(static_cast<float>(node.Depth) * 12.f);
+                        ImGui::Separator();
+                        ImGui::PopID();
+                    }
+                    ImGui::EndChild();
+                    ImGui::SeparatorText("Live decision flow");
+                    ImGui::TextDisabled("ACTIVE = executed this tick; history records transitions and aborts");
+                    ImGui::BeginChild("##BTEventHistory", ImVec2(0, 180), true);
+                    for (auto it = bt->Events.rbegin(); it != bt->Events.rend(); ++it) {
+                        const auto& e = *it;
+                        const ImVec4 tint = e.Kind == "Aborted" ? ImVec4(.95f,.42f,.32f,1.f)
+                            : e.Kind == "BlackboardChanged" || e.Kind == "PriorityChanged" || e.Kind == "Reevaluation"
+                                ? ImVec4(.45f,.75f,1.f,1.f)
+                                : e.Kind == "Succeeded" ? ImVec4(.3f,.85f,.5f,1.f)
+                                : ImVec4(.95f,.8f,.35f,1.f);
+                        std::string label = "Blackboard / Tree";
+                        for (const auto& node : bt->Nodes)
+                            if (node.ID == e.Node) { label = node.Label; break; }
+                        ImGui::PushID(static_cast<int>(e.Tick * 131 + e.Node));
+                        ImGui::TextColored(tint, "[%llu] %s", static_cast<unsigned long long>(e.Tick), e.Kind.c_str());
+                        ImGui::TextWrapped("%s%s%s", label.c_str(), e.Detail.empty()?"":" - ", e.Detail.c_str());
+                        ImGui::Separator();
+                        ImGui::PopID();
+                    }
+                    ImGui::EndChild();
+                    ImGui::SeparatorText("Blackboard");
+                    if (bt->TargetHandle) ImGui::Text("TargetHandle: %u",*bt->TargetHandle);
+                    if (bt->TargetPosition) ImGui::Text("TargetPosition: %.2f, %.2f, %.2f",
+                        bt->TargetPosition->x,bt->TargetPosition->y,bt->TargetPosition->z);
+                    if (!bt->TargetHandle && !bt->TargetPosition) ImGui::TextDisabled("No gameplay keys set");
+                }
+            }
             ImGui::SeparatorText("Behavior State");
             if (!m_IsPlaying)
                 ImGui::TextDisabled("Available during Play.");

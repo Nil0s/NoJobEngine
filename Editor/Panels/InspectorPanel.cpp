@@ -1,3 +1,5 @@
+#include "Engine/AI/BehaviorTree/BTGameplay.h"
+#include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include "Editor/EditorLayer.h"
 #include "Editor/Assets/ProjectAssetOperations.h"
 
@@ -15,6 +17,7 @@
 #include "Engine/Animation/Animation.h"
 #include "Engine/Audio/AudioEngine.h"
 
+#include "Engine/AI/BehaviorTree/BTScriptExample.h"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -179,11 +182,13 @@ namespace NoJob
             }
 
             ImGui::Separator();
-            if (m_SelectedEntity.HasComponent<NativeScriptComponent>())
+            auto drawScript = [&](NativeScriptComponent& script, int scriptIndex)
             {
-                auto& script =
-                    m_SelectedEntity.GetComponent<NativeScriptComponent>();
+                ImGui::PushID(scriptIndex);
                 RegisterBuiltinScripts();
+                // BTAssetAgent is an engine builtin, not a project DLL script.
+                // Register it when displaying saved scripts as well as in Add Component.
+                RegisterBTAssetAgent();
                 ScriptRegistry::ApplyDefaults(script);
 
                 const std::string header =
@@ -238,6 +243,31 @@ namespace NoJob
                             else if (field.Type == ScriptFieldType::Bool)
                                 ImGui::Checkbox(
                                     fieldDef.Name.c_str(), &field.Bool);
+                            else if (field.Type == ScriptFieldType::String &&
+                                     script.ScriptName == "BTAssetAgent" &&
+                                     fieldDef.Name == "BehaviorTreeAsset")
+                            {
+                                const auto names = ListBTAssetNames();
+                                const char* preview = field.String.empty() ? "Select a tree..." : field.String.c_str();
+                                if (ImGui::BeginCombo("Behavior Tree Asset", preview))
+                                {
+                                    for (const auto& name : names)
+                                    {
+                                        if (ImGui::Selectable(name.c_str(), field.String == name))
+                                            field.String = name;
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                                if (names.empty()) ImGui::TextDisabled("No .njbt assets found. Create one in Behavior Tree Editor.");
+                                else if (std::find(names.begin(), names.end(), field.String) == names.end())
+                                    ImGui::TextDisabled("Selected tree not found on disk.");
+                            }
+                            else if (field.Type == ScriptFieldType::String)
+                            {
+                                char buffer[256]{};
+                                std::snprintf(buffer, sizeof(buffer), "%s", field.String.c_str());
+                                if (ImGui::InputText(fieldDef.Name.c_str(), buffer, sizeof(buffer))) field.String = buffer;
+                            }
                             else if (field.Type == ScriptFieldType::Vec3)
                                 ImGui::DragFloat3(
                                     fieldDef.Name.c_str(), &field.Vec3.x, 0.05f);
@@ -247,6 +277,37 @@ namespace NoJob
                         ImGui::TextDisabled(
                             "Scene/Prefab persistent | Hot-reload safe");
                     }
+                }
+                if (ImGui::SmallButton("Remove Script"))
+                {
+                    CaptureUndoSnapshot();
+                    if (scriptIndex == 0)
+                    {
+                        auto& extras = m_Scene->GetAdditionalNativeScripts(m_SelectedEntity.GetHandle());
+                        if (!extras.empty())
+                        {
+                            m_SelectedEntity.GetComponent<NativeScriptComponent>() = extras.front();
+                            extras.erase(extras.begin());
+                        }
+                        else m_SelectedEntity.RemoveComponent<NativeScriptComponent>();
+                    }
+                    else
+                    {
+                        auto& extras = m_Scene->GetAdditionalNativeScripts(m_SelectedEntity.GetHandle());
+                        extras.erase(extras.begin() + (scriptIndex - 1));
+                    }
+                }
+                ImGui::PopID();
+            };
+            if (m_SelectedEntity.HasComponent<NativeScriptComponent>())
+            {
+                drawScript(m_SelectedEntity.GetComponent<NativeScriptComponent>(), 0);
+                auto& extras = m_Scene->GetAdditionalNativeScripts(m_SelectedEntity.GetHandle());
+                for (std::size_t i = 0; i < extras.size(); ++i)
+                {
+                    const auto sizeBefore = extras.size();
+                    drawScript(extras[i], static_cast<int>(i + 1));
+                    if (extras.size() != sizeBefore) break;
                 }
             }
 
@@ -932,16 +993,21 @@ namespace NoJob
                     !m_SelectedEntity.HasComponent<AnimatorComponent>(),
                     [&] { m_SelectedEntity.AddComponent<AnimatorComponent>(); });
                 RegisterBuiltinScripts();
+                RegisterBTExampleMover();
+                RegisterBTAssetAgent();
                 for (const auto* definition : ScriptRegistry::All())
                 {
                     const std::string label = definition->Name + " Script";
                     addItem("Scripting", label.c_str(),
-                        !m_SelectedEntity.HasComponent<NativeScriptComponent>(),
+                        true,
                         [&, definition] {
                             NativeScriptComponent component;
                             component.ScriptName = definition->Name;
                             ScriptRegistry::ApplyDefaults(component);
-                            m_SelectedEntity.AddComponent<NativeScriptComponent>(component);
+                            if (!m_SelectedEntity.HasComponent<NativeScriptComponent>())
+                                m_SelectedEntity.AddComponent<NativeScriptComponent>(component);
+                            else
+                                m_Scene->GetAdditionalNativeScripts(m_SelectedEntity.GetHandle()).push_back(component);
                         });
                 }
 

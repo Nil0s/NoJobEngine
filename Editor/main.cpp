@@ -24,6 +24,7 @@
 
 #include "Editor/EditorCamera.h"
 #include "Editor/EditorLayer.h"
+#include "Editor/Scripting/ProjectScriptBuildSystem.h"
 #include "Editor/Scene/SceneFileDialog.h"
 
 #include <GLFW/glfw3.h>
@@ -42,6 +43,16 @@ int main()
 {
     try
     {
+        // Created first so it is destroyed last during exception unwinding.
+        // The worker must be joined before its static std::thread is destroyed.
+        struct ScriptBuildWorkerExitGuard final
+        {
+            ~ScriptBuildWorkerExitGuard() noexcept
+            {
+                NoJob::ProjectScriptBuildSystem::Shutdown();
+            }
+        } scriptBuildWorkerExitGuard;
+
         NoJob::Window window({ "NoJobEngine", 1600, 900 });
         NoJob::Renderer::Init();
 
@@ -866,8 +877,10 @@ int main()
             if (editor.ConsumePlayRequest() &&
                 !isPlaying)
             {
+                std::cerr << "[Play] Copying editor scene...\n";
                 runtimeScene =
                     editorScene.Copy();
+                std::cerr << "[Play] Scene copy complete.\n";
 
                 // The runtime scene does not own navigation.
                 // It uses the NavMesh already baked by the
@@ -876,9 +889,13 @@ int main()
                     SetNavigationSystem(
                         &navigationSystem);
 
+                std::cerr << "[Play] Starting runtime scripts...\n";
                 runtimeScene->OnRuntimeStart();
+                std::cerr << "[Play] Runtime scripts started.\n";
 
+                std::cerr << "[Play] Starting physics...\n";
                 physics.Start(*runtimeScene);
+                std::cerr << "[Play] Physics started.\n";
 
                 // Connect AI perception to the active physics world.
                 runtimeScene->SetSpatialQuery(&spatialQuery);
@@ -894,6 +911,7 @@ int main()
                 editor.SetRuntimeState(
                     true,
                     false);
+                std::cerr << "[Play] Play mode initialized.\n";
             }
 
 
@@ -1378,10 +1396,14 @@ int main()
     }
     catch (const std::exception& e)
     {
-        std::cerr
-            << e.what()
-            << '\n';
-
+        std::cerr << "[Fatal] Unhandled std::exception: " << e.what() << '\n';
+        NoJob::ProjectScriptBuildSystem::Shutdown();
+        return 1;
+    }
+    catch (...)
+    {
+        std::cerr << "[Fatal] Unhandled non-std exception during editor execution.\n";
+        NoJob::ProjectScriptBuildSystem::Shutdown();
         return 1;
     }
 }
