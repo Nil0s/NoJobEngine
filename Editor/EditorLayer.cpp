@@ -793,9 +793,11 @@ namespace NoJob
                         : IM_COL32(235, 140, 60, 170),
                         thickness);
 
-                    // Mostramos los resultados reales del runtime
-                    // únicamente para el agente seleccionado.
-                    if (selected && perception.Enabled && perception.DebugDraw)
+                    // Draw runtime perception results for every agent while
+                    // the AI Debugger is open, not just the selected entity.
+                    // Each agent queries its own perception state by handle.
+                    if (isPlaying && showAIDebugger &&
+                        perception.Enabled && perception.DebugDraw)
                     {
                         const auto targets =
                             scene.GetPerceivedTargets(entity.GetHandle());
@@ -3255,11 +3257,35 @@ namespace NoJob
                     }
                     if (ImGui::CollapsingHeader("Execution Timeline", ImGuiTreeNodeFlags_DefaultOpen)) {
                         ImGui::TextDisabled("Per-agent bounded event history (latest first; ticks, not wall-clock time)");
+                        // Presentation-only filters: the recorded event history remains unchanged.
+                        static bool showActions = true;
+                        static bool showConditions = true;
+                        static bool showPriority = true;
+                        static bool showBlackboard = true;
+                        static char blackboardKeyFilter[128] = {};
+                        ImGui::Checkbox("Actions", &showActions);
+                        ImGui::SameLine(); ImGui::Checkbox("Conditions", &showConditions);
+                        ImGui::SameLine(); ImGui::Checkbox("Priority / Other", &showPriority);
+                        ImGui::SameLine(); ImGui::Checkbox("Blackboard", &showBlackboard);
+                        ImGui::SetNextItemWidth(-1.0f);
+                        ImGui::InputTextWithHint("##BlackboardKeyFilter", "Blackboard key filter (e.g. TargetPosition)",
+                            blackboardKeyFilter, sizeof(blackboardKeyFilter));
                         ImGui::BeginChild("##BTEventTimeline", ImVec2(0, 190), true);
                         if (bt->Events.empty()) ImGui::TextDisabled("No events recorded yet.");
                         int eventIndex = 0;
                         for (auto it = bt->Events.rbegin(); it != bt->Events.rend(); ++it, ++eventIndex) {
                             const auto& e = *it;
+                            const bool isBlackboard = e.Kind == "Blackboard";
+                            const bool isAction = !isBlackboard && e.Detail.find("Action:") != std::string::npos;
+                            const bool isCondition = !isBlackboard && e.Detail.find("Condition:") != std::string::npos;
+                            if (isBlackboard && !showBlackboard) continue;
+                            if (isAction && !showActions) continue;
+                            if (isCondition && !showConditions) continue;
+                            if (!isBlackboard && !isAction && !isCondition && !showPriority) continue;
+                            if (isBlackboard && blackboardKeyFilter[0] != '\0') {
+                                const std::string key = e.Detail.substr(0, e.Detail.find(':'));
+                                if (key.find(blackboardKeyFilter) == std::string::npos) continue;
+                            }
                             const ImVec4 tint = e.Kind == "Blackboard" ? ImVec4(.55f,.82f,.98f,1.f)
                                 : e.Kind == "Aborted" || e.Kind == "Failed"
                                 ? ImVec4(.95f,.42f,.32f,1.f)

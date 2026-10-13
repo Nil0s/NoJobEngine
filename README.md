@@ -27,14 +27,15 @@ the original goal of the project:
 
 **Game AI.**
 
-The first native Game AI milestone now includes configurable perception,
-physics-backed line of sight, target memory and an editor-integrated AI
-Debugger. Next comes inspectable decision-making, followed by native
-machine learning and reinforcement learning research.
+The native Game AI foundation now connects perception and navigation with
+visual Behavior Trees, native C++ gameplay callbacks, per-agent Blackboards
+and live decision inspection. The AI Debugger exposes active tree nodes,
+execution events and Blackboard changes while the simulation runs.
+Native machine learning and reinforcement learning remain future research goals.
 
-> **Current milestone: NoJobEngine V1.8.0 --- Native AI Perception & Debugging --- Complete and Validated**
+> **Current milestone: NoJobEngine V1.9.0 — Native AI Decision System — Complete and Validated**
 >
-> **Next milestone: V1.9 --- Native AI Decision System**
+> **Next milestone: V2.0 — Scope to be defined**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
@@ -147,6 +148,27 @@ establishes the sensing and inspection foundation; behavior trees, visual
 behavior authoring, NavMesh generation and A* pathfinding are **not** claimed
 as completed V1.8 features.
 
+### Native AI decision-making & visual debugging (V1.9.0)
+
+V1.9.0 builds on the perception and navigation foundation with native C++
+**Behavior Trees** and a visual `.njbt` authoring workflow. Trees can use
+native gameplay callbacks and a per-agent Blackboard to share decision state.
+The editor supports saving and reopening tree assets, including node kinds
+and connections.
+
+The **AI Debugger 2.1** displays a live Behavior Tree graph, an **Execution
+Timeline** and **Blackboard Live** values. **Blackboard Change Tracking**
+records differences between successive debug snapshots, including additions,
+changes and removals. Timeline filters let developers focus on actions,
+conditions, priority/other events or Blackboard changes, and narrow
+Blackboard events by variable name.
+
+Reactive execution and interruption behavior have been validated, alongside
+multi-agent and Play/Stop stability checks. These tools aim to make authored
+AI decisions inspectable rather than opaque. Blackboard change tracking
+reflects snapshot-to-snapshot differences, not every intermediate write
+within a single tick.
+
 ### 3D model & material import
 
 The asset pipeline imports 3D models through Assimp and can instantiate
@@ -252,6 +274,9 @@ as a single action.
 -   asynchronous standalone build output in the editor Console
 -   AI Debugger window with live agent and target inspection
 -   optional last-seen-position marker in the scene viewport
+-   visual `.njbt` Behavior Tree editor with saved tree assets
+-   AI Debugger 2.1 live tree graph and Execution Timeline
+-   Blackboard Live, change tracking and Timeline filters
 
 ### Asset pipeline
 
@@ -397,6 +422,20 @@ abstraction:
 -   perception debug drawing controlled from the editor
 -   `NavAgentComponent` with movement and destination configuration
 -   scene persistence for Perception, NavAgent and entity layers
+
+### Native AI decision system (V1.9.0)
+
+-   Native C++ Behavior Trees with reactive execution and interruption support
+-   Visual `.njbt` tree authoring and validated asset persistence
+-   Native gameplay action/condition callbacks
+-   Per-agent Blackboard state
+-   Integration with existing perception and navigation systems
+-   AI Debugger 2.1 with live Behavior Tree graph
+-   Execution Timeline for decision and execution events
+-   Blackboard Live values and revision inspection
+-   Blackboard Change Tracking across debug snapshots
+-   Timeline filters by event category and Blackboard variable
+-   Validated multi-agent and Play/Stop stability
 
 ### Physics
 
@@ -824,6 +863,20 @@ Completed and validated in the editor.
 -   Optional last-seen-position scene marker.
 -   Debug rendering independent of gameplay decisions.
 
+### ✅ V1.9.0 — Native AI Decision System
+
+Completed and validated in the editor.
+
+-   Native C++ Behavior Trees and reactive decision execution.
+-   Visual Behavior Tree editing with `.njbt` asset save/load persistence.
+-   Native action and condition callbacks for gameplay logic.
+-   Per-agent Blackboard data and integration with existing AI systems.
+-   AI Debugger 2.1 with live tree visualization and execution history.
+-   Blackboard Live and snapshot-based Blackboard Change Tracking.
+-   Execution Timeline filters for event types and Blackboard variables.
+-   Stability and regression checks completed, including multi-agent use
+    and Play/Stop cycles.
+
 ------------------------------------------------------------------------
 
 ## AI Roadmap
@@ -832,18 +885,11 @@ Completed and validated in the editor.
 > of NoJobEngine and are not presented as implemented until they move
 > into the completed development milestones above.
 
-### V1.9 --- Native AI Decision System (planned)
+### V2.0 — Next milestone (scope pending)
 
-Connect perception to explainable, inspectable gameplay decisions:
-
--   Blackboard-style shared agent state.
--   Deterministic decision-making and behavior execution.
--   Target acquisition, investigation and pursuit behaviors.
--   Decision transitions and reasons exposed in the AI Debugger.
--   Behavior Trees and visual behavior authoring as design goals,
-    subject to architecture and implementation validation.
--   Navigation/pathfinding integration as it becomes available;
-    NavMesh generation and A* are not yet completed features.
+The V2.0 scope will be defined separately. The V1.9 decision-system
+features listed above are complete; future work will be documented here
+only after its scope is agreed.
 
 ### Future milestone --- Native Machine Learning (planned)
 
@@ -860,7 +906,7 @@ training workflow:
 
 The objective is to understand and implement the ML pipeline inside the
 engine instead of treating an external framework as a black box. Version
-numbering for this milestone will be finalized after V1.9 scope is settled.
+numbering for this milestone has not yet been assigned.
 
 ### Later milestone --- ML Agents & Reinforcement Learning (planned)
 
@@ -932,7 +978,9 @@ It covers problems across:
 -   editor/runtime design;
 -   standalone runtime architecture, asset cooking and release
     packaging;
--   native perception, spatial queries and AI debugging tooling.
+-   native perception, spatial queries and AI debugging tooling;
+-   native Behavior Trees, visual behavior authoring and live decision tracing;
+-   Blackboard inspection and change tracking.
 
 The development approach is intentionally iterative: **build a system,
 expose it through the editor, validate it end-to-end, and then improve
