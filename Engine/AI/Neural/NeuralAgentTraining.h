@@ -36,24 +36,86 @@ inline std::vector<std::vector<float>> Activations(const Neural::NeuralNetwork& 
     }
     return result;
 }
-inline Neural::TrainingHistory TrainDirectionModel(const std::string& name, int epochs, float learningRate) {
-    const auto path=NeuralAssetPath(name);
+// Reusable supervised training presets. The agent's active model is never changed
+// by training; source and destination assets are separate and explicit.
+enum class TrainingPreset { FollowXZ = 0, TrackY = 1, Pong = 2 };
+inline const char* PresetLabel(TrainingPreset p) {
+    switch (p) { case TrainingPreset::FollowXZ: return "Follow target (XZ)";
+                 case TrainingPreset::TrackY: return "Track target (Y)";
+                 default: return "Pong paddle (supervised)"; }
+}
+inline Neural::TrainingHistory TrainPreset(const std::string& outputName,
+        const std::string& sourceName, TrainingPreset preset,
+        int epochs, float learningRate, bool resume, bool overwrite) {
+    const auto output = NeuralAssetPath(outputName); // also validates name
+    if (resume && sourceName.empty()) throw std::runtime_error("Select a source model to resume training");
+    if (std::filesystem::exists(output) && !overwrite)
+        throw std::runtime_error("Output already exists. Choose another Save As name or enable Overwrite Output");
     Neural::NeuralNetwork net(42);
-    net.AddDense(2,8,Neural::Activation::Tanh);
-    net.AddDense(8,2,Neural::Activation::Tanh);
-    std::vector<std::vector<float>> xs,ys;
-    for(int x=-8;x<=8;++x) for(int z=-8;z<=8;++z) {
-        const float dx=x/8.f,dz=z/8.f,length=std::sqrt(dx*dx+dz*dz);
-        xs.push_back({dx,dz});
-        ys.push_back(length>1e-5f ? std::vector<float>{dx/length,dz/length} : std::vector<float>{0.f,0.f});
+    const size_t nIn = preset == TrainingPreset::FollowXZ ? 2 : (preset == TrainingPreset::TrackY ? 3 : 6);
+    const size_t nOut = preset == TrainingPreset::FollowXZ ? 2 : 1;
+    if (resume) {
+        net = Neural::NeuralNetwork::Load(NeuralAssetPath(sourceName).string());
+        if (net.Layers().empty() || net.Layers().front().Inputs()!=nIn || net.Layers().back().Outputs()!=nOut)
+            throw std::runtime_error("Source model dimensions do not match the selected training preset");
+    } else if (preset == TrainingPreset::FollowXZ) {
+        net.AddDense(2,8,Neural::Activation::Tanh);
+        net.AddDense(8,2,Neural::Activation::Tanh);
+    } else if (preset == TrainingPreset::TrackY) {
+        net.AddDense(3,12,Neural::Activation::Tanh);
+        net.AddDense(12,1,Neural::Activation::Tanh);
+    } else {
+        net.AddDense(6,12,Neural::Activation::Tanh);
+        net.AddDense(12,8,Neural::Activation::Tanh);
+        net.AddDense(8,1,Neural::Activation::Tanh);
+    }
+    std::vector<std::vector<float>> xs, ys;
+    if (preset == TrainingPreset::FollowXZ) {
+        for (int x=-8;x<=8;++x) for (int z=-8;z<=8;++z) {
+            const float dx=x/8.f,dz=z/8.f,len=std::sqrt(dx*dx+dz*dz);
+            xs.push_back({dx,dz});
+            ys.push_back(len>1e-5f?std::vector<float>{dx/len,dz/len}:std::vector<float>{0.f,0.f});
+        }
+    } else if (preset == TrainingPreset::TrackY) {
+        // Inputs: normalized target Y, self Y, relative Y. Output: vertical direction.
+        for(int target=-10;target<=10;++target) for(int self=-10;self<=10;++self) {
+            float t=target/10.f, p=self/10.f, d=t-p;
+            xs.push_back({t,p,std::clamp(d,-1.f,1.f)});
+            ys.push_back({std::clamp(d*3.f,-1.f,1.f)});
+        }
+    } else {
+        // Inputs: ball X/Y, velocity X/Y, paddle Y, horizontal distance.
+        // Labels use a deterministic intercept heuristic, not reinforcement learning.
+        for(int i=0;i<6000;++i) {
+            const float bx=static_cast<float>((i*37)%199-99)/100.f;
+            const float by=static_cast<float>((i*53)%199-99)/100.f;
+            const float vx=static_cast<float>((i*17)%161-80)/100.f;
+            const float vy=static_cast<float>((i*29)%161-80)/100.f;
+            const float py=static_cast<float>((i*71)%199-99)/100.f;
+            const float dx=std::clamp((1.f-bx)*0.5f,0.f,1.f);
+            const float time=vx>0.05f ? std::min(3.f,(1.f-bx)/vx) : 0.f;
+            float intercept=by+vy*time;
+            // Reflect off normalized +/-1 playfield bounds.
+            while(intercept>1.f || intercept< -1.f) {
+                if(intercept>1.f) intercept=2.f-intercept;
+                if(intercept< -1.f) intercept=-2.f-intercept;
+            }
+            xs.push_back({bx,by,vx,vy,py,dx});
+            ys.push_back({std::clamp((intercept-py)*3.f,-1.f,1.f)});
+        }
     }
     Neural::TrainingOptions options;
     options.epochs=static_cast<size_t>(std::clamp(epochs,1,20000));
     options.learningRate=std::clamp(learningRate,0.00001f,0.1f);
     options.batchSize=16; options.adam=true; options.seed=42;
     auto history=net.Train(xs,ys,options);
-    std::filesystem::create_directories(path.parent_path());
-    net.Save(path.string());
+    std::filesystem::create_directories(output.parent_path());
+    net.Save(output.string());
     return history;
+}
+// Backward compatible entry point for the original V2.0.6 follow-agent demo.
+inline Neural::TrainingHistory TrainDirectionModel(const std::string& name, int epochs, float learningRate,
+                                                  bool resume=false, bool overwrite=false) {
+    return TrainPreset(name, name, TrainingPreset::FollowXZ, epochs, learningRate, resume, overwrite);
 }
 } // namespace NoJob::NeuralAgent

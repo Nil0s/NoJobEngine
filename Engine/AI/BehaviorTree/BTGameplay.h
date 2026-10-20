@@ -150,7 +150,7 @@ public:
     std::string BehaviorTreeAsset = "Default";
     float PatrolRadius = 3.0f;
     float PatrolWaitSeconds = 0.4f;
-    std::string NeuralModelName = "NeuralFollowerDemo";
+    std::string NeuralModelName = "";
     std::string NeuralTargetTag = "NeuralTarget";
 protected:
     std::shared_ptr<const BTTree> CreateTree() override {
@@ -174,6 +174,7 @@ protected:
             auto& nav = GetComponent<NavAgentComponent>();
             if (!nav.Enabled) return BTStatus::Failure;
             if (!m_NeuralModel) {
+                if (NeuralModelName.empty()) return BTStatus::Failure;
                 try {
                     m_NeuralModel.emplace(Neural::NeuralNetwork::Load(NeuralAssetPath(NeuralModelName).string()));
                     if (m_NeuralModel->Layers().front().Inputs() != 2 ||
@@ -277,7 +278,7 @@ inline void RegisterBTAssetAgent() {
         {MakeMemberFieldDefinition<BTAssetAgent, std::string>("BehaviorTreeAsset", &BTAssetAgent::BehaviorTreeAsset, std::string("Default")),
          MakeMemberFieldDefinition<BTAssetAgent, float>("PatrolRadius", &BTAssetAgent::PatrolRadius, 3.0f),
          MakeMemberFieldDefinition<BTAssetAgent, float>("PatrolWaitSeconds", &BTAssetAgent::PatrolWaitSeconds, 0.4f),
-         MakeMemberFieldDefinition<BTAssetAgent, std::string>("NeuralModelName", &BTAssetAgent::NeuralModelName, std::string("NeuralFollowerDemo")),
+         MakeMemberFieldDefinition<BTAssetAgent, std::string>("NeuralModelName", &BTAssetAgent::NeuralModelName, std::string("")),
          MakeMemberFieldDefinition<BTAssetAgent, std::string>("NeuralTargetTag", &BTAssetAgent::NeuralTargetTag, std::string("NeuralTarget"))},
         [] { return std::make_unique<BTAssetAgent>(); }});
 }

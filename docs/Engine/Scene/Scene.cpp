@@ -1,0 +1,1810 @@
+#include <cstdio>
+#include <exception>
+#include "Engine/AI/BehaviorTree/BTGameplay.h"
+#include "Engine/Scene/Scene.h"
+#include "Engine/Scene/NativeScripts.h"
+
+#include "Engine/Audio/AudioEngine.h"
+#include "Engine/Animation/Animation.h"
+
+#include "Engine/AI/Navigation/NavigationSystem.h"
+#include "Engine/AI/Perception/ISpatialQuery.h"
+
+#include <algorithm>
+#include <cmath>
+#include <random>
+#include <utility>
+
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/quaternion.hpp>
+
+namespace NoJob
+{
+    namespace
+    {
+        TransformComponent TransformFromMatrix(
+            const glm::mat4& matrix)
+        {
+            glm::vec3 scale;
+            glm::quat orientation;
+            glm::vec3 translation;
+            glm::vec3 skew;
+            glm::vec4 perspective;
+
+            TransformComponent result;
+
+            if (glm::decompose(
+                matrix,
+                scale,
+                orientation,
+                translation,
+                skew,
+                perspective))
+            {
+                result.Position = translation;
+
+                result.Rotation =
+                    glm::eulerAngles(
+                        orientation);
+
+                result.Scale = scale;
+            }
+
+            return result;
+        }
+
+        bool NearlyEqualPosition(
+            const glm::vec3& a,
+            const glm::vec3& b)
+        {
+            constexpr float epsilon =
+                0.0001f;
+
+            const glm::vec3 difference =
+                a - b;
+
+            return
+                glm::dot(
+                    difference,
+                    difference) <=
+                epsilon * epsilon;
+        }
+    }
+
+    Scene::Scene() = default;
+
+    Scene::Scene(const Scene& other)
+        : m_Entities(other.m_Entities),
+        m_NextHandle(other.m_NextHandle),
+        m_NextID(other.m_NextID),
+        m_DeltaTime(other.m_DeltaTime)
+    {
+        // Runtime state and NavigationSystem are intentionally
+        // not copied. The runtime owner reconnects navigation
+        // explicitly before OnRuntimeStart().
+    }
+
+    Scene::~Scene()
+    {
+        OnRuntimeStop();
+    }
+
+    std::unique_ptr<Scene>
+        Scene::Copy() const
+    {
+        return
+            std::make_unique<Scene>(
+                *this);
+    }
+
+    void Scene::RestoreFrom(
+        const Scene& other)
+    {
+        OnRuntimeStop();
+
+        m_Entities =
+            other.m_Entities;
+
+        m_NextHandle =
+            other.m_NextHandle;
+
+        m_NextID =
+            other.m_NextID;
+
+        m_DeltaTime =
+            other.m_DeltaTime;
+
+        m_RuntimeRunning = false;
+
+        m_ScriptInstances.clear();
+        m_NavAgentStates.clear();
+
+        // External runtime services are not restored
+       // from serialized or copied scene data.
+        m_NavigationSystem = nullptr;
+        m_SpatialQuery = nullptr;
+    }
+
+    Entity Scene::CreateEntity(
+        const std::string& name)
+    {
+        const std::uint32_t handle =
+            m_NextHandle++;
+
+        auto [iterator, inserted] =
+            m_Entities.try_emplace(
+                handle);
+
+        (void)inserted;
+
+        EntityData& data =
+            iterator->second;
+
+        data.ID.ID =
+            m_NextID++;
+
+        data.Tag.Tag =
+            name.empty()
+            ? "Entity"
+            : name;
+
+        return Entity(
+            handle,
+            this);
+    }
+
+    void Scene::DestroyEntity(
+        Entity entity)
+    {
+        if (!entity ||
+            entity.m_Scene != this)
+        {
+            return;
+        }
+
+        const auto relationship =
+            entity.GetComponent<
+            RelationshipComponent>();
+
+        // Children become roots while preserving
+        // their world transforms.
+        const auto children =
+            relationship.Children;
+
+        for (const auto childHandle :
+            children)
+        {
+            if (IsValid(childHandle))
+            {
+                Unparent(
+                    Entity(
+                        childHandle,
+                        this),
+                    true);
+            }
+        }
+
+        if (relationship.Parent != 0 &&
+            IsValid(
+                relationship.Parent))
+        {
+            auto& siblings =
+                m_Entities
+                .at(
+                    relationship.Parent)
+                .Relationship
+                .Children;
+
+            std::erase(
+                siblings,
+                entity.m_Handle);
+        }
+
+        DestroyScriptInstance(
+            entity.m_Handle);
+
+        m_NavAgentStates.erase(
+            entity.m_Handle);
+
+        m_ParticleStates.erase(
+            entity.m_Handle);
+
+        m_Entities.erase(
+            entity.m_Handle);
+    }
+
+    bool Scene::IsValid(
+        std::uint32_t handle) const
+    {
+        return
+            handle != 0 &&
+            m_Entities.contains(
+                handle);
+    }
+
+    std::vector<Entity>
+        Scene::GetEntities()
+    {
+        std::vector<Entity> result;
+
+        result.reserve(
+            m_Entities.size());
+
+        for (const auto& [handle, data] :
+            m_Entities)
+        {
+            (void)data;
+
+            result.emplace_back(
+                handle,
+                this);
+        }
+
+        return result;
+    }
+
+    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(std::uint32_t handle) const
+    {
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return std::nullopt;
+        for (const auto& ptr : it->second)
+        {
+            if (!ptr || ptr->GetAIDebugState().empty()) continue;
+            AIDebugStateInfo result;
+            result.Current = ptr->GetAIDebugState();
+            result.Previous = ptr->GetAIDebugPreviousState();
+            result.TimeInState = ptr->GetAIDebugTimeInState();
+            result.RuntimeSeconds = ptr->GetAIDebugRuntimeSeconds();
+            for (const auto& e : ptr->GetAIDebugTransitions())
+                result.History.push_back({e.From, e.To, e.RuntimeSeconds});
+            return result;
+        }
+        return std::nullopt;
+    }
+
+    void Scene::CreateScriptInstance(std::uint32_t handle)
+    {
+        if (!IsValid(handle) || m_ScriptInstances.contains(handle)) return;
+        RegisterBuiltinScripts();
+        RegisterBTAssetAgent();
+        auto& data = m_Entities.at(handle);
+        auto& instances = m_ScriptInstances[handle];
+        auto create = [&](NativeScriptComponent& component)
+        {
+            std::fprintf(stderr, "[BT DIAG] Entity %u configured script '%s', enabled=%d\n",
+                handle, component.ScriptName.c_str(), component.Enabled ? 1 : 0);
+            if (!component.Enabled) return;
+            ScriptRegistry::ApplyDefaults(component);
+            const auto* definition = ScriptRegistry::Find(component.ScriptName);
+            if (!definition || !definition->Factory) {
+                std::fprintf(stderr, "[BT DIAG] Entity %u script '%s' MISSING FACTORY in runtime ScriptRegistry (DLL not loaded/registered?)\n",
+                    handle, component.ScriptName.c_str());
+                return;
+            }
+            std::fprintf(stderr, "[BT DIAG] Entity %u script '%s' factory FOUND\n", handle, component.ScriptName.c_str());
+            auto instance = definition->Factory();
+            instance->m_Entity = Entity(handle, this);
+            instance->m_BoundScript = &component;
+            ScriptRegistry::ApplyFieldsToInstance(component, *instance);
+            // Store before OnCreate, so shutdown can clean up even if OnCreate throws.
+            instances.push_back(std::move(instance));
+        };
+        if (data.NativeScript) create(*data.NativeScript);
+        for (auto& script : data.AdditionalNativeScripts) create(script);
+        // Two-phase initialization: all scripts must exist before a BT agent
+        // resolves actions exposed by its sibling scripts.
+        // Initialize non-BT scripts first, even if the BTAssetAgent was listed first.
+        // Every instance is already constructed before either pass.
+        for (int pass = 0; pass < 2; ++pass)
+        for (auto& instance : instances) if (instance && instance->m_BoundScript &&
+            ((instance->m_BoundScript->ScriptName == "BTAssetAgent") == (pass == 1))) {
+            std::fprintf(stderr, "[BT DIAG] Entity %u OnCreate '%s' (pass %d)\n",
+                handle, instance->m_BoundScript->ScriptName.c_str(), pass);
+            try { instance->OnCreate(); }
+            catch (const std::exception& ex) {
+                std::fprintf(stderr, "[Native Script] Entity %u, script %s: %s\n",
+                    handle, instance->m_BoundScript ? instance->m_BoundScript->ScriptName.c_str() : "unknown", ex.what());
+                // A failed BT initialization must not terminate the whole editor.
+            }
+        }
+    }
+
+    ScriptableEntity* Scene::FindRuntimeScript(std::uint32_t handle, const std::string& scriptName) const
+    {
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return nullptr;
+        for (const auto& script : it->second)
+            if (script && script->m_BoundScript && script->m_BoundScript->ScriptName == scriptName)
+                return script.get();
+        return nullptr;
+    }
+
+    void Scene::RegisterEntityBehaviorTreeBindings(std::uint32_t handle, BTNativeRegistry& registry) const
+    {
+        std::fprintf(stderr, "[BT TRACE] ENTER Scene::RegisterEntityBehaviorTreeBindings entity=%u\n", handle);
+        std::fflush(stderr);
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) {
+            std::fprintf(stderr, "[BT DIAG] Entity %u has NO runtime script instances\n", handle);
+            return;
+        }
+        std::fprintf(stderr, "[BT DIAG] Entity %u has %zu runtime script instance(s)\n",
+            handle, it->second.size());
+        for (const auto& script : it->second) {
+            if (!script) continue;
+            const char* name = script->m_BoundScript ? script->m_BoundScript->ScriptName.c_str() : "<unbound>";
+            std::fprintf(stderr, "[BT DIAG] Entity %u registering BT callbacks from '%s'\n", handle, name);
+            std::fprintf(stderr, "[BT TRACE] BEFORE virtual binding script='%s' ptr=%p\n", name, static_cast<const void*>(script.get()));
+            std::fflush(stderr);
+            script->RegisterBehaviorTreeBindings(registry);
+            std::fprintf(stderr, "[BT TRACE] AFTER virtual binding script='%s' action=%d condition=%d\n",
+                name, registry.HasAction("Guard.Attack") ? 1 : 0,
+                registry.HasCondition("Guard.HasTarget") ? 1 : 0);
+            std::fflush(stderr);
+            std::fprintf(stderr, "[BT DIAG] Entity %u after '%s': Guard.Attack=%d, Guard.HasTarget=%d\n",
+                handle, name, registry.HasAction("Guard.Attack") ? 1 : 0,
+                registry.HasCondition("Guard.HasTarget") ? 1 : 0);
+        }
+    }
+
+    std::optional<Scene::BTDebugInfo> Scene::GetBehaviorTreeDebug(std::uint32_t handle) const
+    {
+        const auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return std::nullopt;
+        for (const auto& ptr : it->second)
+        {
+            const auto* controller = ptr ? dynamic_cast<const BTScriptController*>(ptr.get()) : nullptr;
+            if (!controller || !controller->GetBehaviorTreeInstance()) continue;
+            const auto& snapshot = controller->GetDebugSnapshot();
+            BTDebugInfo result;
+            result.LastResult = snapshot.LastResult;
+            for (const auto& n : snapshot.Nodes)
+                result.Nodes.push_back({n.ID, n.Status, n.Ticks, n.Label, n.Depth, n.Active});
+            for (const auto& e : snapshot.Events)
+                result.Events.push_back({e.Tick, e.Node, e.Kind, e.Detail});
+            result.BlackboardEntries = snapshot.BlackboardEntries;
+            result.BlackboardRevision = snapshot.BlackboardRevision;
+            result.TargetHandle = snapshot.TargetHandle;
+            result.TargetPosition = snapshot.TargetPosition;
+            return result;
+        }
+        return std::nullopt;
+    }
+
+    void Scene::DestroyScriptInstance(std::uint32_t handle)
+    {
+        auto it = m_ScriptInstances.find(handle);
+        if (it == m_ScriptInstances.end()) return;
+        auto instances = std::move(it->second);
+        m_ScriptInstances.erase(it);
+        for (auto rit = instances.rbegin(); rit != instances.rend(); ++rit)
+            if (*rit) (*rit)->OnDestroy();
+    }
+
+    const std::vector<
+        Scene::RuntimeParticle>&
+        Scene::GetParticles(
+            std::uint32_t handle) const
+    {
+        static const std::vector<
+            RuntimeParticle>
+            empty;
+
+        const auto it =
+            m_ParticleStates.find(
+                handle);
+
+        return
+            it ==
+            m_ParticleStates.end()
+            ? empty
+            : it->second.Particles;
+    }
+
+    void Scene::OnRuntimeStart()
+    {
+        if (m_RuntimeRunning)
+            return;
+
+        m_RuntimeRunning = true;
+
+        m_ParticleStates.clear();
+        m_NavAgentStates.clear();
+        m_PerceptionStates.clear();
+
+        AudioEngine::Init();
+
+        std::vector<std::uint32_t> startupHandles;
+        startupHandles.reserve(m_Entities.size());
+        for (const auto& [handle, data] : m_Entities)
+            startupHandles.push_back(handle);
+
+        for (const auto handle : startupHandles)
+        {
+            if (!IsValid(handle))
+                continue;
+
+            CreateScriptInstance(handle);
+
+            if (!IsValid(handle))
+                continue;
+
+            const auto& data = m_Entities.at(handle);
+
+            if (data.AudioSource &&
+                data.AudioSource
+                ->PlayOnAwake)
+            {
+                const glm::mat4 world =
+                    GetWorldTransform(
+                        Entity(
+                            handle,
+                            this));
+
+                AudioEngine::Play(
+                    handle,
+                    *data.AudioSource,
+                    glm::vec3(
+                        world[3]));
+            }
+
+            if (data.NavAgent)
+            {
+                NavAgentRuntimeState state;
+
+                state.Agent.Speed() =
+                    std::max(
+                        data.NavAgent->Speed,
+                        0.0f);
+
+                state.Agent
+                    .StoppingDistance() =
+                    std::max(
+                        data.NavAgent
+                        ->StoppingDistance,
+                        0.0f);
+
+                m_NavAgentStates.emplace(
+                    handle,
+                    std::move(state));
+            }
+            if (data.Perception)
+            {
+                m_PerceptionStates.try_emplace(handle);
+            }
+        }
+    }
+
+    void Scene::OnRuntimeStop()
+    {
+        m_RuntimeRunning = false;
+
+        m_SpatialQuery = nullptr;
+
+        m_ParticleStates.clear();
+        m_NavAgentStates.clear();
+        m_PerceptionStates.clear();
+
+        AudioEngine::StopAll();
+
+        while (
+            !m_ScriptInstances.empty())
+        {
+            DestroyScriptInstance(
+                m_ScriptInstances
+                .begin()
+                ->first);
+        }
+    }
+
+    std::vector<Scene::PerceptionTargetInfo>
+        Scene::GetPerceivedTargets(std::uint32_t observerHandle) const
+    {
+        std::vector<PerceptionTargetInfo> results;
+
+        // Comprobamos que el observador tiene estado de percepción.
+        const auto stateIt = m_PerceptionStates.find(observerHandle);
+
+        if (stateIt == m_PerceptionStates.end())
+            return results;
+
+        const auto& state = stateIt->second;
+
+        // Reservamos memoria para evitar realojamientos.
+        results.reserve(state.Targets.size());
+
+        for (const auto& [targetHandle, target] : state.Targets)
+        {
+            if (!IsValid(targetHandle))
+                continue;
+
+            PerceptionTargetInfo info;
+
+            info.EntityHandle = target.EntityHandle;
+            info.LastKnownPosition = target.LastKnownPosition;
+            info.TimeSinceLastSeen = target.TimeSinceLastSeen;
+            info.VisibleDuration = target.VisibleDuration;
+            info.TrackedDuration = target.TrackedDuration;
+            info.IsVisible = target.IsVisible;
+
+            results.push_back(info);
+        }
+
+        return results;
+    }
+
+    std::optional<Scene::LastSeenTargetInfo> Scene::GetLastSeenTarget(std::uint32_t observerHandle) const
+    {
+        const auto it = m_PerceptionStates.find(observerHandle);
+        if (it == m_PerceptionStates.end() || !it->second.LastSeenHandle ||
+            !IsValid(it->second.LastSeenHandle))
+            return std::nullopt;
+        const auto& state = it->second;
+        bool visible = false;
+        if (auto target = state.Targets.find(state.LastSeenHandle); target != state.Targets.end())
+            visible = target->second.IsVisible;
+        return LastSeenTargetInfo{ state.LastSeenHandle, state.LastSeenPosition,
+                                   state.LastSeenElapsed, visible };
+    }
+
+    void Scene::UpdatePerception(float deltaTime)
+    {
+        const float dt = std::max(deltaTime, 0.0f);
+
+        for (auto& [handle, data] : m_Entities)
+        {
+            if (!data.Perception)
+            {
+                m_PerceptionStates.erase(handle);
+                continue;
+            }
+
+            const auto& perception = *data.Perception;
+
+            if (!perception.Enabled)
+            {
+                m_PerceptionStates.erase(handle);
+                continue;
+            }
+
+            auto& state = m_PerceptionStates[handle];
+
+            if (state.LastSeenHandle)
+                state.LastSeenElapsed += dt;
+
+            for (auto it = state.Targets.begin();
+                it != state.Targets.end();)
+            {
+                auto& target = it->second;
+                target.TrackedDuration += dt;
+                if (target.IsVisible) target.VisibleDuration += dt;
+
+                if (!IsValid(target.EntityHandle))
+                {
+                    it = state.Targets.erase(it);
+                    continue;
+                }
+
+                if (!target.IsVisible)
+                {
+                    target.TimeSinceLastSeen += dt;
+
+                    if (target.TimeSinceLastSeen >=
+                        std::max(perception.MemoryDuration, 0.0f))
+                    {
+                        it = state.Targets.erase(it);
+                        continue;
+                    }
+                }
+
+                ++it;
+            }
+            state.UpdateTimer += dt;
+
+            const float interval =
+                std::max(perception.UpdateInterval, 0.01f);
+
+            if (state.UpdateTimer < interval)
+                continue;
+
+            state.UpdateTimer = 0.0f;
+
+            for (auto& [targetHandle, target] : state.Targets)
+            {
+                target.IsVisible = false;
+            }
+
+            const glm::mat4 observerWorld =
+                GetWorldTransform(Entity(handle, this));
+
+            const glm::vec3 observerPosition(observerWorld[3]);
+
+            // Forward local  motor: -Z.
+            // Transform dir global space.
+            glm::vec3 forward = -glm::vec3(observerWorld[2]);
+
+            // Perception horizontal  plane XZ.
+            forward.y = 0.0f;
+
+            const float forwardLengthSquared =
+                glm::dot(forward, forward);
+
+            if (forwardLengthSquared < 0.000001f)
+                forward = glm::vec3(0.0f, 0.0f, -1.0f);
+            else
+                forward /= std::sqrt(forwardLengthSquared);
+
+            const float fov =
+                std::clamp(perception.FieldOfView, 0.0f, 360.0f);
+
+            const float halfFovRadians =
+                glm::radians(fov * 0.5f);
+
+            const float minimumDot =
+                std::cos(halfFovRadians);
+
+            const float radius =
+                std::max(perception.DetectionRadius, 0.0f);
+
+            const float radiusSquared = radius * radius;
+
+            for (const auto& [targetHandle, targetData] : m_Entities)
+            {
+                if (targetHandle == handle)
+                    continue;
+
+                const LayerMask targetMask =
+                    EntityLayers::Bit(targetData.Layer.Layer);
+
+                if ((targetMask & perception.DetectionMask) == 0)
+                    continue;
+
+                const glm::mat4 targetWorld =
+                    GetWorldTransform(Entity(targetHandle, this));
+
+                const glm::vec3 targetPosition(targetWorld[3]);
+
+                const glm::vec3 offset =
+                    targetPosition - observerPosition;
+
+                const float distanceSquared =
+                    glm::dot(offset, offset);
+
+                if (distanceSquared > radiusSquared)
+                    continue;
+                // Prove the Horizontal angle  to frontal direction agent 
+                glm::vec3 horizontalOffset = offset;
+                horizontalOffset.y = 0.0f;
+
+                const float horizontalDistanceSquared =
+                    glm::dot(horizontalOffset, horizontalOffset);
+
+                if (horizontalDistanceSquared > 0.000001f &&
+                    fov < 360.0f)
+                {
+                    const glm::vec3 directionToTarget =
+                        horizontalOffset /
+                        std::sqrt(horizontalDistanceSquared);
+
+                    const float dot =
+                        glm::dot(forward, directionToTarget);
+
+                    if (dot < minimumDot)
+                        continue;
+                }
+
+                // -----------------------------------------------------
+                // Line of Sight (LOS)
+                // -----------------------------------------------------
+
+                if (m_SpatialQuery)
+                {
+                    const std::uint64_t observerID = data.ID.ID;
+                    const std::uint64_t targetID = targetData.ID.ID;
+                    // Eye position in world space.
+                    // EyeHeight is a vertical offset from the entity origin.
+                    const float eyeHeight =
+                        std::max(perception.EyeHeight, 0.0f);
+
+                    const glm::vec3 eyePosition =
+                        observerPosition + glm::vec3(0.0f, eyeHeight, 0.0f);
+
+                    const glm::vec3 targetAimPosition =
+                        targetPosition + glm::vec3(0.0f, eyeHeight, 0.0f);
+
+                    const bool blocked = m_SpatialQuery->HasObstacleBetween(
+                        eyePosition,
+                        targetAimPosition,
+                        observerID,
+                        targetID
+                    );
+
+                    if (blocked)
+                        continue;
+                }
+
+                auto& targetState = state.Targets[targetHandle];
+
+                targetState.EntityHandle = targetHandle;
+                targetState.LastKnownPosition = targetPosition;
+                state.LastSeenHandle = targetHandle;
+                state.LastSeenPosition = targetPosition;
+                state.LastSeenElapsed = 0.0f;
+                targetState.TimeSinceLastSeen = 0.0f;
+                targetState.IsVisible = true;
+       
+            }
+        }
+    }
+    void Scene::OnUpdate(
+        float deltaTime)
+    {
+        m_DeltaTime =
+            deltaTime;
+
+        if (!m_RuntimeRunning)
+            return;
+
+        // -----------------------------------------------------
+        // Animator
+        // -----------------------------------------------------
+
+        for (auto& [handle, data] :
+            m_Entities)
+        {
+            (void)handle;
+
+            if (!data.Animator ||
+                !data.Animator->Playing ||
+                !data.Animator->Animation)
+            {
+                continue;
+            }
+
+            const auto& clips =
+                data.Animator
+                ->Animation
+                ->Clips();
+
+            if (clips.empty())
+                continue;
+
+            data.Animator->ClipIndex =
+                std::clamp(
+                    data.Animator->ClipIndex,
+                    0,
+                    static_cast<int>(
+                        clips.size()) -
+                    1);
+
+            auto& animator =
+                *data.Animator;
+
+            const float duration =
+                static_cast<float>(
+                    clips[
+                        animator.ClipIndex]
+                    .DurationSeconds());
+
+            animator.TimeSeconds +=
+                deltaTime *
+                animator.Speed;
+
+            if (duration > 0.0f &&
+                animator.TimeSeconds >
+                duration)
+            {
+                animator.TimeSeconds =
+                    animator.Loop
+                    ? std::fmod(
+                        animator.TimeSeconds,
+                        duration)
+                    : duration;
+            }
+        }
+
+        // -----------------------------------------------------
+        // V1.8 Native NavAgents
+        // -----------------------------------------------------
+
+       // -----------------------------------------------------
+// V1.8 Native NavAgents - Dynamic Repath
+// -----------------------------------------------------
+
+        if (m_NavigationSystem)
+        {
+
+
+            const bool hasNavMesh =
+                m_NavigationSystem->HasNavMesh();
+
+            const std::uint64_t navMeshVersion =
+                m_NavigationSystem->GetNavMeshVersion();
+
+            for (auto& [handle, data] : m_Entities)
+            {
+                if (!data.NavAgent)
+                    continue;
+
+                auto& component = *data.NavAgent;
+                auto& state = m_NavAgentStates[handle];
+
+                state.Agent.Speed() =
+                    std::max(component.Speed, 0.0f);
+
+                state.Agent.StoppingDistance() =
+                    std::max(component.StoppingDistance, 0.0f);
+
+                if (!component.Enabled ||
+                    !component.HasDestination)
+                {
+                    state.Agent.Stop();
+                    state.HasRequestedDestination = false;
+                    state.PathQueryFailed = false;
+                    state.RepathTimer = 0.0f;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = false;
+                    continue;
+                }
+
+                Entity entity(handle, this);
+
+                const glm::mat4 worldTransform =
+                    GetWorldTransform(entity);
+
+                const glm::vec3 currentPosition(
+                    worldTransform[3]);
+
+                // Check actual world-space progress, not the requested
+                // movement vector (physics can prevent the movement).
+                if (!state.ProgressInitialized)
+                {
+                    state.LastProgressPosition = currentPosition;
+                    state.ProgressInitialized = true;
+                    state.StuckTimer = 0.0f;
+                }
+                else
+                {
+                    glm::vec3 progress = currentPosition - state.LastProgressPosition;
+                    progress.y = 0.0f;
+                    if (glm::dot(progress, progress) >= 0.15f * 0.15f)
+                    {
+                        state.LastProgressPosition = currentPosition;
+                        state.StuckTimer = 0.0f;
+                    }
+                    else
+                    {
+                        state.StuckTimer += std::max(deltaTime, 0.0f);
+                    }
+                }
+
+                // Release an unreachable destination. AI scripts can then
+                // select a new patrol/flee destination instead of pushing
+                // against the same corner indefinitely.
+                if (state.StuckTimer >= 2.5f && component.Speed > 0.01f)
+                {
+                    state.Agent.Stop();
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
+                    state.PathQueryFailed = false;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = false;
+                    continue;
+                }
+
+                const bool destinationChanged =
+                    !state.HasRequestedDestination ||
+                    !NearlyEqualPosition(
+                        state.RequestedDestination,
+                        component.Destination);
+
+                const bool navMeshChanged =
+                    state.PathNavMeshVersion != navMeshVersion;
+
+                // No path can remain valid without a NavMesh.
+                if (!hasNavMesh)
+                {
+                    state.Agent.Stop();
+                    state.PathQueryFailed = true;
+                    state.RepathTimer = 0.0f;
+                    continue;
+                }
+
+                // New destination or changed navigation geometry:
+                // calculate immediately.
+                if (destinationChanged || navMeshChanged)
+                {
+                    const bool found =
+                        state.Agent.SetDestination(
+                            *m_NavigationSystem,
+                            currentPosition,
+                            component.Destination);
+
+                    state.RequestedDestination =
+                        component.Destination;
+
+                    state.HasRequestedDestination = true;
+                    state.PathNavMeshVersion = navMeshVersion;
+                    state.PathQueryFailed = !found;
+                    state.RepathTimer = 0.0f;
+                    state.LastProgressPosition = currentPosition;
+                    state.StuckTimer = 0.0f;
+                    state.ProgressInitialized = true;
+
+                    if (!found)
+                        continue;
+                }
+                else
+                {
+                    // Retry failed paths periodically.
+                    // Also refresh active routes at a controlled rate.
+                    state.RepathTimer +=
+                        std::max(deltaTime, 0.0f);
+
+                    if (state.RepathTimer >= std::max(component.RepathInterval, 0.05f))
+                    {
+                        state.RepathTimer = 0.0f;
+
+                        if (state.PathQueryFailed)
+                        {
+                            const bool found =
+                                state.Agent.SetDestination(
+                                    *m_NavigationSystem,
+                                    currentPosition,
+                                    component.Destination);
+
+                            state.PathQueryFailed = !found;
+
+                            if (!found)
+                                continue;
+                        }
+                        else if (!state.Agent.HasReachedDestination())
+                        {
+                            const bool found =
+                                state.Agent.RecalculatePath(
+                                    *m_NavigationSystem,
+                                    currentPosition);
+
+                            // The previous path is retained by
+                            // RecalculatePath() on failure.
+                            // Do not follow it blindly.
+                            if (!found)
+                            {
+                                state.Agent.Stop();
+                                state.PathQueryFailed = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                if (state.PathQueryFailed)
+                    continue;
+
+                if (state.Agent.HasReachedDestination())
+                {
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
+                    continue;
+                }
+
+                const glm::vec3 movement =
+                    state.Agent.Update(
+                        currentPosition,
+                        deltaTime);
+
+                if (glm::dot(movement, movement) > 0.0000001f)
+                {
+                    glm::mat4 movedWorld = worldTransform;
+
+                    glm::vec3 moveDirection = movement;
+                    moveDirection.y = 0.0f;
+
+                    const float moveLength = glm::length(moveDirection);
+                    if (moveLength > 0.0001f)
+                    {
+                        moveDirection /= moveLength;
+
+                        // Perception considers -Z the forward axis.
+                        glm::vec3 forward = -glm::vec3(worldTransform[2]);
+                        forward.y = 0.0f;
+
+                        const float forwardLength = glm::length(forward);
+                        if (forwardLength > 0.0001f)
+                        {
+                            forward /= forwardLength;
+
+                            const float dotValue = glm::clamp(
+                                glm::dot(forward, moveDirection),
+                                -1.0f, 1.0f);
+
+                            const float crossY =
+                                glm::cross(forward, moveDirection).y;
+
+                            const float angle = std::atan2(crossY, dotValue);
+                            const float maxRotation =
+                                glm::radians(360.0f) * std::max(deltaTime, 0.0f);
+
+                            const float rotationStep = glm::clamp(
+                                angle, -maxRotation, maxRotation);
+
+                            const glm::mat4 rotationDelta = glm::rotate(
+                                glm::mat4(1.0f),
+                                rotationStep,
+                                glm::vec3(0.0f, 1.0f, 0.0f));
+
+                            movedWorld = rotationDelta * worldTransform;
+                        }
+                    }
+
+                    // Rotate around the agent, not around the world origin.
+                    movedWorld[3] =
+                        worldTransform[3] + glm::vec4(movement, 0.0f);
+
+                    SetWorldTransform(entity, movedWorld);
+                }
+
+                if (state.Agent.HasReachedDestination())
+                {
+                    component.HasDestination = false;
+                    state.HasRequestedDestination = false;
+                }
+            }
+        }
+        // -----------------------------------------------------
+        // V1.8 AI Perception
+        // -----------------------------------------------------
+
+        UpdatePerception(deltaTime);
+
+        // -----------------------------------------------------
+        // V1.6 CPU Particle Simulation
+        // -----------------------------------------------------
+
+        for (auto& [handle, data] :
+            m_Entities)
+        {
+            if (!data.ParticleSystem)
+                continue;
+
+            auto& settings =
+                *data.ParticleSystem;
+
+            auto& state =
+                m_ParticleStates[
+                    handle];
+
+            for (auto& p :
+                state.Particles)
+            {
+                p.Age +=
+                    deltaTime;
+
+                p.Velocity +=
+                    settings.Gravity *
+                    deltaTime;
+
+                p.Position +=
+                    p.Velocity *
+                    deltaTime;
+
+                const float t =
+                    glm::clamp(
+                        p.Age /
+                        std::max(
+                            p.Lifetime,
+                            0.01f),
+                        0.0f,
+                        1.0f);
+
+                p.Color =
+                    glm::mix(
+                        p.StartColor,
+                        p.EndColor,
+                        t);
+
+                p.Size =
+                    glm::mix(
+                        p.StartSize,
+                        p.StartSize *
+                        std::max(
+                            settings
+                            .EndSizeMultiplier,
+                            0.0f),
+                        t);
+            }
+
+            std::erase_if(
+                state.Particles,
+                [](const RuntimeParticle& p)
+                {
+                    return
+                        p.Age >=
+                        p.Lifetime;
+                });
+
+            if (!settings.Playing)
+                continue;
+
+            state.Elapsed +=
+                deltaTime;
+
+            const bool emitting =
+                settings.Loop ||
+                state.Elapsed <=
+                std::max(
+                    settings.Duration,
+                    0.0f);
+
+            if (!emitting)
+                continue;
+
+            const float rate =
+                std::max(
+                    settings.EmissionRate,
+                    0.0f);
+
+            state.SpawnAccumulator +=
+                rate *
+                deltaTime;
+
+            std::uint32_t spawnCount =
+                static_cast<
+                std::uint32_t>(
+                    state.SpawnAccumulator);
+
+            state.SpawnAccumulator -=
+                static_cast<float>(
+                    spawnCount);
+
+            const glm::mat4 world =
+                GetWorldTransform(
+                    Entity(
+                        handle,
+                        this));
+
+            const glm::vec3 origin(
+                world[3]);
+
+            glm::vec3 direction =
+                settings.Direction;
+
+            if (glm::length(
+                direction) <
+                0.0001f)
+            {
+                direction =
+                {
+                    0.0f,
+                    1.0f,
+                    0.0f
+                };
+            }
+
+            direction =
+                glm::normalize(
+                    glm::mat3(world) *
+                    glm::normalize(
+                        direction));
+
+            while (
+                spawnCount-- > 0 &&
+                state.Particles.size() <
+                settings.MaxParticles)
+            {
+                auto random01 =
+                    [&state]()
+                    {
+                        state.Seed =
+                            state.Seed *
+                            1664525u +
+                            1013904223u;
+
+                        return
+                            static_cast<float>(
+                                (state.Seed >>
+                                    8) &
+                                0x00FFFFFFu) /
+                            static_cast<float>(
+                                0x01000000u);
+                    };
+
+                auto signedRandom =
+                    [&]()
+                    {
+                        return
+                            random01() *
+                            2.0f -
+                            1.0f;
+                    };
+
+                RuntimeParticle p;
+
+                glm::vec3 spawnOffset{
+                    0.0f
+                };
+
+                glm::vec3 spawnDirection =
+                    direction;
+
+                if (settings.Shape ==
+                    ParticleShape::Sphere)
+                {
+                    glm::vec3 r{
+                        signedRandom(),
+                        signedRandom(),
+                        signedRandom()
+                    };
+
+                    if (glm::length(r) <
+                        0.0001f)
+                    {
+                        r =
+                        {
+                            0.0f,
+                            1.0f,
+                            0.0f
+                        };
+                    }
+
+                    r =
+                        glm::normalize(r);
+
+                    const float radius =
+                        std::max(
+                            settings
+                            .ShapeRadius,
+                            0.0f) *
+                        std::cbrt(
+                            random01());
+
+                    spawnOffset =
+                        r *
+                        radius;
+
+                    spawnDirection =
+                        r;
+                }
+                else if (
+                    settings.Shape ==
+                    ParticleShape::Cone)
+                {
+                    glm::vec3 tangent =
+                        std::abs(
+                            direction.y) <
+                        0.99f
+                        ? glm::normalize(
+                            glm::cross(
+                                direction,
+                                glm::vec3(
+                                    0,
+                                    1,
+                                    0)))
+                        : glm::vec3(
+                            1,
+                            0,
+                            0);
+
+                    const glm::vec3
+                        bitangent =
+                        glm::normalize(
+                            glm::cross(
+                                direction,
+                                tangent));
+
+                    const float angle =
+                        glm::radians(
+                            glm::clamp(
+                                settings.ConeAngle,
+                                0.0f,
+                                89.0f));
+
+                    const float radial =
+                        std::tan(angle) *
+                        std::sqrt(
+                            random01());
+
+                    const float phi =
+                        random01() *
+                        glm::two_pi<
+                        float>();
+
+                    spawnDirection =
+                        glm::normalize(
+                            direction +
+                            tangent *
+                            (std::cos(
+                                phi) *
+                                radial) +
+                            bitangent *
+                            (std::sin(
+                                phi) *
+                                radial));
+                }
+
+                const float lifetimeScale =
+                    1.0f +
+                    signedRandom() *
+                    glm::clamp(
+                        settings
+                        .LifetimeRandom,
+                        0.0f,
+                        1.0f);
+
+                const float speedScale =
+                    1.0f +
+                    signedRandom() *
+                    glm::clamp(
+                        settings
+                        .SpeedRandom,
+                        0.0f,
+                        1.0f);
+
+                const float sizeScale =
+                    1.0f +
+                    signedRandom() *
+                    glm::clamp(
+                        settings
+                        .SizeRandom,
+                        0.0f,
+                        1.0f);
+
+                p.Position =
+                    origin +
+                    spawnOffset;
+
+                p.Velocity =
+                    spawnDirection *
+                    settings.StartSpeed *
+                    speedScale;
+
+                p.Lifetime =
+                    std::max(
+                        settings
+                        .StartLifetime *
+                        lifetimeScale,
+                        0.01f);
+
+                p.StartSize =
+                    std::max(
+                        settings
+                        .StartSize *
+                        sizeScale,
+                        0.001f);
+
+                p.Size =
+                    p.StartSize;
+
+                p.StartColor =
+                    settings.StartColor;
+
+                p.EndColor =
+                    settings.EndColor;
+
+                p.Color =
+                    p.StartColor;
+
+                state.Particles
+                    .push_back(p);
+            }
+        }
+
+        // -----------------------------------------------------
+        // Spatial Audio
+        // -----------------------------------------------------
+
+        // First enabled AudioListener is authoritative.
+        for (auto& [handle, data] :
+            m_Entities)
+        {
+            if (!data.AudioListener ||
+                !data.AudioListener
+                ->Enabled)
+            {
+                continue;
+            }
+
+            const glm::mat4 world =
+                GetWorldTransform(
+                    Entity(
+                        handle,
+                        this));
+
+            const glm::vec3 position(
+                world[3]);
+
+            const glm::vec3 forward =
+                glm::normalize(
+                    -glm::vec3(
+                        world[2]));
+
+            const glm::vec3 up =
+                glm::normalize(
+                    glm::vec3(
+                        world[1]));
+
+            AudioEngine::SetListener(
+                position,
+                forward,
+                up);
+
+            break;
+        }
+
+        for (auto& [handle, data] :
+            m_Entities)
+        {
+            if (!data.AudioSource)
+                continue;
+
+            const glm::mat4 world =
+                GetWorldTransform(
+                    Entity(
+                        handle,
+                        this));
+
+            AudioEngine::Update(
+                handle,
+                *data.AudioSource,
+                glm::vec3(
+                    world[3]));
+        }
+
+        // -----------------------------------------------------
+        // Native Scripts
+        // -----------------------------------------------------
+
+        // Snapshot handles because scripts can create/destroy
+        // entities during update.
+        std::vector<std::uint32_t>
+            handles;
+
+        handles.reserve(
+            m_Entities.size());
+
+        for (const auto& [handle, data] :
+            m_Entities)
+        {
+            (void)data;
+
+            handles.push_back(
+                handle);
+        }
+
+        for (const auto handle : handles)
+        {
+            if (!IsValid(handle)) continue;
+            // Recreate on component changes to keep script pointers valid.
+            // Editor normally changes script configuration outside Play.
+            CreateScriptInstance(handle);
+            auto it = m_ScriptInstances.find(handle);
+            if (it == m_ScriptInstances.end()) continue;
+            auto& data = m_Entities.at(handle);
+            std::vector<NativeScriptComponent*> components;
+            if (data.NativeScript && data.NativeScript->Enabled)
+                components.push_back(&*data.NativeScript);
+            for (auto& script : data.AdditionalNativeScripts)
+                if (script.Enabled) components.push_back(&script);
+            bool bindingsChanged = components.size() != it->second.size();
+            if (!bindingsChanged)
+                for (std::size_t i = 0; i < components.size(); ++i)
+                    if (it->second[i]->m_BoundScript != components[i])
+                        { bindingsChanged = true; break; }
+            if (bindingsChanged)
+            {
+                DestroyScriptInstance(handle);
+                CreateScriptInstance(handle);
+                it = m_ScriptInstances.find(handle);
+                if (it == m_ScriptInstances.end()) continue;
+            }
+            // Iterate over a stable index; scripts can remove their own entity.
+            for (std::size_t i = 0; i < components.size(); ++i)
+            {
+                if (!IsValid(handle)) break;
+                auto current = m_ScriptInstances.find(handle);
+                if (current == m_ScriptInstances.end() || i >= current->second.size()) break;
+                auto* instance = current->second[i].get();
+                auto* component = components[i];
+                if (!instance || !component) continue;
+                ScriptRegistry::ApplyFieldsToInstance(*component, *instance);
+                instance->OnUpdate(deltaTime);
+                if (IsValid(handle) && m_ScriptInstances.contains(handle))
+                    ScriptRegistry::ReadFieldsFromInstance(*component, *instance);
+            }
+        }
+    }
+
+    Entity Scene::GetParent(
+        Entity entity)
+    {
+        if (!entity ||
+            entity.m_Scene != this)
+        {
+            return {};
+        }
+
+        const auto parent =
+            entity.GetComponent<
+            RelationshipComponent>()
+            .Parent;
+
+        return
+            IsValid(parent)
+            ? Entity(
+                parent,
+                this)
+            : Entity{};
+    }
+
+    std::vector<Entity>
+        Scene::GetChildren(
+            Entity entity)
+    {
+        std::vector<Entity> result;
+
+        if (!entity ||
+            entity.m_Scene != this)
+        {
+            return result;
+        }
+
+        for (const auto handle :
+            entity.GetComponent<
+            RelationshipComponent>()
+            .Children)
+        {
+            if (IsValid(handle))
+            {
+                result.emplace_back(
+                    handle,
+                    this);
+            }
+        }
+
+        return result;
+    }
+
+    bool Scene::IsDescendant(
+        Entity possibleDescendant,
+        Entity ancestor) const
+    {
+        if (!possibleDescendant ||
+            !ancestor)
+        {
+            return false;
+        }
+
+        std::uint32_t current =
+            possibleDescendant
+            .m_Handle;
+
+        while (IsValid(current))
+        {
+            const auto parent =
+                m_Entities
+                .at(current)
+                .Relationship
+                .Parent;
+
+            if (parent ==
+                ancestor.m_Handle)
+            {
+                return true;
+            }
+
+            if (parent == 0)
+                break;
+
+            current =
+                parent;
+        }
+
+        return false;
+    }
+
+    bool Scene::SetParent(
+        Entity child,
+        Entity parent,
+        bool keepWorldTransform)
+    {
+        if (!child ||
+            !parent ||
+            child.m_Scene != this ||
+            parent.m_Scene != this ||
+            child == parent ||
+            IsDescendant(
+                parent,
+                child))
+        {
+            return false;
+        }
+
+        const glm::mat4 oldWorld =
+            keepWorldTransform
+            ? GetWorldTransform(
+                child)
+            : glm::mat4(
+                1.0f);
+
+        auto& childRelationship =
+            child.GetComponent<
+            RelationshipComponent>();
+
+        if (childRelationship.Parent !=
+            0 &&
+            IsValid(
+                childRelationship
+                .Parent))
+        {
+            auto& oldChildren =
+                m_Entities
+                .at(
+                    childRelationship
+                    .Parent)
+                .Relationship
+                .Children;
+
+            std::erase(
+                oldChildren,
+                child.m_Handle);
+        }
+
+        childRelationship.Parent =
+            parent.m_Handle;
+
+        auto& children =
+            parent.GetComponent<
+            RelationshipComponent>()
+            .Children;
+
+        if (std::find(
+            children.begin(),
+            children.end(),
+            child.m_Handle) ==
+            children.end())
+        {
+            children.push_back(
+                child.m_Handle);
+        }
+
+        if (keepWorldTransform)
+        {
+            SetWorldTransform(
+                child,
+                oldWorld);
+        }
+
+        return true;
+    }
+
+    void Scene::Unparent(
+        Entity child,
+        bool keepWorldTransform)
+    {
+        if (!child ||
+            child.m_Scene != this)
+        {
+            return;
+        }
+
+        auto& relationship =
+            child.GetComponent<
+            RelationshipComponent>();
+
+        if (relationship.Parent == 0)
+            return;
+
+        const glm::mat4 oldWorld =
+            keepWorldTransform
+            ? GetWorldTransform(
+                child)
+            : glm::mat4(
+                1.0f);
+
+        if (IsValid(
+            relationship.Parent))
+        {
+            auto& siblings =
+                m_Entities
+                .at(
+                    relationship
+                    .Parent)
+                .Relationship
+                .Children;
+
+            std::erase(
+                siblings,
+                child.m_Handle);
+        }
+
+        relationship.Parent = 0;
+
+        if (keepWorldTransform)
+        {
+            child.GetComponent<
+                TransformComponent>() =
+                TransformFromMatrix(
+                    oldWorld);
+        }
+    }
+
+    glm::mat4 Scene::GetWorldTransform(
+        Entity entity) const
+    {
+        if (!entity ||
+            entity.m_Scene != this)
+        {
+            return glm::mat4(
+                1.0f);
+        }
+
+        const auto& data =
+            m_Entities.at(
+                entity.m_Handle);
+
+        const glm::mat4 local =
+            data.Transform
+            .GetTransform();
+
+        const auto parent =
+            data.Relationship.Parent;
+
+        if (parent == 0 ||
+            !IsValid(parent))
+        {
+            return local;
+        }
+
+        return
+            GetWorldTransform(
+                Entity(
+                    parent,
+                    const_cast<
+                    Scene*>(this))) *
+            local;
+    }
+
+    void Scene::SetWorldTransform(
+        Entity entity,
+        const glm::mat4& worldTransform)
+    {
+        if (!entity ||
+            entity.m_Scene != this)
+        {
+            return;
+        }
+
+        const auto parent =
+            entity.GetComponent<
+            RelationshipComponent>()
+            .Parent;
+
+        glm::mat4 local =
+            worldTransform;
+
+        if (parent != 0 &&
+            IsValid(parent))
+        {
+            const glm::mat4 parentWorld =
+                GetWorldTransform(
+                    Entity(
+                        parent,
+                        this));
+
+            local =
+                glm::inverse(
+                    parentWorld) *
+                worldTransform;
+        }
+
+        entity.GetComponent<
+            TransformComponent>() =
+            TransformFromMatrix(
+                local);
+    }
+}

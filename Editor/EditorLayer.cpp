@@ -3083,7 +3083,7 @@ namespace NoJob
         for (auto entity : entities)
         {
             if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
-                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent"))) continue;
+                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent"))) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -3418,10 +3418,11 @@ namespace NoJob
             }
             if (agent.HasComponent<NativeScriptComponent>() &&
                 (agent.GetComponent<NativeScriptComponent>().ScriptName == "NeuralTrainingAgent" ||
-                 agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent")) {
-                if(ImGui::CollapsingHeader("Neural Inspector - Live",ImGuiTreeNodeFlags_DefaultOpen)) {
-                    NeuralAgent::Snapshot snap;
-                    if(m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent,snap)) {
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent" ||
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "GenericNeuralAgent")) {
+                NeuralAgent::Snapshot snap;
+                if (m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent,snap) &&
+                    ImGui::CollapsingHeader("Neural Inspector - Live",ImGuiTreeNodeFlags_DefaultOpen)) {
                         ImGui::Text("Model: %s",snap.model.c_str());
                         ImGui::Text("Status: %s | Target distance: %.2f",snap.status.c_str(),snap.distance);
                         auto drawValues=[](const char* title,const std::vector<float>& values) {
@@ -3524,7 +3525,6 @@ namespace NoJob
                             } catch(const std::exception& e) { ImGui::TextDisabled("Cannot load model: %s",e.what()); }
                             ImGui::TreePop();
                         }
-                    } else ImGui::TextDisabled("Run Play with NeuralTrainingAgent to inspect inference.");
                 }
             }
             if (agent.HasComponent<NavAgentComponent>())

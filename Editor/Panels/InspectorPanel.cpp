@@ -234,7 +234,24 @@ namespace NoJob
                             auto& field = it->second;
 
                             ImGui::PushID(fieldDef.Name.c_str());
-                            if (field.Type == ScriptFieldType::Float)
+                            if ((script.ScriptName == "NeuralTrainingAgent" || script.ScriptName == "GenericNeuralAgent") &&
+                                (fieldDef.Name == "TrainingOutputName" || fieldDef.Name == "ResumeSourceName" ||
+                                 fieldDef.Name == "TrainingPreset")) {
+                                ImGui::TextDisabled("Configured in Neural Training below");
+                            }
+                            else if (field.Type == ScriptFieldType::Int &&
+                                script.ScriptName == "GenericNeuralAgent" && fieldDef.Name == "ObservationPreset") {
+                                const char* presets[]={"Relative Target XZ (2)","Target/Self Y (3)","Pong Ball State (6)"};
+                                field.Int=std::clamp(field.Int,0,2);
+                                ImGui::Combo("Observations",&field.Int,presets,3);
+                            }
+                            else if (field.Type == ScriptFieldType::Int &&
+                                script.ScriptName == "GenericNeuralAgent" && fieldDef.Name == "ActionMode") {
+                                const char* actions[]={"NavAgent XZ (2)","Move Transform Y (1)","Move Transform XZ (2)"};
+                                field.Int=std::clamp(field.Int,0,2);
+                                ImGui::Combo("Actions",&field.Int,actions,3);
+                            }
+                            else if (field.Type == ScriptFieldType::Float)
                                 ImGui::DragFloat(
                                     fieldDef.Name.c_str(), &field.Float, 0.05f);
                             else if (field.Type == ScriptFieldType::Int)
@@ -271,9 +288,17 @@ namespace NoJob
                                         if(ImGui::Selectable(name.c_str(),field.String==name)) field.String=name;
                                     ImGui::EndCombo();
                                 }
-                                char buffer[256]{};
-                                std::snprintf(buffer,sizeof(buffer),"%s",field.String.c_str());
-                                if(ImGui::InputText("Model asset name",buffer,sizeof(buffer))) field.String=buffer;
+                                ImGui::TextDisabled("Active model only. Training output is configured separately.");
+                            }
+                            else if (field.Type == ScriptFieldType::String &&
+                                     script.ScriptName == "GenericNeuralAgent" && fieldDef.Name == "ActiveModel")
+                            {
+                                const auto names=ListNeuralAssetNames();
+                                if (ImGui::BeginCombo("Active Neural Model",field.String.empty()?"Select model...":field.String.c_str())) {
+                                    for(const auto& name:names)
+                                        if(ImGui::Selectable(name.c_str(),field.String==name)) field.String=name;
+                                    ImGui::EndCombo();
+                                }
                             }
                             else if (field.Type == ScriptFieldType::String)
                             {
@@ -287,24 +312,69 @@ namespace NoJob
                             beginEdit(); endEdit();
                             ImGui::PopID();
                         }
-                        if(script.ScriptName == "NeuralTrainingAgent") {
+                        if(script.ScriptName == "NeuralTrainingAgent" || script.ScriptName == "GenericNeuralAgent") {
                             ImGui::Separator();
-                            ImGui::TextUnformatted("Supervised Agent Training (Editor)");
-                            ImGui::TextDisabled("Trains direction-to-target examples; not reinforcement learning.");
-                            const auto nameIt=script.Fields.find("ModelName");
-                            const std::string model=nameIt==script.Fields.end()?"":nameIt->second.String;
-                            if(ImGui::Button("Train & Save .njn")) {
-                                try {
-                                    const int epochs=script.Fields.count("Epochs")?script.Fields.at("Epochs").Int:1500;
-                                    const float rate=script.Fields.count("LearningRate")?script.Fields.at("LearningRate").Float:0.01f;
-                                    auto history=NeuralAgent::TrainDirectionModel(model,epochs,rate);
-                                    const float loss=history.epochLoss.empty()?0.f:history.epochLoss.back();
-                                    std::printf("[Neural Inspector] Saved %s, MSE %.8f\n",model.c_str(),loss);
-                                } catch(const std::exception& e) { std::fprintf(stderr,"[Neural Inspector] %s\n",e.what()); }
+                            ImGui::TextUnformatted("Supervised Neural Training");
+                            ImGui::TextDisabled("Active Model and Save As are independent.");
+                            auto& fields=script.Fields;
+                            auto ensure=[&](const char* key, ScriptFieldValue value) {
+                                if(!fields.count(key)) fields.emplace(key,std::move(value));
+                            };
+                            ensure("TrainingOutputName",ScriptFieldValue::MakeString("NeuralFollowerNew"));
+                            ensure("ResumeSourceName",ScriptFieldValue::MakeString(""));
+                            ensure("TrainingPreset",ScriptFieldValue::MakeInt(0));
+                            auto& output=fields.at("TrainingOutputName").String;
+                            auto& source=fields.at("ResumeSourceName").String;
+                            auto& preset=fields.at("TrainingPreset").Int;
+                            preset=std::clamp(preset,0,2);
+                            const char* activeKey=script.ScriptName=="GenericNeuralAgent"?"ActiveModel":"ModelName";
+                            ImGui::Text("Active: %s",fields.count(activeKey)?fields.at(activeKey).String.c_str():"(none)");
+                            char outputBuffer[256]{};
+                            std::snprintf(outputBuffer,sizeof(outputBuffer),"%s",output.c_str());
+                            if(ImGui::InputText("Save Training As",outputBuffer,sizeof(outputBuffer))) output=outputBuffer;
+                            const auto names=ListNeuralAssetNames();
+                            if(ImGui::BeginCombo("Resume Source",source.empty()?"None (fresh training)":source.c_str())) {
+                                if(ImGui::Selectable("None (fresh training)",source.empty())) source.clear();
+                                for(const auto& item:names)
+                                    if(ImGui::Selectable(item.c_str(),source==item)) source=item;
+                                ImGui::EndCombo();
                             }
-                            ImGui::SameLine();
-                            ImGui::TextDisabled("Asset: %s",model.c_str());
-                            ImGui::TextDisabled("Training runs synchronously; see console for final MSE.");
+                            const char* presets[]={"Follow XZ (2 -> 2)","Track Y (3 -> 1)","Pong (6 -> 1)"};
+                            ImGui::Combo("Training Dataset",&preset,presets,3);
+                            ImGui::TextDisabled("Pong uses a reference intercept heuristic, not RL.");
+                            if(script.ScriptName=="NeuralTrainingAgent")
+                                ImGui::TextDisabled("TrainOnPlay in the legacy agent only supports Follow XZ.");
+                            const bool exists=IsValidNeuralAssetName(output) && std::filesystem::exists(NeuralAssetPath(output));
+                            const bool overwrite=fields.count("OverwriteModel") && fields.at("OverwriteModel").Bool;
+                            const bool resume=fields.count("ResumeTraining") && fields.at("ResumeTraining").Bool;
+                            if(exists && !overwrite) ImGui::TextColored(ImVec4(1.f,.65f,.25f,1.f),"Output exists: enable OverwriteModel or choose another name.");
+                            static std::string trainingStatus;
+                            ImGui::BeginDisabled(!IsValidNeuralAssetName(output) || (exists && !overwrite) || (resume && source.empty()));
+                            if(ImGui::Button("Train & Save As .njn")) {
+                                try {
+                                    const int epochs=fields.count("Epochs")?fields.at("Epochs").Int:1500;
+                                    const float rate=fields.count("LearningRate")?fields.at("LearningRate").Float:0.01f;
+                                    auto history=NeuralAgent::TrainPreset(output,source,
+                                        static_cast<NeuralAgent::TrainingPreset>(preset),epochs,rate,resume,overwrite);
+                                    const float loss=history.epochLoss.empty()?0.f:history.epochLoss.back();
+                                    char msg[256];std::snprintf(msg,sizeof(msg),"Saved %s.njn | MSE %.8f",output.c_str(),loss);
+                                    trainingStatus=msg;
+                                    std::printf("[Neural Training] %s\n",msg);
+                                } catch(const std::exception& e) {
+                                    trainingStatus=std::string("Training failed: ")+e.what();
+                                    std::fprintf(stderr,"[Neural Training] %s\n",e.what());
+                                }
+                            }
+                            ImGui::EndDisabled();
+                            if(!trainingStatus.empty()) ImGui::TextWrapped("%s",trainingStatus.c_str());
+                            ImGui::TextDisabled("To use the saved model, select it in Active Neural Model.");
+                        }
+                        if(script.ScriptName == "GenericNeuralAgent") {
+                            ImGui::Separator();
+                            ImGui::TextDisabled("ObservationPreset: 0=Relative XZ, 1=Track Y, 2=Pong 6-input");
+                            ImGui::TextDisabled("ActionMode: 0=NavAgent XZ, 1=Move Y, 2=Move XZ");
+                            ImGui::TextDisabled("Compatible pairs: (0,0), (1,1), (2,1).");
+                            ImGui::TextDisabled("Training is available above; select output as Active Model after training.");
                         }
                         ImGui::TextDisabled(
                             "Scene/Prefab persistent | Hot-reload safe");
