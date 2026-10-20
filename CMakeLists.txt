@@ -140,6 +140,20 @@ file(GLOB_RECURSE NOJOB_ENGINE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/Engine/*.c"
 )
 
+# Test translation units define their own main() and must not be part of the engine library.
+list(FILTER NOJOB_ENGINE_SOURCES EXCLUDE REGEX "[/\\]Tests[/\\].*\\.cpp$")
+list(FILTER NOJOB_ENGINE_SOURCES EXCLUDE REGEX "[/\\]NeuralTests\\.cpp$")
+
+# SceneSerializer must be compiled into NoJobEngine for both Editor and Runtime.
+set(NOJOB_SCENE_SERIALIZER "${CMAKE_CURRENT_SOURCE_DIR}/Engine/Scene/SceneSerializer.cpp")
+if(NOT EXISTS "${NOJOB_SCENE_SERIALIZER}")
+    message(FATAL_ERROR "Missing Engine/Scene/SceneSerializer.cpp; restore it from the previous working Engine ZIP")
+endif()
+list(FIND NOJOB_ENGINE_SOURCES "${NOJOB_SCENE_SERIALIZER}" NOJOB_SERIALIZER_INDEX)
+if(NOJOB_SERIALIZER_INDEX EQUAL -1)
+    list(APPEND NOJOB_ENGINE_SOURCES "${NOJOB_SCENE_SERIALIZER}")
+endif()
+
 add_library(NoJobEngine STATIC
     ${NOJOB_ENGINE_SOURCES}
     ${miniaudio_SOURCE_DIR}/miniaudio.c
@@ -206,7 +220,8 @@ add_executable(NoJobEditor
     Editor/Assets/ProjectPanel.cpp
     Editor/Panels/InspectorPanel.cpp
     Editor/Scene/SceneFileDialog.cpp
-    Editor/EditorCamera.cpp)
+    Editor/EditorCamera.cpp
+    Editor/Panels/NeuralEditorPanel.cpp)
 
 target_link_libraries(NoJobEditor PRIVATE
     NoJobEngine
@@ -278,3 +293,14 @@ target_compile_features(BTAssetTests PRIVATE cxx_std_20)
 add_executable(BTReactiveTests Engine/AI/BehaviorTree/Tests/BTReactiveTests.cpp)
 target_include_directories(BTReactiveTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(BTReactiveTests PRIVATE cxx_std_20)
+
+# Standalone neural tests; no graphics/physics/editor dependencies.
+option(NOJOB_BUILD_NEURAL_TESTS "Build native neural network tests" OFF)
+if(NOJOB_BUILD_NEURAL_TESTS)
+    add_executable(NoJobNeuralTests
+        Engine/AI/Neural/NeuralTests.cpp
+        Engine/AI/Neural/NeuralNetwork.cpp)
+    target_include_directories(NoJobNeuralTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Engine/AI/Neural)
+    enable_testing()
+    add_test(NAME NoJobNeuralTests COMMAND NoJobNeuralTests)
+endif()

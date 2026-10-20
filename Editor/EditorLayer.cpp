@@ -2,6 +2,7 @@
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include "Engine/AI/BehaviorTree/BTGameplay.h"
 #include "Editor/EditorLayer.h"
+#include "Editor/Panels/NeuralEditorPanel.h"
 #include "Editor/Build/StandaloneBuilder.h"
 #include "Editor/Build/BuildSettings.h"
 #include "Editor/Assets/ProjectPanel.h"
@@ -1288,6 +1289,8 @@ namespace NoJob
         }
     }
 
+    static NeuralEditorPanel s_NeuralEditorPanel;
+
     void EditorLayer::Draw()
     {
 #ifdef _WIN32
@@ -1321,6 +1324,7 @@ namespace NoJob
             DrawGraphicsSettings();
         DrawRendererProfiler();
         DrawAIDebugger();
+        s_NeuralEditorPanel.Draw();
         if (s_ShowBTAssetEditor) DrawBTAssetEditorWindow(&s_ShowBTAssetEditor);
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
@@ -1964,6 +1968,8 @@ namespace NoJob
             if (ImGui::BeginMenu("AI"))
             {
                 ImGui::MenuItem("Behavior Tree Editor", nullptr, &s_ShowBTAssetEditor);
+                if (ImGui::MenuItem("Neural Network Editor", nullptr, s_NeuralEditorPanel.IsOpen()))
+                    s_NeuralEditorPanel.SetOpen(!s_NeuralEditorPanel.IsOpen());
                 ImGui::MenuItem("AI Debugger", nullptr, &m_ShowAIDebugger);
                 ImGui::Separator();
                 if (ImGui::BeginMenu("Navigation"))
