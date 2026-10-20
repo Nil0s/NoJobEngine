@@ -1,3 +1,8 @@
+/**
+ * @file BTActionNode.h
+ * @brief BTActionNode declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNativeRegistry.h"
 #include <memory>

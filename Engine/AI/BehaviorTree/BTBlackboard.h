@@ -1,3 +1,8 @@
+/**
+ * @file BTBlackboard.h
+ * @brief Blackboard values shared by behavior tree nodes.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 
 #include <any>

@@ -1,3 +1,8 @@
+/**
+ * @file Renderer.h
+ * @brief Renderer declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <glm/glm.hpp>
 #include <memory>

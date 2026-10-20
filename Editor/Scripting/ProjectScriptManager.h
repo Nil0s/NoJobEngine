@@ -1,3 +1,8 @@
+/**
+ * @file ProjectScriptManager.h
+ * @brief Project script discovery, compilation and runtime loading.
+ * @ingroup Scripting
+ */
 #pragma once
 #include <filesystem>
 #include <functional>

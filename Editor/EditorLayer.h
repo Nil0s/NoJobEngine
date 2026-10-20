@@ -1,3 +1,8 @@
+/**
+ * @file EditorLayer.h
+ * @brief Main editor interaction, rendering and debugging layer.
+ * @ingroup Editor
+ */
 #pragma once
 
 #include "Editor/Assets/ProjectPanel.h"

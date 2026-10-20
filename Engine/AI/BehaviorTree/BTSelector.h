@@ -1,3 +1,8 @@
+/**
+ * @file BTSelector.h
+ * @brief BTSelector declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNode.h"
 #include <memory>

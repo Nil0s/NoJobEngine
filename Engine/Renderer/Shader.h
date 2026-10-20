@@ -1,3 +1,8 @@
+/**
+ * @file Shader.h
+ * @brief Shader declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <glm/glm.hpp>
 #include <memory>

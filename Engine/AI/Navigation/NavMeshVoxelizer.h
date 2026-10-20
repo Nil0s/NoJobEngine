@@ -1,3 +1,8 @@
+/**
+ * @file NavMeshVoxelizer.h
+ * @brief NavMeshVoxelizer declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 #include "Engine/AI/Navigation/NavMeshGenerator.h"
 namespace NoJob {

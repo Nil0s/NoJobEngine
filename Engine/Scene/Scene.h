@@ -1,3 +1,8 @@
+/**
+ * @file Scene.h
+ * @brief Scene declarations for the Scenes and Native Scripting subsystem.
+ * @ingroup Scene
+ */
 #pragma once
 
 #include "Engine/Scene/Components.h"
@@ -197,7 +202,7 @@ namespace NoJob
 
             std::optional<RigidbodyComponent> Rigidbody;
 
-        
+
            // V1.8 Native Gameplay AI
             std::optional<NavAgentComponent> NavAgent;
             std::optional<PerceptionComponent> Perception;

@@ -1,3 +1,8 @@
+/**
+ * @file NavMesh.h
+ * @brief NavMesh declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include <cstdint>

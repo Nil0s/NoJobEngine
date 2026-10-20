@@ -1,3 +1,8 @@
+/**
+ * @file SceneFileDialog.h
+ * @brief SceneFileDialog declarations for the Scenes and Native Scripting subsystem.
+ * @ingroup Scene
+ */
 #pragma once
 #include <filesystem>
 

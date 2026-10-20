@@ -1,3 +1,8 @@
+/**
+ * @file VertexArray.h
+ * @brief VertexArray declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 
 #include "Engine/Renderer/BufferLayout.h"

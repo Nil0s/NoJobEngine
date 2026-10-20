@@ -1,3 +1,8 @@
+/**
+ * @file AudioEngine.h
+ * @brief AudioEngine declarations for the Audio subsystem.
+ * @ingroup Audio
+ */
 #pragma once
 #include <cstdint>
 #include <string>

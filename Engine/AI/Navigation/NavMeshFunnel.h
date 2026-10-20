@@ -1,3 +1,8 @@
+/**
+ * @file NavMeshFunnel.h
+ * @brief NavMeshFunnel declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include "Engine/AI/Navigation/NavMesh.h"

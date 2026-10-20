@@ -1,3 +1,8 @@
+/**
+ * @file OpenGLVertexArray.h
+ * @brief OpenGLVertexArray declarations for the OpenGL Backend subsystem.
+ * @ingroup OpenGL
+ */
 #pragma once
 
 #include "Engine/Renderer/VertexArray.h"

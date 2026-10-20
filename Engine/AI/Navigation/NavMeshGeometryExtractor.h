@@ -1,3 +1,8 @@
+/**
+ * @file NavMeshGeometryExtractor.h
+ * @brief NavMeshGeometryExtractor declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include "Engine/AI/Navigation/NavMeshGenerator.h"

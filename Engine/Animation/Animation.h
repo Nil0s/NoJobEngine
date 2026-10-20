@@ -1,3 +1,8 @@
+/**
+ * @file Animation.h
+ * @brief Animation declarations for the Animation subsystem.
+ * @ingroup Animation
+ */
 #pragma once
 #include <filesystem>
 #include <memory>

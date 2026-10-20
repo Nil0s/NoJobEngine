@@ -1,3 +1,8 @@
+/**
+ * @file NavMeshGenerator.h
+ * @brief NavMeshGenerator declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include "Engine/AI/Navigation/NavMesh.h"

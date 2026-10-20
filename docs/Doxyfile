@@ -1,0 +1,26 @@
+# NoJobEngine v2.0.7 - English API reference
+PROJECT_NAME           = "NoJobEngine"
+PROJECT_NUMBER         = "2.0.7"
+OUTPUT_DIRECTORY       = docs/generated
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+INPUT                  = Engine Editor docs/mainpage.dox
+FILE_PATTERNS          = *.h *.hpp *.cpp *.dox
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */Tests/* */generated/*
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_LOGFILE           = docs/doxygen-warnings.log
+QUIET                  = NO

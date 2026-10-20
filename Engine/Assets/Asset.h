@@ -1,3 +1,8 @@
+/**
+ * @file Asset.h
+ * @brief Asset declarations for the Asset Management subsystem.
+ * @ingroup Assets
+ */
 #pragma once
 #include <cstdint>
 #include <filesystem>

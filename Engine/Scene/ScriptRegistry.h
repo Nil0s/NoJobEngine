@@ -1,3 +1,8 @@
+/**
+ * @file ScriptRegistry.h
+ * @brief Registration and creation of native gameplay scripts.
+ * @ingroup Scene
+ */
 #pragma once
 #include "Engine/Scene/ScriptableEntity.h"
 #include <functional>

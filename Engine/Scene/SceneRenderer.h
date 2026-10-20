@@ -1,3 +1,8 @@
+/**
+ * @file SceneRenderer.h
+ * @brief SceneRenderer declarations for the Scenes and Native Scripting subsystem.
+ * @ingroup Scene
+ */
 #pragma once
 
 #include <glm/glm.hpp>

@@ -1,3 +1,8 @@
+/**
+ * @file Log.h
+ * @brief Log declarations for the Core subsystem.
+ * @ingroup Core
+ */
 #pragma once
 
 #include <iostream>

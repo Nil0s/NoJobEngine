@@ -1,3 +1,8 @@
+/**
+ * @file DefaultSceneShaders.h
+ * @brief DefaultSceneShaders declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 
 namespace NoJob::DefaultSceneShaders

@@ -1,3 +1,8 @@
+/**
+ * @file OpenGLBuffer.h
+ * @brief OpenGLBuffer declarations for the OpenGL Backend subsystem.
+ * @ingroup OpenGL
+ */
 #pragma once
 #include "Engine/Renderer/Buffer.h"
 

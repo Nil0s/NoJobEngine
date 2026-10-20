@@ -1,3 +1,8 @@
+/**
+ * @file NavMeshDebugRenderer.h
+ * @brief NavMeshDebugRenderer declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include <cstdint>

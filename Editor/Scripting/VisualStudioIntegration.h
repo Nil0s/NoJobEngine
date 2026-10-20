@@ -1,3 +1,8 @@
+/**
+ * @file VisualStudioIntegration.h
+ * @brief VisualStudioIntegration declarations for the Project Scripting subsystem.
+ * @ingroup Scripting
+ */
 #pragma once
 
 #include <filesystem>

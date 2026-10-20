@@ -1,3 +1,8 @@
+/**
+ * @file NeuralMatrix.h
+ * @brief Matrix operations used by native neural networks.
+ * @ingroup Neural
+ */
 #pragma once
 #include <vector>
 #include <cstddef>

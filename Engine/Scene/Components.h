@@ -1,3 +1,8 @@
+/**
+ * @file Components.h
+ * @brief Components declarations for the Scenes and Native Scripting subsystem.
+ * @ingroup Scene
+ */
 #pragma once
 
 #include <glm/glm.hpp>
@@ -250,10 +255,10 @@ namespace NoJob
         // Vertical offset of the observer's eyes
         // relative to the entity's world position.
         float EyeHeight = 1.6f;
-     
+
         float MemoryDuration = 3.0f;
 
-        
+
         float UpdateInterval = 0.1f;
 
         bool DebugDraw = true;

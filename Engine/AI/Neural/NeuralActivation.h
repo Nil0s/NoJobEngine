@@ -1,3 +1,8 @@
+/**
+ * @file NeuralActivation.h
+ * @brief Activation functions for dense neural layers.
+ * @ingroup Neural
+ */
 #pragma once
 #include <cmath>
 #include <stdexcept>

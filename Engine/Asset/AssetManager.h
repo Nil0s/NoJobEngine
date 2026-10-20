@@ -1,3 +1,8 @@
+/**
+ * @file AssetManager.h
+ * @brief AssetManager declarations for the Asset subsystem.
+ * @ingroup Asset
+ */
 #pragma once
 
 #include <filesystem>

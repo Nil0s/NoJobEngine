@@ -1,3 +1,8 @@
+/**
+ * @file JoltSpatialQuery.h
+ * @brief JoltSpatialQuery declarations for the Physics subsystem.
+ * @ingroup Physics
+ */
 #pragma once
 
 #include "Engine/AI/Perception/ISpatialQuery.h"

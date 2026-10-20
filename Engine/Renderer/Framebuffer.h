@@ -1,3 +1,8 @@
+/**
+ * @file Framebuffer.h
+ * @brief Framebuffer declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <cstdint>
 #include <memory>

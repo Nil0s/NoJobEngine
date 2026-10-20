@@ -1,3 +1,8 @@
+/**
+ * @file IspatialQuery.h
+ * @brief IspatialQuery declarations for the Perception subsystem.
+ * @ingroup Perception
+ */
 #pragma once
 
 #include <cstdint>

@@ -1,3 +1,8 @@
+/**
+ * @file NavAgent.h
+ * @brief NavAgent declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include "Engine/AI/Navigation/NavMeshFunnel.h"

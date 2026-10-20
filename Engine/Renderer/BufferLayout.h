@@ -1,3 +1,8 @@
+/**
+ * @file BufferLayout.h
+ * @brief BufferLayout declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 
 #include <cstdint>

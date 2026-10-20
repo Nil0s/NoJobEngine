@@ -1,3 +1,8 @@
+/**
+ * @file BTTree.h
+ * @brief Behavior tree ownership and evaluation.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNode.h"
 #include <memory>

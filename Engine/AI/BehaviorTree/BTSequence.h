@@ -1,3 +1,8 @@
+/**
+ * @file BTSequence.h
+ * @brief BTSequence declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNode.h"
 #include <memory>

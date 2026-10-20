@@ -1,0 +1,31 @@
+/**
+@mainpage NoJobEngine API Reference
+
+NoJobEngine is a native C++ game engine with an editor, native gameplay scripts,
+behavior trees, navigation, perception and neural network inference/training.
+
+@section architecture Architecture
+
+- **Engine/Scene**: scene lifetime, entities, components and native script API.
+- **Engine/AI/Neural**: dense neural networks, model assets, supervised presets and debug snapshots.
+- **Engine/AI/BehaviorTree**: node execution, blackboards and native callbacks.
+- **Engine/AI/Navigation**: navmesh creation, pathfinding and navigation agents.
+- **Engine/AI/Perception**: sensory queries and target perception.
+- **Editor/Scripting**: project script compilation and reload management.
+- **Editor/Panels**: inspector and neural model editing.
+
+@section neuralworkflow Neural gameplay workflow
+
+1. Create a native project script implementing the gameplay-specific observations and actions.
+2. Build project scripts from the editor and attach the script to a scene entity.
+3. Select or train a compatible `.njn` neural model.
+4. Run the scene and inspect the agent's neural snapshot in the AI Debugger.
+
+Behavior Trees remain independent of neural models; neural nodes are optional.
+
+@section notes Build and compatibility notes
+
+This reference documents the supplied Engine and Editor sources. The supplied
+archive does not include the top-level build configuration or project assets.
+Generate documentation from the repository root using `doxygen docs/Doxyfile`.
+*/

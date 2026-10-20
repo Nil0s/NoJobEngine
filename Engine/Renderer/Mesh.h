@@ -1,3 +1,8 @@
+/**
+ * @file Mesh.h
+ * @brief Mesh declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <cstdint>
 #include <memory>

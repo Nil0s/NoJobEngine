@@ -1,3 +1,8 @@
+/**
+ * @file BTConditionNode.h
+ * @brief BTConditionNode declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNativeRegistry.h"
 #include <memory>

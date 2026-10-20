@@ -1,3 +1,8 @@
+/**
+ * @file RendererAPI.h
+ * @brief RendererAPI declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <cstdint>
 

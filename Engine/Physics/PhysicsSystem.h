@@ -1,3 +1,8 @@
+/**
+ * @file PhysicsSystem.h
+ * @brief PhysicsSystem declarations for the Physics subsystem.
+ * @ingroup Physics
+ */
 #pragma once
 
 #include <cstdint>

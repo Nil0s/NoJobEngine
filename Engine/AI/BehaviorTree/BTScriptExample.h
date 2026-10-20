@@ -1,3 +1,8 @@
+/**
+ * @file BTScriptExample.h
+ * @brief BTScriptExample declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "Engine/AI/BehaviorTree/BTScriptBridge.h"
 #include "Engine/AI/BehaviorTree/BTNativeRegistry.h"

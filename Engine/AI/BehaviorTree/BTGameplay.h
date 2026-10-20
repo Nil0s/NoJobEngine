@@ -1,3 +1,8 @@
+/**
+ * @file BTGameplay.h
+ * @brief BTGameplay declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTAsset.h"
 #include "BTAssetPaths.h"

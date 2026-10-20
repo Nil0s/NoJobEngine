@@ -1,3 +1,8 @@
+/**
+ * @file Window.h
+ * @brief Window declarations for the Core subsystem.
+ * @ingroup Core
+ */
 #pragma once
 #include <cstdint>
 #include <string>

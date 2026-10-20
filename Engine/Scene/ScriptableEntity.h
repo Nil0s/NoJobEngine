@@ -1,3 +1,8 @@
+/**
+ * @file ScriptableEntity.h
+ * @brief Native gameplay script lifecycle and diagnostic interfaces.
+ * @ingroup Scene
+ */
 #pragma once
 #include "Engine/Scene/Scene.h"
 #include "Engine/AI/Neural/NeuralAgentTraining.h"
@@ -10,15 +15,27 @@ namespace NoJob
     class BTNativeRegistry;
     // Native C++ gameplay base class. Instances only exist while the Scene is
     // running; serialized state lives in NativeScriptComponent.
+    /** @brief Base class for native gameplay scripts instantiated while a scene runs.
+     *
+     * Override lifecycle callbacks to implement gameplay logic. Project scripts
+     * may expose neural snapshots to the editor through GetNeuralDebugSnapshot().
+     */
     class ScriptableEntity
     {
     public:
         virtual ~ScriptableEntity() = default;
+        /** @brief Called when the runtime script instance is created. */
         virtual void OnCreate() {}
+        /** @brief Called during scene updates.
+         * @param deltaTime Frame time in seconds. */
         virtual void OnUpdate(float deltaTime) { (void)deltaTime; }
+        /** @brief Called before the runtime script instance is destroyed. */
         virtual void OnDestroy() {}
 
         // Project DLL -> Editor neural diagnostics bridge. No global inline map across modules.
+        /** @brief Provides live neural diagnostics across project DLL boundaries.
+         * @param out Receives a copy of the current agent snapshot.
+         * @return True when the script exposes neural diagnostics. */
         virtual bool GetNeuralDebugSnapshot(NeuralAgent::Snapshot& out) const { (void)out; return false; }
 
         // Register reusable BT action/condition names. Never capture this in callbacks:

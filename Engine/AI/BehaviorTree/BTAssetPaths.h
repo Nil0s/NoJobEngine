@@ -1,3 +1,8 @@
+/**
+ * @file BTAssetPaths.h
+ * @brief BTAssetPaths declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include <algorithm>
 #include <cctype>

@@ -1,3 +1,8 @@
+/**
+ * @file BTTrace.h
+ * @brief BTTrace declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTContext.h"
 #include "BTNode.h"

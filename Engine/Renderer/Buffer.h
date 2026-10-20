@@ -1,3 +1,8 @@
+/**
+ * @file Buffer.h
+ * @brief Buffer declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <cstdint>
 #include <memory>

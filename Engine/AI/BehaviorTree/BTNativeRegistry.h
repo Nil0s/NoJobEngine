@@ -1,3 +1,8 @@
+/**
+ * @file BTNativeRegistry.h
+ * @brief Registry for native behavior tree callbacks.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTContext.h"
 #include "BTNode.h"

@@ -1,3 +1,8 @@
+/**
+ * @file BTInstance.h
+ * @brief BTInstance declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTTree.h"
 #include <memory>

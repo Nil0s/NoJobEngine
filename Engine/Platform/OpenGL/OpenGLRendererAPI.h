@@ -1,3 +1,8 @@
+/**
+ * @file OpenGLRendererAPI.h
+ * @brief OpenGLRendererAPI declarations for the OpenGL Backend subsystem.
+ * @ingroup OpenGL
+ */
 #pragma once
 #include "Engine/Renderer/RendererAPI.h"
 

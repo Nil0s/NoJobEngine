@@ -1,3 +1,8 @@
+/**
+ * @file BTAsset.h
+ * @brief BTAsset declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTActionNode.h"
 #include "BTConditionNode.h"

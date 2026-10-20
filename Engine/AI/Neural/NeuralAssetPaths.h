@@ -1,3 +1,8 @@
+/**
+ * @file NeuralAssetPaths.h
+ * @brief Path resolution and validation for neural model assets.
+ * @ingroup Neural
+ */
 #pragma once
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include <algorithm>

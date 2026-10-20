@@ -1,3 +1,8 @@
+/**
+ * @file ProjectPanel.h
+ * @brief ProjectPanel declarations for the Asset Management subsystem.
+ * @ingroup Assets
+ */
 #pragma once
 
 #include "Engine/Scene/Entity.h"

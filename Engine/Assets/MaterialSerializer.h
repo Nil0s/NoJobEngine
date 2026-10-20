@@ -1,3 +1,8 @@
+/**
+ * @file MaterialSerializer.h
+ * @brief MaterialSerializer declarations for the Asset Management subsystem.
+ * @ingroup Assets
+ */
 #pragma once
 #include "Engine/Assets/Asset.h"
 #include <filesystem>

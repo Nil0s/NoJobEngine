@@ -1,3 +1,8 @@
+/**
+ * @file OpenGLShader.h
+ * @brief OpenGLShader declarations for the OpenGL Backend subsystem.
+ * @ingroup OpenGL
+ */
 #pragma once
 #include "Engine/Renderer/Shader.h"
 #include <cstdint>

@@ -1,3 +1,8 @@
+/**
+ * @file ProjectAssetOperations.h
+ * @brief ProjectAssetOperations declarations for the Asset Management subsystem.
+ * @ingroup Assets
+ */
 #pragma once
 
 #include "Engine/Scene/Entity.h"

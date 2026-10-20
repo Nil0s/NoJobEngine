@@ -1,3 +1,8 @@
+/**
+ * @file PerceptionSensor.h
+ * @brief PerceptionSensor declarations for the Perception subsystem.
+ * @ingroup Perception
+ */
 #pragma once
 
 #include <glm/glm.hpp>

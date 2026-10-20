@@ -1,3 +1,8 @@
+/**
+ * @file Project.h
+ * @brief Project declarations for the Asset Management subsystem.
+ * @ingroup Assets
+ */
 #pragma once
 #include <filesystem>
 #include <string>

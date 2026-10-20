@@ -1,3 +1,8 @@
+/**
+ * @file NavigationSystem.h
+ * @brief NavigationSystem declarations for the Navigation subsystem.
+ * @ingroup Navigation
+ */
 #pragma once
 
 #include "Engine/AI/Navigation/NavMesh.h"

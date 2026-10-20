@@ -1,3 +1,8 @@
+/**
+ * @file NativeScripts.h
+ * @brief Built-in gameplay scripts and neural agent examples.
+ * @ingroup Scene
+ */
 #pragma once
 #include "Engine/Scene/ScriptRegistry.h"
 #include <cmath>

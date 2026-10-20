@@ -1,3 +1,8 @@
+/**
+ * @file BTContext.h
+ * @brief Per-agent behavior tree execution context.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTBlackboard.h"
 #include <cstddef>

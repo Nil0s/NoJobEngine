@@ -1,3 +1,8 @@
+/**
+ * @file NeuralEditorPanel.h
+ * @brief NeuralEditorPanel declarations for the Editor Panels subsystem.
+ * @ingroup Panels
+ */
 #pragma once
 #include "Engine/AI/Neural/NeuralNetwork.h"
 #include <atomic>

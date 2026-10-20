@@ -1,3 +1,8 @@
+/**
+ * @file Texture.h
+ * @brief Texture declarations for the Rendering subsystem.
+ * @ingroup Renderer
+ */
 #pragma once
 #include <cstdint>
 #include <memory>

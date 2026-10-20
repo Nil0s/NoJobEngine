@@ -1,3 +1,8 @@
+/**
+ * @file SceneSerializer.h
+ * @brief Scene serialization and deserialization.
+ * @ingroup Scene
+ */
 #pragma once
 #include <filesystem>
 #include <memory>

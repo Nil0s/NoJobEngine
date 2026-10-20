@@ -1,3 +1,8 @@
+/**
+ * @file BTTestNode.h
+ * @brief BTTestNode declarations for the Behavior Trees subsystem.
+ * @ingroup BehaviorTree
+ */
 #pragma once
 #include "BTNode.h"
 

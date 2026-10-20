@@ -1,3 +1,8 @@
+/**
+ * @file Entity.h
+ * @brief Entity declarations for the Scenes and Native Scripting subsystem.
+ * @ingroup Scene
+ */
 #pragma once
 #include <cstdint>
 #include <type_traits>

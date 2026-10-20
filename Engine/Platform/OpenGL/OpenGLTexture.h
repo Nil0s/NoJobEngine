@@ -1,3 +1,8 @@
+/**
+ * @file OpenGLTexture.h
+ * @brief OpenGLTexture declarations for the OpenGL Backend subsystem.
+ * @ingroup OpenGL
+ */
 #pragma once
 #include "Engine/Renderer/Texture.h"
 

@@ -1,3 +1,8 @@
+/**
+ * @file NeuralAgentTraining.h
+ * @brief Supervised training presets and live neural diagnostics for gameplay agents.
+ * @ingroup Neural
+ */
 #pragma once
 #include "Engine/AI/Neural/NeuralNetwork.h"
 #include "Engine/AI/Neural/NeuralAssetPaths.h"
@@ -11,6 +16,7 @@
 #include <stdexcept>
 
 namespace NoJob::NeuralAgent {
+/** @brief A copy of neural agent inference state for editor diagnostics. */
 struct Snapshot {
     std::string model, status;
     std::vector<float> inputs, outputs;
@@ -19,8 +25,11 @@ struct Snapshot {
 };
 inline std::mutex& Mutex() { static std::mutex m; return m; }
 inline std::unordered_map<unsigned int, Snapshot>& Snapshots() { static std::unordered_map<unsigned int, Snapshot> m; return m; }
+/** @brief Publishes an entity snapshot for live AI debugging. */
 inline void Publish(unsigned int entity, Snapshot snapshot) { std::lock_guard<std::mutex> lock(Mutex()); Snapshots()[entity]=std::move(snapshot); }
+/** @brief Copies the latest snapshot, if one exists for the entity. */
 inline bool Read(unsigned int entity, Snapshot& out) { std::lock_guard<std::mutex> lock(Mutex()); auto it=Snapshots().find(entity); if(it==Snapshots().end()) return false; out=it->second; return true; }
+/** @brief Removes diagnostics when an agent is destroyed or reset. */
 inline void Clear(unsigned int entity) { std::lock_guard<std::mutex> lock(Mutex()); Snapshots().erase(entity); }
 inline std::vector<std::vector<float>> Activations(const Neural::NeuralNetwork& net, const std::vector<float>& input) {
     std::vector<std::vector<float>> result{input}; auto values=input;
@@ -38,12 +47,22 @@ inline std::vector<std::vector<float>> Activations(const Neural::NeuralNetwork& 
 }
 // Reusable supervised training presets. The agent's active model is never changed
 // by training; source and destination assets are separate and explicit.
+/** @brief Supported supervised training datasets and target mappings. */
 enum class TrainingPreset { FollowXZ = 0, TrackY = 1, Pong = 2 };
 inline const char* PresetLabel(TrainingPreset p) {
     switch (p) { case TrainingPreset::FollowXZ: return "Follow target (XZ)";
                  case TrainingPreset::TrackY: return "Track target (Y)";
                  default: return "Pong paddle (supervised)"; }
 }
+/** @brief Trains a preset model and saves it independently of the active model.
+ * @param outputName Destination asset name.
+ * @param sourceName Source model name when resuming.
+ * @param preset Supervised training task.
+ * @param epochs Requested epoch count (clamped internally).
+ * @param learningRate Optimizer step size (clamped internally).
+ * @param resume Whether to load weights from sourceName.
+ * @param overwrite Whether an existing output may be replaced.
+ * @return Loss history for the training run. */
 inline Neural::TrainingHistory TrainPreset(const std::string& outputName,
         const std::string& sourceName, TrainingPreset preset,
         int epochs, float learningRate, bool resume, bool overwrite) {

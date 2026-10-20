@@ -1,3 +1,8 @@
+/**
+ * @file EditorCamera.h
+ * @brief EditorCamera declarations for the Editor subsystem.
+ * @ingroup Editor
+ */
 #pragma once
 
 #include <glm/glm.hpp>
