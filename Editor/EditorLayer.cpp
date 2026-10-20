@@ -3083,7 +3083,7 @@ namespace NoJob
         for (auto entity : entities)
         {
             if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
-                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent"))) continue;
+                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "PongAgent"))) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -3419,9 +3419,18 @@ namespace NoJob
             if (agent.HasComponent<NativeScriptComponent>() &&
                 (agent.GetComponent<NativeScriptComponent>().ScriptName == "NeuralTrainingAgent" ||
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent" ||
-                 agent.GetComponent<NativeScriptComponent>().ScriptName == "GenericNeuralAgent")) {
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "GenericNeuralAgent" ||
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "PongAgent")) {
                 NeuralAgent::Snapshot snap;
-                if (m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent,snap) &&
+                bool hasNeuralSnapshot = m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent, snap);
+                // Project scripts live in a separate DLL: its header-inline diagnostic map
+                // is not the Editor's map. Query the running script instance instead.
+                if (m_IsPlaying && !hasNeuralSnapshot) {
+                    const auto& scriptName = agent.GetComponent<NativeScriptComponent>().ScriptName;
+                    if (auto* runtime = m_Scene->FindRuntimeScript(m_AIDebugAgent, scriptName))
+                        hasNeuralSnapshot = runtime->GetNeuralDebugSnapshot(snap);
+                }
+                if (hasNeuralSnapshot &&
                     ImGui::CollapsingHeader("Neural Inspector - Live",ImGuiTreeNodeFlags_DefaultOpen)) {
                         ImGui::Text("Model: %s",snap.model.c_str());
                         ImGui::Text("Status: %s | Target distance: %.2f",snap.status.c_str(),snap.distance);

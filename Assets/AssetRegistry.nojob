@@ -187,6 +187,8 @@ NOJOB_ASSET_REGISTRY 2
 2306374540907871381 1 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Textures/Body Block_embedded_Boss_normal_15.png" "Body Block_embedded_Boss_normal_15"
 8503199639174529275 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/PlayerMovement.cpp" "PlayerMovement"
 18378373954431974436 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/PlayerMovement.h" "PlayerMovement"
+7551685946145360678 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/PongAgent.cpp" "PongAgent"
+18298588722594760976 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/PongAgent.h" "PongAgent"
 4254504007839083288 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/TEST.cpp" "TEST"
 2221765004560616065 6 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Scripts/TEST.h" "TEST"
 14869538747372485467 0 "C:/Users/franr/Documents/GitHub/NoJobEngine/Assets/Shaders/README.md" "README"

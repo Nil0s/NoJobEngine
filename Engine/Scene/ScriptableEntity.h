@@ -1,5 +1,6 @@
 #pragma once
 #include "Engine/Scene/Scene.h"
+#include "Engine/AI/Neural/NeuralAgentTraining.h"
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -16,6 +17,9 @@ namespace NoJob
         virtual void OnCreate() {}
         virtual void OnUpdate(float deltaTime) { (void)deltaTime; }
         virtual void OnDestroy() {}
+
+        // Project DLL -> Editor neural diagnostics bridge. No global inline map across modules.
+        virtual bool GetNeuralDebugSnapshot(NeuralAgent::Snapshot& out) const { (void)out; return false; }
 
         // Register reusable BT action/condition names. Never capture this in callbacks:
         // use BTRegisterScriptAction / BTRegisterScriptCondition instead.

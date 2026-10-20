@@ -2,13 +2,13 @@ NOJOB_SCENE 1
 ENTITY 1 "PongPaddleAI"
 TRANSFORM 8 0 0 0 0 0 0.5 2.2 0.5
 PARENT 0
-SCRIPT_V2 1 "GenericNeuralAgent" 6
+SCRIPT_V2 1 "PongAgent" 6
 SCRIPT_FIELD "ActiveModel" 4 "PongBrainDemo"
 SCRIPT_FIELD "TargetTag" 4 "PongBall"
-SCRIPT_FIELD "ObservationPreset" 1 2
-SCRIPT_FIELD "ActionMode" 1 1
 SCRIPT_FIELD "ObservationScale" 0 10
 SCRIPT_FIELD "MovementSpeed" 0 5
+SCRIPT_FIELD "MinY" 0 -4
+SCRIPT_FIELD "MaxY" 0 4
 MESH CUBE
 MATERIAL_V2 0.2 0.52 0.95 1 0 0.85 1 1 0 0 0 0 0 0 0.5
 TEXTURES "" "" "" "" "" ""
