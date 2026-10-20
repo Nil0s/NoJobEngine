@@ -1,6 +1,7 @@
 #include "Engine/AI/BehaviorTree/BTGameplay.h"
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include "Editor/EditorLayer.h"
+#include "Editor/Utils/EditorStringUtils.h"
 #include "Editor/Assets/ProjectAssetOperations.h"
 
 #include "Engine/Asset/AssetManager.h"
@@ -1012,16 +1013,10 @@ namespace NoJob
                     componentSearch, sizeof(componentSearch));
                 ImGui::Separator();
 
-                std::string filter = componentSearch;
-                std::transform(filter.begin(), filter.end(), filter.begin(),
-                    [](unsigned char c) { return (char)std::tolower(c); });
+                const std::string filter = EditorStringUtils::ToLower(componentSearch);
                 auto visible = [&](const char* name)
                     {
-                        if (filter.empty()) return true;
-                        std::string n = name;
-                        std::transform(n.begin(), n.end(), n.begin(),
-                            [](unsigned char c) { return (char)std::tolower(c); });
-                        return n.find(filter) != std::string::npos;
+                        return EditorStringUtils::ContainsNormalized(name, filter);
                     };
                 auto addItem = [&](const char* category, const char* name, bool enabled, auto add)
                     {

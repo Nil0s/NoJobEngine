@@ -2,6 +2,7 @@
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include "Engine/AI/BehaviorTree/BTGameplay.h"
 #include "Editor/EditorLayer.h"
+#include "Editor/Utils/EditorStringUtils.h"
 #include "Editor/Panels/NeuralEditorPanel.h"
 #include "Editor/Build/StandaloneBuilder.h"
 #include "Editor/Build/BuildSettings.h"
@@ -60,10 +61,6 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
-
-#ifdef _WIN32
-#include <cctype>
-#endif
 
 namespace NoJob
 {
@@ -2118,13 +2115,10 @@ namespace NoJob
         if (!entity) return false;
         std::string filter = m_HierarchySearch;
         if (filter.empty()) return true;
-        std::transform(filter.begin(), filter.end(), filter.begin(),
-            [](unsigned char c) { return (char)std::tolower(c); });
+        filter = EditorStringUtils::ToLower(std::move(filter));
 
-        std::string name = entity.GetComponent<TagComponent>().Tag;
-        std::transform(name.begin(), name.end(), name.begin(),
-            [](unsigned char c) { return (char)std::tolower(c); });
-        if (name.find(filter) != std::string::npos) return true;
+        const std::string& name = entity.GetComponent<TagComponent>().Tag;
+        if (EditorStringUtils::ContainsNormalized(name, filter)) return true;
 
         for (Entity child : m_Scene->GetChildren(entity))
             if (HierarchyMatchesFilter(child)) return true;

@@ -33,9 +33,9 @@ and live decision inspection. The AI Debugger exposes active tree nodes,
 execution events and Blackboard changes while the simulation runs.
 Native neural-network training and inference are now integrated into the C++ runtime and editor; reinforcement learning remains a future research goal.
 
-> **Current milestone: NoJobEngine V2.0.6 — Native Neural AI & Gameplay Integration — Complete and Validated**
+> **Current milestone: NoJobEngine V2.0.7 — Code Cleanup & Doxygen Documentation — Complete and Validated**
 >
-> **Next milestone: V2.0.7 — Code Cleanup & Doxygen Documentation (in progress)**
+> **Next milestone: V2.1 — Reinforcement Learning (planned)**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
@@ -196,6 +196,26 @@ neural gameplay behavior can be combined with existing native decision
 systems. The current generic neural-agent workflow offers configured
 observation/action modes and native script extensibility; it is not claimed
 to be an unrestricted no-code agent-authoring system.
+
+### Maintenance and Doxygen documentation (V2.0.7)
+
+V2.0.7 focuses on stability and maintainability rather than new gameplay features.
+The release includes English-language Doxygen comments and HTML API documentation,
+alongside conservative cleanup of neural-network math, scene management,
+scene serialization and editor search helpers. Existing project-script,
+Behavior Tree and neural gameplay workflows were regression-tested in the editor.
+
+Generate the API documentation from the repository root (Doxygen required):
+
+```bash
+doxygen docs/Doxyfile
+```
+
+Open `docs/generated/html/index.html` to browse the generated documentation.
+The generated HTML is a build artifact and need not be committed.
+
+This maintenance release does not claim a complete architectural rewrite or
+an exhaustive audit of every engine source file.
 
 ### 3D model & material import
 
@@ -483,6 +503,13 @@ abstraction:
 - `NeuralTrainingDemo` and `NeuralPongTrackingDemo` validation scenes
 - `PongAgent` compiled as a project C++ script from the editor
 - Traditional Behavior Tree compatibility without a neural model
+
+### Documentation and maintenance (V2.0.7)
+
+- English-language Doxygen API documentation and HTML output
+- Conservative neural math and scene/serialization cleanup
+- Shared case-insensitive editor search utility
+- Validated editor, script, neural AI and Behavior Tree regression workflows
 
 ### Physics
 
@@ -974,18 +1001,30 @@ Completed and validated in the editor.
 - Compatibility with existing traditional Behavior Trees and optional
   neural Behavior Tree integrations.
 
+### ✅ V2.0.7 — Code Cleanup & Doxygen Documentation
+
+Completed and validated in the editor.
+
+- Doxygen API comments in English and generated HTML documentation.
+- Conservative neural math cleanup and validation.
+- Scene and scene-serialization cleanup.
+- Consolidated case-insensitive editor search behavior.
+- Regression tests passed for editor workflows, PongAgent, neural debugging
+  and traditional Behavior Trees.
+
 ------------------------------------------------------------------------
 
 ## AI Roadmap
 
-> **Release status:** V2.0.6 is complete and validated. The milestones below
+> **Release status:** V2.0.7 is complete and validated. The milestones below
 > are plans and must not be interpreted as implemented features.
 
-### V2.0.7 — Code Cleanup & Doxygen Documentation (in progress)
+### V2.0.7 — Code Cleanup & Doxygen Documentation (completed)
 
-- Conservative code cleanup and review of dependencies and ownership.
-- English-language Doxygen API comments and HTML documentation.
-- Regression testing for editor, runtime, native scripts and AI systems.
+- Conservative C++ cleanup across neural math, scene management, serialization and editor search utilities.
+- English-language Doxygen API documentation and HTML documentation generation.
+- Regression validation in the editor, including native project scripts, neural gameplay and Behavior Trees.
+- No intentional changes to serialized asset formats or public engine APIs.
 
 ### V2.1 — Reinforcement Learning (planned)
 

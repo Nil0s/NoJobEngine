@@ -6,7 +6,6 @@
 #pragma once
 #include "NeuralMatrix.h"
 #include "NeuralActivation.h"
-#include <memory>
 #include <random>
 #include <string>
 #include <vector>

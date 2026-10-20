@@ -248,20 +248,38 @@ namespace NoJob
         return result;
     }
 
-    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(std::uint32_t handle) const
+    std::optional<Scene::AIDebugStateInfo> Scene::GetAIDebugState(
+        std::uint32_t handle) const
     {
         const auto it = m_ScriptInstances.find(handle);
-        if (it == m_ScriptInstances.end()) return std::nullopt;
-        for (const auto& ptr : it->second)
+        if (it == m_ScriptInstances.end())
+            return std::nullopt;
+
+        for (const auto& instance : it->second)
         {
-            if (!ptr || ptr->GetAIDebugState().empty()) continue;
+            if (!instance)
+                continue;
+
+            const std::string currentState = instance->GetAIDebugState();
+            if (currentState.empty())
+                continue;
+
             AIDebugStateInfo result;
-            result.Current = ptr->GetAIDebugState();
-            result.Previous = ptr->GetAIDebugPreviousState();
-            result.TimeInState = ptr->GetAIDebugTimeInState();
-            result.RuntimeSeconds = ptr->GetAIDebugRuntimeSeconds();
-            for (const auto& e : ptr->GetAIDebugTransitions())
-                result.History.push_back({e.From, e.To, e.RuntimeSeconds});
+            result.Current = currentState;
+            result.Previous = instance->GetAIDebugPreviousState();
+            result.TimeInState = instance->GetAIDebugTimeInState();
+            result.RuntimeSeconds = instance->GetAIDebugRuntimeSeconds();
+
+            const auto& transitions = instance->GetAIDebugTransitions();
+            result.History.reserve(transitions.size());
+            for (const auto& transition : transitions)
+            {
+                result.History.push_back({
+                    transition.From,
+                    transition.To,
+                    transition.RuntimeSeconds
+                });
+            }
             return result;
         }
         return std::nullopt;

@@ -18,14 +18,14 @@ namespace NoJob
     namespace
     {
         template<typename T>
-        void V3(std::ostream& o, const T& v)
+        void WriteVec3(std::ostream& o, const T& v)
         {
             o << v.x << ' '
                 << v.y << ' '
                 << v.z;
         }
 
-        bool ReadV3(
+        bool ReadVec3(
             std::istringstream& s,
             glm::vec3& v)
         {
@@ -48,6 +48,8 @@ namespace NoJob
         out << "NOJOB_SCENE 1\n";
         out << std::setprecision(9);
 
+        // Scene::GetEntities currently exposes a mutable-only enumeration API.
+        // Save only reads entities; the cast is confined to enumeration.
         auto& mutableScene =
             const_cast<Scene&>(scene);
 
@@ -71,13 +73,13 @@ namespace NoJob
 
             out << "TRANSFORM ";
 
-            V3(out, tr.Position);
+            WriteVec3(out, tr.Position);
             out << ' ';
 
-            V3(out, tr.Rotation);
+            WriteVec3(out, tr.Rotation);
             out << ' ';
 
-            V3(out, tr.Scale);
+            WriteVec3(out, tr.Scale);
             out << '\n';
 
             out << "PARENT "
@@ -92,7 +94,7 @@ namespace NoJob
 
             if (e.HasComponent<CameraComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<CameraComponent>();
 
                 out << "CAMERA "
@@ -109,12 +111,12 @@ namespace NoJob
 
             if (e.HasComponent<DirectionalLightComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<DirectionalLightComponent>();
 
                 out << "DIRECTIONAL ";
 
-                V3(out, c.Color);
+                WriteVec3(out, c.Color);
 
                 out << ' '
                     << c.Intensity << ' '
@@ -125,12 +127,12 @@ namespace NoJob
 
             if (e.HasComponent<PointLightComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<PointLightComponent>();
 
                 out << "POINT ";
 
-                V3(out, c.Color);
+                WriteVec3(out, c.Color);
 
                 out << ' '
                     << c.Intensity << ' '
@@ -142,12 +144,12 @@ namespace NoJob
 
             if (e.HasComponent<SpotLightComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<SpotLightComponent>();
 
                 out << "SPOT ";
 
-                V3(out, c.Color);
+                WriteVec3(out, c.Color);
 
                 out << ' '
                     << c.Intensity << ' '
@@ -161,7 +163,7 @@ namespace NoJob
 
             if (e.HasComponent<AudioSourceComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<AudioSourceComponent>();
 
                 out << "AUDIO_SOURCE_V2 "
@@ -179,7 +181,7 @@ namespace NoJob
 
             if (e.HasComponent<AudioListenerComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<AudioListenerComponent>();
 
                 out << "AUDIO_LISTENER "
@@ -189,7 +191,7 @@ namespace NoJob
 
             if (e.HasComponent<ParticleSystemComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<ParticleSystemComponent>();
 
                 out << "PARTICLE_SYSTEM_V2 "
@@ -229,7 +231,7 @@ namespace NoJob
 
             if (e.HasComponent<AnimatorComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<AnimatorComponent>();
 
                 const auto source =
@@ -285,7 +287,7 @@ namespace NoJob
                     }
                     else
                     {
-                        V3(out, value.Vec3);
+                        WriteVec3(out, value.Vec3);
                     }
 
                     out << '\n';
@@ -298,7 +300,7 @@ namespace NoJob
 
             if (e.HasComponent<RigidbodyComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<RigidbodyComponent>();
 
                 out << "RIGIDBODY "
@@ -314,7 +316,7 @@ namespace NoJob
 
             if (e.HasComponent<NavAgentComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<NavAgentComponent>();
 
                 out << "NAV_AGENT_V2 "
@@ -322,7 +324,7 @@ namespace NoJob
                     << c.Speed << ' '
                     << c.StoppingDistance << ' ';
 
-                V3(out, c.Destination);
+                WriteVec3(out, c.Destination);
 
                 out << ' '
                     << c.HasDestination << ' '
@@ -332,7 +334,7 @@ namespace NoJob
 
             if (e.HasComponent<PerceptionComponent>())
             {
-                const auto& c = e.GetComponent<PerceptionComponent>();
+                const const auto& c = e.GetComponent<PerceptionComponent>();
 
                 out << "PERCEPTION_V1 "
                     << c.Enabled << ' '
@@ -347,12 +349,12 @@ namespace NoJob
 
             if (e.HasComponent<BoxColliderComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<BoxColliderComponent>();
 
                 out << "BOX ";
 
-                V3(out, c.Size);
+                WriteVec3(out, c.Size);
 
                 out << ' '
                     << c.IsTrigger << ' '
@@ -363,7 +365,7 @@ namespace NoJob
 
             if (e.HasComponent<SphereColliderComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<SphereColliderComponent>();
 
                 out << "SPHERE "
@@ -376,7 +378,7 @@ namespace NoJob
 
             if (e.HasComponent<CapsuleColliderComponent>())
             {
-                auto& c =
+                const auto& c =
                     e.GetComponent<CapsuleColliderComponent>();
 
                 out << "CAPSULE "
@@ -429,7 +431,7 @@ namespace NoJob
                     << m->AmbientOcclusion() << ' '
                     << m->NormalStrength() << ' ';
 
-                V3(
+                WriteVec3(
                     out,
                     m->EmissiveColor());
 
@@ -592,15 +594,15 @@ namespace NoJob
                     current.GetComponent<
                     TransformComponent>();
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Position);
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Rotation);
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Scale);
             }
@@ -641,7 +643,7 @@ namespace NoJob
             {
                 DirectionalLightComponent c;
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Color);
 
@@ -656,7 +658,7 @@ namespace NoJob
             {
                 PointLightComponent c;
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Color);
 
@@ -672,7 +674,7 @@ namespace NoJob
             {
                 SpotLightComponent c;
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Color);
 
@@ -960,7 +962,7 @@ namespace NoJob
                 }
                 else
                 {
-                    ReadV3(
+                    ReadVec3(
                         s,
                         v.Vec3);
                 }
@@ -999,7 +1001,7 @@ namespace NoJob
                     >> c.Speed
                     >> c.StoppingDistance;
 
-                ReadV3(s, c.Destination);
+                ReadVec3(s, c.Destination);
 
                 s >> c.HasDestination;
 
@@ -1045,7 +1047,7 @@ namespace NoJob
             {
                 BoxColliderComponent c;
 
-                ReadV3(
+                ReadVec3(
                     s,
                     c.Size);
 
@@ -1133,7 +1135,7 @@ namespace NoJob
                     >> m->AmbientOcclusion()
                     >> m->NormalStrength();
 
-                ReadV3(
+                ReadVec3(
                     s,
                     m->EmissiveColor());
 
@@ -1177,7 +1179,7 @@ namespace NoJob
                     >> m->AmbientOcclusion()
                     >> m->NormalStrength();
 
-                ReadV3(
+                ReadVec3(
                     s,
                     m->EmissiveColor());
 

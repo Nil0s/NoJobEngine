@@ -4,21 +4,64 @@
  * @ingroup Neural
  */
 #pragma once
-#include <vector>
+
 #include <cstddef>
 #include <stdexcept>
-#include <algorithm>
-#include <cmath>
+#include <vector>
+
 namespace NoJob::Neural {
+
+/** @brief Row-major matrix storing single-precision neural network values. */
 class Matrix {
 public:
- Matrix()=default;
- Matrix(size_t rows,size_t cols,float initial=0):rows_(rows),cols_(cols),data_(rows*cols,initial){if(!rows||!cols)throw std::invalid_argument("Empty matrix dimension");}
- size_t Rows()const{return rows_;} size_t Cols()const{return cols_;}
- float& operator()(size_t r,size_t c){return data_.at(r*cols_+c);} float operator()(size_t r,size_t c)const{return data_.at(r*cols_+c);}
- const std::vector<float>& Data()const{return data_;} std::vector<float>& Data(){return data_;}
- static Matrix Multiply(const Matrix&a,const Matrix&b){if(a.cols_!=b.rows_)throw std::invalid_argument("Matrix multiply dimensions");Matrix out(a.rows_,b.cols_);for(size_t i=0;i<a.rows_;++i)for(size_t k=0;k<a.cols_;++k)for(size_t j=0;j<b.cols_;++j)out(i,j)+=a(i,k)*b(k,j);return out;}
- static Matrix Transpose(const Matrix&a){Matrix out(a.cols_,a.rows_);for(size_t i=0;i<a.rows_;++i)for(size_t j=0;j<a.cols_;++j)out(j,i)=a(i,j);return out;}
-private:size_t rows_=0,cols_=0;std::vector<float> data_;
+    Matrix() = default;
+
+    /** @throws std::invalid_argument If either dimension is zero. */
+    Matrix(size_t rows, size_t cols, float initial = 0.0f)
+        : rows_(rows), cols_(cols), data_(rows * cols, initial) {
+        if (rows == 0 || cols == 0)
+            throw std::invalid_argument("Empty matrix dimension");
+    }
+
+    size_t Rows() const { return rows_; }
+    size_t Cols() const { return cols_; }
+
+    float& operator()(size_t row, size_t col) { return data_.at(row * cols_ + col); }
+    float operator()(size_t row, size_t col) const { return data_.at(row * cols_ + col); }
+
+    const std::vector<float>& Data() const { return data_; }
+    std::vector<float>& Data() { return data_; }
+
+    /** @brief Multiplies two compatible matrices. */
+    static Matrix Multiply(const Matrix& a, const Matrix& b) {
+        if (a.cols_ != b.rows_)
+            throw std::invalid_argument("Matrix multiply dimensions");
+
+        Matrix result(a.rows_, b.cols_);
+        for (size_t row = 0; row < a.rows_; ++row) {
+            for (size_t shared = 0; shared < a.cols_; ++shared) {
+                const float left = a(row, shared);
+                for (size_t col = 0; col < b.cols_; ++col)
+                    result(row, col) += left * b(shared, col);
+            }
+        }
+        return result;
+    }
+
+    /** @brief Returns a matrix with its rows and columns exchanged. */
+    static Matrix Transpose(const Matrix& input) {
+        Matrix result(input.cols_, input.rows_);
+        for (size_t row = 0; row < input.rows_; ++row) {
+            for (size_t col = 0; col < input.cols_; ++col)
+                result(col, row) = input(row, col);
+        }
+        return result;
+    }
+
+private:
+    size_t rows_ = 0;
+    size_t cols_ = 0;
+    std::vector<float> data_;
 };
-}
+
+} // namespace NoJob::Neural
