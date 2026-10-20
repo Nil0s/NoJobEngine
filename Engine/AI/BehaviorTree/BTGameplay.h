@@ -4,6 +4,8 @@
 #include "BTScriptBridge.h"
 #include "Engine/Scene/ScriptRegistry.h"
 #include "Engine/AI/Navigation/NavigationSystem.h"
+#include "Engine/AI/Neural/NeuralAgentTraining.h"
+#include <optional>
 #include <glm/glm.hpp>
 #include <cmath>
 #include <algorithm>
@@ -148,9 +150,88 @@ public:
     std::string BehaviorTreeAsset = "Default";
     float PatrolRadius = 3.0f;
     float PatrolWaitSeconds = 0.4f;
+    std::string NeuralModelName = "NeuralFollowerDemo";
+    std::string NeuralTargetTag = "NeuralTarget";
 protected:
     std::shared_ptr<const BTTree> CreateTree() override {
         auto registry = CreateBTGameplayRegistry();
+        // V2.0.6: The BT owns navigation. Do not attach NeuralTrainingAgent to
+        // the same entity: two scripts writing NavAgent would compete.
+        registry->RegisterCondition("Neural.HasTarget", [this](BTContext& ctx) {
+            auto* scene = GetEntity().GetScene();
+            if (!scene) return false;
+            for (Entity target : scene->GetEntities()) {
+                if (target == GetEntity() || !target.HasComponent<TagComponent>() ||
+                    !target.HasComponent<TransformComponent>() ||
+                    target.GetComponent<TagComponent>().Tag != NeuralTargetTag) continue;
+                ctx.Blackboard().Set("NeuralTargetPosition", target.GetComponent<TransformComponent>().Position);
+                return true;
+            }
+            return false;
+        });
+        registry->RegisterAction("Neural.FollowTarget", [this](BTContext& ctx, float) {
+            if (!HasComponent<NavAgentComponent>() || !HasComponent<TransformComponent>()) return BTStatus::Failure;
+            auto& nav = GetComponent<NavAgentComponent>();
+            if (!nav.Enabled) return BTStatus::Failure;
+            if (!m_NeuralModel) {
+                try {
+                    m_NeuralModel.emplace(Neural::NeuralNetwork::Load(NeuralAssetPath(NeuralModelName).string()));
+                    if (m_NeuralModel->Layers().front().Inputs() != 2 ||
+                        m_NeuralModel->Layers().back().Outputs() != 2)
+                        throw std::runtime_error("Neural.FollowTarget requires a 2->2 model");
+                } catch (const std::exception& e) {
+                    std::fprintf(stderr, "[Neural BT] %s\n", e.what());
+                    m_NeuralModel.reset();
+                    return BTStatus::Failure;
+                }
+            }
+            auto* scene = GetEntity().GetScene();
+            if (!scene) return BTStatus::Failure;
+            glm::vec3 destination{};
+            bool found = false;
+            for (Entity target : scene->GetEntities()) {
+                if (target == GetEntity() || !target.HasComponent<TagComponent>() ||
+                    !target.HasComponent<TransformComponent>() ||
+                    target.GetComponent<TagComponent>().Tag != NeuralTargetTag) continue;
+                destination = target.GetComponent<TransformComponent>().Position;
+                found = true;
+                break;
+            }
+            if (!found) { nav.HasDestination = false; NeuralAgent::Clear(GetEntity().GetHandle()); return BTStatus::Failure; }
+            const glm::vec3 pos = GetComponent<TransformComponent>().Position;
+            const glm::vec3 delta = destination - pos;
+            const float distance = std::sqrt(delta.x*delta.x + delta.z*delta.z);
+            ctx.Blackboard().Set("NeuralTargetPosition", destination);
+            ctx.Blackboard().Set("NeuralTargetDistance", distance);
+            if (distance <= std::max(0.1f, nav.StoppingDistance)) {
+                nav.HasDestination = false;
+                return BTStatus::Success;
+            }
+            const std::vector<float> inputs{std::clamp(delta.x / 10.f, -1.f, 1.f),
+                                            std::clamp(delta.z / 10.f, -1.f, 1.f)};
+            const auto outputs = m_NeuralModel->Predict(inputs);
+            if (outputs.size() != 2 || !std::isfinite(outputs[0]) || !std::isfinite(outputs[1]))
+                return BTStatus::Failure;
+            const glm::vec3 direction(outputs[0], 0.f, outputs[1]);
+            const float magnitude = std::sqrt(direction.x*direction.x + direction.z*direction.z);
+            if (magnitude < 0.05f) return BTStatus::Failure;
+            ctx.Blackboard().Set("NeuralInputX", inputs[0]);
+            ctx.Blackboard().Set("NeuralInputZ", inputs[1]);
+            ctx.Blackboard().Set("NeuralOutputX", outputs[0]);
+            ctx.Blackboard().Set("NeuralOutputZ", outputs[1]);
+            NeuralAgent::Snapshot snap;
+            snap.model = NeuralModelName; snap.status = "BT Neural.FollowTarget";
+            snap.inputs = inputs; snap.outputs = outputs; snap.distance = distance;
+            snap.activations = NeuralAgent::Activations(*m_NeuralModel, inputs);
+            NeuralAgent::Publish(GetEntity().GetHandle(), std::move(snap));
+            nav.Destination = pos + direction / magnitude * std::min(distance, 3.f);
+            nav.HasDestination = true;
+            ctx.SetCancellation(ctx.ActiveNode(), [](BTContext& c) {
+                if (auto* owner = BTGetScript(c); owner && owner->HasComponent<NavAgentComponent>())
+                    owner->GetComponent<NavAgentComponent>().HasDestination = false;
+            });
+            return BTStatus::Running;
+        });
         // Bind callbacks from sibling Native Scripts before constructing the tree.
         // Scene creates all script instances before calling OnCreate().
         std::fprintf(stderr, "[BT TRACE] BTAssetAgent::CreateTree entity=%u before scene bindings\n", GetEntity().GetHandle());
@@ -182,15 +263,22 @@ protected:
         return btAsset.Build(std::move(registry));
     }
     void OnTreeStarted(BTContext& ctx) override {
+        m_NeuralModel.reset();
+        NeuralAgent::Clear(GetEntity().GetHandle());
         ctx.Blackboard().Set("PatrolRadius", PatrolRadius);
         ctx.Blackboard().Set("PatrolWaitSeconds", PatrolWaitSeconds);
     }
+    void OnTreeStopped(BTContext&) override { m_NeuralModel.reset(); NeuralAgent::Clear(GetEntity().GetHandle()); }
+private:
+    std::optional<Neural::NeuralNetwork> m_NeuralModel;
 };
 inline void RegisterBTAssetAgent() {
     ScriptRegistry::Register({"BTAssetAgent", "AI",
         {MakeMemberFieldDefinition<BTAssetAgent, std::string>("BehaviorTreeAsset", &BTAssetAgent::BehaviorTreeAsset, std::string("Default")),
          MakeMemberFieldDefinition<BTAssetAgent, float>("PatrolRadius", &BTAssetAgent::PatrolRadius, 3.0f),
-         MakeMemberFieldDefinition<BTAssetAgent, float>("PatrolWaitSeconds", &BTAssetAgent::PatrolWaitSeconds, 0.4f)},
+         MakeMemberFieldDefinition<BTAssetAgent, float>("PatrolWaitSeconds", &BTAssetAgent::PatrolWaitSeconds, 0.4f),
+         MakeMemberFieldDefinition<BTAssetAgent, std::string>("NeuralModelName", &BTAssetAgent::NeuralModelName, std::string("NeuralFollowerDemo")),
+         MakeMemberFieldDefinition<BTAssetAgent, std::string>("NeuralTargetTag", &BTAssetAgent::NeuralTargetTag, std::string("NeuralTarget"))},
         [] { return std::make_unique<BTAssetAgent>(); }});
 }
 } // namespace NoJob

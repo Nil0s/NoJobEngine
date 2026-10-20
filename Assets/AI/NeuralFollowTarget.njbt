@@ -1,0 +1,4 @@
+NJOB_BT 2
+NODE 1 0 Sequence - - 0.5
+NODE 2 1 Condition Neural.HasTarget - 0.5
+NODE 3 1 Action Neural.FollowTarget - 0.5

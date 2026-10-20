@@ -3083,7 +3083,7 @@ namespace NoJob
         for (auto entity : entities)
         {
             if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
-                (!entity.HasComponent<NativeScriptComponent>() || entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent")) continue;
+                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent"))) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -3414,6 +3414,117 @@ namespace NoJob
                     }
                     ImGui::PopID();
                 }
+                }
+            }
+            if (agent.HasComponent<NativeScriptComponent>() &&
+                (agent.GetComponent<NativeScriptComponent>().ScriptName == "NeuralTrainingAgent" ||
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent")) {
+                if(ImGui::CollapsingHeader("Neural Inspector - Live",ImGuiTreeNodeFlags_DefaultOpen)) {
+                    NeuralAgent::Snapshot snap;
+                    if(m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent,snap)) {
+                        ImGui::Text("Model: %s",snap.model.c_str());
+                        ImGui::Text("Status: %s | Target distance: %.2f",snap.status.c_str(),snap.distance);
+                        auto drawValues=[](const char* title,const std::vector<float>& values) {
+                            ImGui::TextUnformatted(title);
+                            for(size_t i=0;i<values.size();++i) {
+                                ImGui::PushID(static_cast<int>(i));
+                                ImGui::ProgressBar(std::clamp((values[i]+1.f)*0.5f,0.f,1.f),ImVec2(120,0));
+                                ImGui::SameLine(); ImGui::Text("[%d] %.4f",static_cast<int>(i),values[i]);
+                                ImGui::PopID();
+                            }
+                        };
+                        drawValues("Inputs",snap.inputs);
+                        drawValues("Predictions",snap.outputs);
+                        // Animated feed-forward graph. Read-only: no editor-side
+                        // mutation of the model or live agent state.
+                        static bool showNeuralGraph = true;
+                        ImGui::Checkbox("Animated neural graph", &showNeuralGraph);
+                        if (showNeuralGraph && snap.activations.size() >= 2) {
+                            const float graphWidth = std::max(260.f, ImGui::GetContentRegionAvail().x);
+                            const float graphHeight = 230.f;
+                            const ImVec2 origin = ImGui::GetCursorScreenPos();
+                            ImGui::InvisibleButton("##NeuralFeedForwardGraph", ImVec2(graphWidth, graphHeight));
+                            ImDrawList* dl = ImGui::GetWindowDrawList();
+                            dl->AddRectFilled(origin, ImVec2(origin.x+graphWidth,origin.y+graphHeight),
+                                              IM_COL32(17,23,34,255), 5.f);
+                            const size_t count = snap.activations.size();
+                            const float time = static_cast<float>(ImGui::GetTime());
+                            const float phase = std::fmod(time * 0.65f, 1.f);
+                            auto nodePos = [&](size_t layer, size_t neuron, size_t n) {
+                                return ImVec2(origin.x + 22.f + (graphWidth-44.f)*float(layer)/float(count-1),
+                                    origin.y + 24.f + (graphHeight-48.f)*(float(neuron)+0.5f)/float(n));
+                            };
+                            for (size_t l=1; l<count; ++l) {
+                                const auto& previous = snap.activations[l-1];
+                                const auto& current = snap.activations[l];
+                                const size_t a = std::min(previous.size(),size_t(24));
+                                const size_t b = std::min(current.size(),size_t(24));
+                                for(size_t i=0;i<a;++i) for(size_t j=0;j<b;++j) {
+                                    const ImVec2 from=nodePos(l-1,i,a), to=nodePos(l,j,b);
+                                    const float strength=std::clamp(std::abs(previous[i]*current[j]),0.f,1.f);
+                                    dl->AddLine(from,to,IM_COL32(75,128,172,int(28+90*strength)),1.f);
+                                    // Moving particle indicates propagation direction,
+                                    // not a measured propagation delay.
+                                    const float t=std::fmod(phase*float(count-1)+float(count-1)-(float(l)-1.f),1.f);
+                                    const float visiblePhase=phase*float(count-1)-(float(l)-1.f);
+                                    if(visiblePhase>=0.f && visiblePhase<=1.f && strength>0.08f) {
+                                        const ImVec2 dot(from.x+(to.x-from.x)*t,from.y+(to.y-from.y)*t);
+                                        dl->AddCircleFilled(dot,1.3f+1.5f*strength,IM_COL32(255,205,90,205));
+                                    }
+                                }
+                            }
+                            for(size_t l=0;l<count;++l) {
+                                const auto& layer=snap.activations[l];
+                                const size_t n=std::min(layer.size(),size_t(24));
+                                for(size_t j=0;j<n;++j) {
+                                    const ImVec2 center=nodePos(l,j,n);
+                                    const float value=std::clamp(layer[j],-1.f,1.f);
+                                    const ImU32 color=value>=0.f
+                                        ? IM_COL32(70, int(115+125*value), 225, 255)
+                                        : IM_COL32(int(115+120*(-value)), 95, 165, 255);
+                                    dl->AddCircleFilled(center,5.f,color);
+                                    dl->AddCircle(center,5.f,IM_COL32(215,225,240,190),0,1.f);
+                                }
+                            }
+                            ImGui::TextDisabled("Live activations | animated signal flow (illustrative)");
+                            if (std::any_of(snap.activations.begin(),snap.activations.end(),
+                                [](const auto& layer){return layer.size()>24;}))
+                                ImGui::TextDisabled("Graph displays first 24 neurons per layer");
+                        }
+                        if(ImGui::TreeNode("Layer activations")) {
+                            for(size_t i=0;i<snap.activations.size();++i) {
+                                ImGui::PushID(static_cast<int>(i));
+                                if(ImGui::TreeNodeEx("##neural_layer", ImGuiTreeNodeFlags_None, "Layer %d (%d neurons)", static_cast<int>(i), static_cast<int>(snap.activations[i].size()))) {
+                                    drawValues("Activations",snap.activations[i]);
+                                    ImGui::TreePop();
+                                }
+                                ImGui::PopID();
+                            }
+                            ImGui::TreePop();
+                        }
+                        if(ImGui::TreeNode("Weights and biases (saved model)")) {
+                            try {
+                                // Disk snapshot. To inspect changes made by training, reopen this section after saving.
+                                const auto model=Neural::NeuralNetwork::Load(NeuralAssetPath(snap.model).string());
+                                for(size_t layer=0;layer<model.Layers().size();++layer) {
+                                    ImGui::PushID(static_cast<int>(layer));
+                                    const auto& dense=model.Layers()[layer];
+                                    if(ImGui::TreeNodeEx("##neural_dense", ImGuiTreeNodeFlags_None, "Dense %d (%d x %d)", static_cast<int>(layer), static_cast<int>(dense.Outputs()), static_cast<int>(dense.Inputs()))) {
+                                        for(size_t neuron=0;neuron<dense.Outputs();++neuron) {
+                                            ImGui::Text("Neuron %d | bias %.5f",static_cast<int>(neuron),dense.Biases()[neuron]);
+                                            for(size_t input=0;input<dense.Inputs();++input) {
+                                                ImGui::SameLine();
+                                                ImGui::TextDisabled("w%d:%.3f",static_cast<int>(input),dense.Weights()(neuron,input));
+                                            }
+                                        }
+                                        ImGui::TreePop();
+                                    }
+                                    ImGui::PopID();
+                                }
+                            } catch(const std::exception& e) { ImGui::TextDisabled("Cannot load model: %s",e.what()); }
+                            ImGui::TreePop();
+                        }
+                    } else ImGui::TextDisabled("Run Play with NeuralTrainingAgent to inspect inference.");
                 }
             }
             if (agent.HasComponent<NavAgentComponent>())

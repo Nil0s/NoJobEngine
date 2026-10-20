@@ -262,6 +262,19 @@ namespace NoJob
                                 else if (std::find(names.begin(), names.end(), field.String) == names.end())
                                     ImGui::TextDisabled("Selected tree not found on disk.");
                             }
+                            else if (field.Type == ScriptFieldType::String &&
+                                     script.ScriptName == "NeuralTrainingAgent" && fieldDef.Name == "ModelName")
+                            {
+                                const auto names=ListNeuralAssetNames();
+                                if (ImGui::BeginCombo("Neural Model",field.String.empty()?"Select / create...":field.String.c_str())) {
+                                    for(const auto& name:names)
+                                        if(ImGui::Selectable(name.c_str(),field.String==name)) field.String=name;
+                                    ImGui::EndCombo();
+                                }
+                                char buffer[256]{};
+                                std::snprintf(buffer,sizeof(buffer),"%s",field.String.c_str());
+                                if(ImGui::InputText("Model asset name",buffer,sizeof(buffer))) field.String=buffer;
+                            }
                             else if (field.Type == ScriptFieldType::String)
                             {
                                 char buffer[256]{};
@@ -273,6 +286,25 @@ namespace NoJob
                                     fieldDef.Name.c_str(), &field.Vec3.x, 0.05f);
                             beginEdit(); endEdit();
                             ImGui::PopID();
+                        }
+                        if(script.ScriptName == "NeuralTrainingAgent") {
+                            ImGui::Separator();
+                            ImGui::TextUnformatted("Supervised Agent Training (Editor)");
+                            ImGui::TextDisabled("Trains direction-to-target examples; not reinforcement learning.");
+                            const auto nameIt=script.Fields.find("ModelName");
+                            const std::string model=nameIt==script.Fields.end()?"":nameIt->second.String;
+                            if(ImGui::Button("Train & Save .njn")) {
+                                try {
+                                    const int epochs=script.Fields.count("Epochs")?script.Fields.at("Epochs").Int:1500;
+                                    const float rate=script.Fields.count("LearningRate")?script.Fields.at("LearningRate").Float:0.01f;
+                                    auto history=NeuralAgent::TrainDirectionModel(model,epochs,rate);
+                                    const float loss=history.epochLoss.empty()?0.f:history.epochLoss.back();
+                                    std::printf("[Neural Inspector] Saved %s, MSE %.8f\n",model.c_str(),loss);
+                                } catch(const std::exception& e) { std::fprintf(stderr,"[Neural Inspector] %s\n",e.what()); }
+                            }
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("Asset: %s",model.c_str());
+                            ImGui::TextDisabled("Training runs synchronously; see console for final MSE.");
                         }
                         ImGui::TextDisabled(
                             "Scene/Prefab persistent | Hot-reload safe");
