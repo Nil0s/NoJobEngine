@@ -31,11 +31,11 @@ The native Game AI foundation now connects perception and navigation with
 visual Behavior Trees, native C++ gameplay callbacks, per-agent Blackboards
 and live decision inspection. The AI Debugger exposes active tree nodes,
 execution events and Blackboard changes while the simulation runs.
-Native machine learning and reinforcement learning remain future research goals.
+Native neural-network training and inference are now integrated into the C++ runtime and editor; reinforcement learning remains a future research goal.
 
-> **Current milestone: NoJobEngine V1.9.0 — Native AI Decision System — Complete and Validated**
+> **Current milestone: NoJobEngine V2.0.6 — Native Neural AI & Gameplay Integration — Complete and Validated**
 >
-> **Next milestone: V2.0 — Scope to be defined**
+> **Next milestone: V2.0.7 — Code Cleanup & Doxygen Documentation (in progress)**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
@@ -58,12 +58,12 @@ of the engine itself?**
 
 The goal is to explore an AI workflow where developers can build
 behaviors visually, inspect what an agent perceives, debug its decisions
-and eventually design and train neural networks directly inside the
+and design and train neural networks directly inside the
 engine.
 
 Rather than relying on an external Python training pipeline as the core
-workflow, the long-term direction is to explore native C++ training and
-inference integrated directly with the runtime and editor.
+workflow, the engine now provides native C++ training and inference integrated
+with the runtime and editor. Reinforcement learning is a planned next step.
 
 This also opens the door to hybrid approaches where deterministic game
 AI and learned behavior can work together in the same agent.
@@ -168,6 +168,34 @@ multi-agent and Play/Stop stability checks. These tools aim to make authored
 AI decisions inspectable rather than opaque. Blackboard change tracking
 reflects snapshot-to-snapshot differences, not every intermediate write
 within a single tick.
+
+### Native neural networks & gameplay integration (V2.0.1–V2.0.6)
+
+V2.0 introduces a native C++ neural-network workflow within NoJobEngine,
+without requiring Python or an external ML service for the core training and
+inference pipeline. The implementation covers feed-forward neural networks,
+backpropagation, training optimizers, model assets (`.njn`) and neural-network
+inspection and editing tools.
+
+The editor supports training and saving multiple named models independently
+of the currently active model, resuming training from an existing model and
+inspecting live observations, predictions, hidden-layer activations, weights
+and biases. The **AI Debugger** includes an animated neural-network graph
+and can inspect neural agents that do not use NavAgent or Behavior Trees.
+
+V2.0.6 connects neural inference to gameplay and native C++ project scripts.
+The `NeuralTrainingDemo` demonstrates a target-following agent; the
+`NeuralPongTrackingDemo` demonstrates a paddle following a moving ball.
+`PongAgent` is implemented as a project script under `Assets/Scripts`,
+compiled through the editor rather than hard-coded into the engine. These
+are demonstrations of supervised learning and inference, **not** a complete
+Pong game or a reinforcement-learning implementation.
+
+Traditional Behavior Trees continue to work without a neural model, while
+neural gameplay behavior can be combined with existing native decision
+systems. The current generic neural-agent workflow offers configured
+observation/action modes and native script extensibility; it is not claimed
+to be an unrestricted no-code agent-authoring system.
 
 ### 3D model & material import
 
@@ -277,6 +305,8 @@ as a single action.
 -   visual `.njbt` Behavior Tree editor with saved tree assets
 -   AI Debugger 2.1 live tree graph and Execution Timeline
 -   Blackboard Live, change tracking and Timeline filters
+-   Native neural-network editing, training and model inspection
+-   Animated neural-network graph in AI Debugger
 
 ### Asset pipeline
 
@@ -436,6 +466,23 @@ abstraction:
 -   Blackboard Change Tracking across debug snapshots
 -   Timeline filters by event category and Blackboard variable
 -   Validated multi-agent and Play/Stop stability
+
+### Native Neural AI (V2.0.1–V2.0.6)
+
+- Native C++ neural-network math, dense layers and forward inference
+- Backpropagation, loss functions and native supervised training
+- SGD and Adam training optimizers
+- Persistent `.njn` neural-model assets
+- Neural editor and Inspector integration
+- Live neural inputs, predictions, activations, weights and biases
+- Animated neural-network visualization in the AI Debugger
+- Named training outputs independent of the active model
+- Resume training from a previously saved model
+- Neural gameplay integration and optional Behavior Tree actions
+- Generic neural-agent demonstration modes and native project-script support
+- `NeuralTrainingDemo` and `NeuralPongTrackingDemo` validation scenes
+- `PongAgent` compiled as a project C++ script from the editor
+- Traditional Behavior Tree compatibility without a neural model
 
 ### Physics
 
@@ -654,6 +701,33 @@ actual C++ values used by the runtime script. Compatible Inspector
 values are preserved across recompilation and hot reload.
 
 ------------------------------------------------------------------------
+
+## Native neural-agent workflow (V2.0.6)
+
+A neural agent can be authored as a native C++ project script and compiled
+using the existing script build/hot-reload workflow. The Pong demonstration
+uses `PongAgent` in `Assets/Scripts` to provide observations, consume model
+predictions and control the paddle without modifying engine-core gameplay
+code.
+
+A typical validation workflow is:
+
+```text
+Open NeuralPongTrackingDemo
+    ↓
+Compile project scripts in the editor
+    ↓
+Enter Play Mode
+    ↓
+Select the paddle / PongAgent
+    ↓
+Inspect live inputs, predictions and neural graph in AI Debugger
+```
+
+The `NeuralTrainingDemo` can also be used to train a following agent,
+save differently named training results, resume training and inspect its
+network in real time. Neural models are assets, so model selection and
+training-output naming are separate operations.
 
 ## Building on Windows
 
@@ -877,66 +951,65 @@ Completed and validated in the editor.
 -   Stability and regression checks completed, including multi-agent use
     and Play/Stop cycles.
 
+### ✅ V2.0.1–V2.0.5 — Native Neural Networks & Editor Tooling
+
+Completed and validated in the editor.
+
+- Native neural-network core and forward inference.
+- Native supervised training, backpropagation and optimizers.
+- `.njn` model serialization and loading.
+- Neural model editing and Inspector integration.
+- Live neural-model inspection and animated AI Debugger graph.
+
+### ✅ V2.0.6 — Neural Gameplay Integration
+
+Completed and validated in the editor.
+
+- Neural gameplay agents with live observations and model predictions.
+- Model management: active model, named training saves and resume source.
+- `NeuralTrainingDemo` following-agent behavior.
+- `NeuralPongTrackingDemo` paddle-tracking behavior.
+- `PongAgent` as an editor-compiled native C++ project script.
+- AI Debugger support for the Pong agent without NavAgent or Behavior Trees.
+- Compatibility with existing traditional Behavior Trees and optional
+  neural Behavior Tree integrations.
+
 ------------------------------------------------------------------------
 
 ## AI Roadmap
 
-> **Planned development:** the milestones below describe the next stages
-> of NoJobEngine and are not presented as implemented until they move
-> into the completed development milestones above.
+> **Release status:** V2.0.6 is complete and validated. The milestones below
+> are plans and must not be interpreted as implemented features.
 
-### V2.0 — Next milestone (scope pending)
+### V2.0.7 — Code Cleanup & Doxygen Documentation (in progress)
 
-The V2.0 scope will be defined separately. The V1.9 decision-system
-features listed above are complete; future work will be documented here
-only after its scope is agreed.
+- Conservative code cleanup and review of dependencies and ownership.
+- English-language Doxygen API comments and HTML documentation.
+- Regression testing for editor, runtime, native scripts and AI systems.
 
-### Future milestone --- Native Machine Learning (planned)
+### V2.1 — Reinforcement Learning (planned)
 
-Explore a native C++ ML stack without requiring Python for the core
-training workflow:
+- Observations, actions and reward signals for learning agents.
+- Episodes, environment reset and training loops.
+- Native C++ policy training without supervised target examples.
+- Runtime inference from trained policies and editor-side diagnostics.
 
--   Tensor/data representation and Dense layers.
--   Activation functions and forward propagation.
--   Backpropagation and loss functions.
--   SGD and Adam optimizers.
--   Model serialization.
--   Native CPU inference and training.
--   Neural-network editor/visualization tools.
+### V2.2 — Parallel Neural Training (planned)
 
-The objective is to understand and implement the ML pipeline inside the
-engine instead of treating an external framework as a black box. Version
-numbering for this milestone has not yet been assigned.
+- Multiple independent simulation environments collecting experiences for
+  the same behavior/policy.
+- Worker execution and a coordinated central trainer.
+- Headless simulation and performance measurements.
+- Exploration of separate-process workers after thread-based execution.
 
-### Later milestone --- ML Agents & Reinforcement Learning (planned)
+### V2.3 — AI Performance & Optimization (planned)
 
-Connect native ML to gameplay:
+- Training and inference profiling.
+- Batched inference and memory/performance optimization.
+- Improved training diagnostics and visualization.
 
--   MLAgent component.
--   Observations, actions and rewards.
--   Episodes and environment resets.
--   Reinforcement-learning training loop.
--   Runtime trained-policy inference.
--   Parallel/headless simulation for faster training.
-
-Target AI architecture:
-
-``` text
-Behavior Tree        → high-level behaviour
-        ↓
-Neural Network       → learned decisions
-        ↓
-NavAgent / NavMesh   → movement and navigation
-        ↓
-Perception           → world sensing
-        ↓
-Blackboard           → shared AI state
-        ↓
-Native Scripting     → custom gameplay logic
-```
-
-This gives NoJobEngine both authored game AI and agents that can be
-trained directly inside the C++ engine.
+The long-term direction remains hybrid AI: native Behavior Trees,
+perception and navigation working alongside learned neural policies.
 
 ------------------------------------------------------------------------
 
@@ -980,7 +1053,10 @@ It covers problems across:
     packaging;
 -   native perception, spatial queries and AI debugging tooling;
 -   native Behavior Trees, visual behavior authoring and live decision tracing;
--   Blackboard inspection and change tracking.
+-   Blackboard inspection and change tracking;
+-   native neural-network training and inference;
+-   `.njn` model assets, neural editor tooling and live network visualization;
+-   editor-compiled neural project scripts and gameplay integration.
 
 The development approach is intentionally iterative: **build a system,
 expose it through the editor, validate it end-to-end, and then improve
