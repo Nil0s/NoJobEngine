@@ -1,0 +1,37 @@
+UpdateCTestConfiguration  from :C:/Users/franr/Documents/Codex/2026-10-26/referenced-chatgpt-conversation-this-is-an/work/rl-build/DartConfiguration.tcl
+Test project C:/Users/franr/Documents/Codex/2026-10-26/referenced-chatgpt-conversation-this-is-an/work/rl-build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: ReinforcementTests
+
+1: Test command: C:\Users\franr\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\rl-build\Release\ReinforcementTests.exe
+1: Working Directory: C:/Users/franr/Documents/Codex/2026-10-26/referenced-chatgpt-conversation-this-is-an/work/rl-build
+1: Test timeout computed to be: 10000000
+1: NoJob RL tests passed
+1/2 Test #1: ReinforcementTests ...............   Passed    0.04 sec
+test 2
+    Start 2: TrackingLearningProof
+
+2: Test command: C:\Users\franr\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\rl-build\Release\TrackingLearningProof.exe
+2: Working Directory: C:/Users/franr/Documents/Codex/2026-10-26/referenced-chatgpt-conversation-this-is-an/work/rl-build
+2: Test timeout computed to be: 10000000
+2: episode=200 reward=0.853179 loss=0.00717964
+2: episode=400 reward=-0.233493 loss=0.000103274
+2: episode=600 reward=0.728198 loss=0.00666378
+2: episode=800 reward=1 loss=9.62761e-05
+2: episode=1000 reward=0.920877 loss=8.86666e-05
+2: episode=1200 reward=0.0408165 loss=0.000105304
+2: episode=1400 reward=0.93288 loss=5.82381e-05
+2: episode=1600 reward=0.091244 loss=6.86171e-05
+2: XZ phase success: untrained=0.006 random=0.220 trained=1.000
+2: PASS: learning, reload parity, and bidirectional retargeting
+2/2 Test #2: TrackingLearningProof ............   Passed    1.21 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   1.44 sec

@@ -4,6 +4,7 @@
 #include "Editor/EditorLayer.h"
 #include "Editor/Utils/EditorStringUtils.h"
 #include "Editor/Panels/NeuralEditorPanel.h"
+#include "Editor/Panels/ReinforcementPanel.h"
 #include "Editor/Build/StandaloneBuilder.h"
 #include "Editor/Build/BuildSettings.h"
 #include "Editor/Assets/ProjectPanel.h"
@@ -1287,6 +1288,7 @@ namespace NoJob
     }
 
     static NeuralEditorPanel s_NeuralEditorPanel;
+    static ReinforcementPanel s_ReinforcementPanel;
 
     void EditorLayer::Draw()
     {
@@ -1322,6 +1324,7 @@ namespace NoJob
         DrawRendererProfiler();
         DrawAIDebugger();
         s_NeuralEditorPanel.Draw();
+        s_ReinforcementPanel.Draw();
         if (s_ShowBTAssetEditor) DrawBTAssetEditorWindow(&s_ShowBTAssetEditor);
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete))
@@ -1967,6 +1970,8 @@ namespace NoJob
                 ImGui::MenuItem("Behavior Tree Editor", nullptr, &s_ShowBTAssetEditor);
                 if (ImGui::MenuItem("Neural Network Editor", nullptr, s_NeuralEditorPanel.IsOpen()))
                     s_NeuralEditorPanel.SetOpen(!s_NeuralEditorPanel.IsOpen());
+                if (ImGui::MenuItem("Reinforcement Learning", nullptr, s_ReinforcementPanel.IsOpen()))
+                    s_ReinforcementPanel.SetOpen(!s_ReinforcementPanel.IsOpen());
                 ImGui::MenuItem("AI Debugger", nullptr, &m_ShowAIDebugger);
                 ImGui::Separator();
                 if (ImGui::BeginMenu("Navigation"))
@@ -3077,7 +3082,7 @@ namespace NoJob
         for (auto entity : entities)
         {
             if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
-                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "PongAgent"))) continue;
+                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "PongAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "RLTrackingAgent"))) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -3414,7 +3419,8 @@ namespace NoJob
                 (agent.GetComponent<NativeScriptComponent>().ScriptName == "NeuralTrainingAgent" ||
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent" ||
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "GenericNeuralAgent" ||
-                 agent.GetComponent<NativeScriptComponent>().ScriptName == "PongAgent")) {
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "PongAgent" ||
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "RLTrackingAgent")) {
                 NeuralAgent::Snapshot snap;
                 bool hasNeuralSnapshot = m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent, snap);
                 // Project scripts live in a separate DLL: its header-inline diagnostic map
@@ -3437,8 +3443,10 @@ namespace NoJob
                                 ImGui::PopID();
                             }
                         };
-                        drawValues("Inputs",snap.inputs);
-                        drawValues("Predictions",snap.outputs);
+                        const bool tracking = agent.GetComponent<NativeScriptComponent>().ScriptName == "RLTrackingAgent";
+                        if (tracking) ImGui::TextWrapped("Observations: [X, targetX-X, Z, targetZ-Z]. Q: [-X, hold X, +X, -Z, hold Z, +Z]. Raw Q values are not probabilities; bars saturate outside [-1,1].");
+                        drawValues(tracking ? "Observations (normalized)" : "Inputs",snap.inputs);
+                        drawValues(tracking ? "Q values (X then Z)" : "Predictions",snap.outputs);
                         // Animated feed-forward graph. Read-only: no editor-side
                         // mutation of the model or live agent state.
                         static bool showNeuralGraph = true;

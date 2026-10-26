@@ -221,7 +221,8 @@ add_executable(NoJobEditor
     Editor/Panels/InspectorPanel.cpp
     Editor/Scene/SceneFileDialog.cpp
     Editor/EditorCamera.cpp
-    Editor/Panels/NeuralEditorPanel.cpp)
+    Editor/Panels/NeuralEditorPanel.cpp
+    Editor/Panels/ReinforcementPanel.cpp)
 
 target_link_libraries(NoJobEditor PRIVATE
     NoJobEngine
@@ -303,4 +304,16 @@ if(NOJOB_BUILD_NEURAL_TESTS)
     target_include_directories(NoJobNeuralTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Engine/AI/Neural)
     enable_testing()
     add_test(NAME NoJobNeuralTests COMMAND NoJobNeuralTests)
+endif()
+
+# V2.1: isolated native reinforcement-learning tests (no editor or graphics).
+option(NOJOB_BUILD_RL_TESTS "Build native reinforcement learning tests" OFF)
+if(NOJOB_BUILD_RL_TESTS)
+    add_executable(NoJobRLTests
+        Engine/AI/Reinforcement/ReinforcementTests.cpp
+        Engine/AI/Neural/NeuralNetwork.cpp)
+    target_include_directories(NoJobRLTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(NoJobRLTests PRIVATE cxx_std_20)
+    enable_testing()
+    add_test(NAME NoJobRLTests COMMAND NoJobRLTests)
 endif()
