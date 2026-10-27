@@ -360,7 +360,7 @@ endif()
 
 option(NOJOB_BUILD_OBSTACLE_TESTS "Build learned obstacle avoidance tests and proof" OFF)
 if(NOJOB_BUILD_OBSTACLE_TESTS)
-    add_executable(NoJobObstacleTests Engine/AI/Reinforcement/Tests/ObstacleLearningTests.cpp Assets/Scripts/RLObstacleAgent.cpp)
+    add_executable(NoJobObstacleTests Engine/AI/Reinforcement/Tests/ObstacleLearningTests.cpp Assets/Scripts/RLObstacleAgent.cpp Assets/Scripts/RLTargetPatrol.cpp)
     target_link_libraries(NoJobObstacleTests PRIVATE NoJobEngine)
     add_executable(NoJobObstacleLearningProof Engine/AI/Reinforcement/Tests/ObstacleLearningProof.cpp Engine/AI/Neural/NeuralNetwork.cpp)
     target_include_directories(NoJobObstacleLearningProof PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

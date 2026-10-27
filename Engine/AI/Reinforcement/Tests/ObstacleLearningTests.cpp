@@ -4,14 +4,71 @@
 #include "Engine/Scene/ScriptableEntity.h"
 #include "Engine/AI/Reinforcement/ObstacleRefinement.h"
 #include "Engine/AI/Reinforcement/ObstacleWorldPolicy.h"
+#include "Assets/Scripts/RLTargetPatrol.h"
 #include <iostream>
 #include <fstream>
 /** @brief Script registration exported by the same source compiled into the project DLL. */
 extern "C" void NoJobRegister_RLObstacleAgent(void(*)(NoJob::ScriptDefinition));
+extern "C" void NoJobRegister_RLTargetPatrol(void(*)(NoJob::ScriptDefinition));
 /** @brief Register the actual obstacle script in the test host. */
 void RegisterObstacle(NoJob::ScriptDefinition d){NoJob::ScriptRegistry::Register(std::move(d));}
 /** @brief Require a condition in Debug and Release. */
 void Require(bool condition,const char*message){if(!condition)throw std::runtime_error(message);}
+/** @brief Validate continuous automatic goals and real learned pursuit over several complete loops. */
+void TestAutomaticTarget() {
+    using namespace NoJob;using namespace NoJob::RL;
+    NoJobRegister_RLTargetPatrol(RegisterObstacle);
+    Scene demo;
+    for(const auto&w:ArenaWalls()) {
+        auto wall=demo.CreateEntity("Demo wall");
+        auto&t=wall.GetComponent<TransformComponent>();t.Position=w.centre;t.Scale=w.size;
+        wall.AddComponent<BoxColliderComponent>();
+    }
+    auto agent=demo.CreateEntity("RLAgentCube");
+    agent.GetComponent<TransformComponent>().Position=CellWorld({0,4});
+    agent.AddComponent<NativeScriptComponent>().ScriptName="RLObstacleAgent";
+    auto target=demo.CreateEntity("RLTarget");
+    const auto start=CellWorld({8,4});
+    target.GetComponent<TransformComponent>().Position=start;
+    target.AddComponent<NativeScriptComponent>().ScriptName="RLTargetPatrol";
+    demo.OnRuntimeStart();
+    std::array<bool,5> visited{},caught{};
+    float travelled=0.f;
+    constexpr float dt=1.f/60.f;
+    for(int frame=0;frame<9000;++frame) {
+        const glm::vec3 before(demo.GetWorldTransform(target)[3]);
+        const glm::vec3 agentBefore(demo.GetWorldTransform(agent)[3]);
+        demo.OnUpdate(dt);
+        const glm::vec3 after(demo.GetWorldTransform(target)[3]);
+        const glm::vec3 agentAfter(demo.GetWorldTransform(agent)[3]);
+        const float distance=glm::length(after-before);travelled+=distance;
+        Require(distance<=1.6f*dt+.0001f,"Automatic target teleported or exceeded speed");
+        Require(std::abs(after.y-start.y)<.0001f,"Automatic target changed its height");
+        Require(ArenaSegmentClear(before,after),"Automatic target crossed a wall");
+        Require(ArenaSegmentClear(agentBefore,agentAfter),"Agent crossed a wall while pursuing automatic target");
+        if(frame<479)Require(glm::length(after-start)<.001f,"Target skipped initial recording hold");
+        const auto points=RLTargetPatrol::Waypoints(start.y);
+        for(size_t i=0;i<points.size();++i) if(glm::length(after-points[i])<.01f) {
+            visited[i]=true;
+            if(glm::length(agentAfter-after)<.2f)caught[i]=true;
+        }
+    }
+    for(bool value:visited)Require(value,"Automatic target missed a waypoint");
+    for(bool value:caught)Require(value,"Learned agent failed to catch a paused automatic target");
+    Require(travelled>100.f,"Target loop did not repeat");
+    auto* patrol=dynamic_cast<RLTargetPatrol*>(demo.FindRuntimeScript(target.GetHandle(),"RLTargetPatrol"));
+    Require(patrol!=nullptr,"Automatic target script was not instantiated");
+    target.GetComponent<NativeScriptComponent>().Fields["AutoMove"]=ScriptFieldValue::MakeBool(false);
+    target.GetComponent<TransformComponent>().Position=start;
+    for(int frame=0;frame<120;++frame)demo.OnUpdate(dt);
+    Require(glm::length(glm::vec3(demo.GetWorldTransform(target)[3])-start)<.001f,"Manual mode overwrote the target transform");
+    target.GetComponent<NativeScriptComponent>().Fields["AutoMove"]=ScriptFieldValue::MakeBool(true);
+    target.GetComponent<NativeScriptComponent>().Fields["Speed"]=ScriptFieldValue::MakeFloat(0.f);
+    demo.OnUpdate(dt);
+    Require(glm::length(glm::vec3(demo.GetWorldTransform(target)[3])-start)<.001f,"Zero-speed target moved");
+    demo.OnRuntimeStop();
+    std::cout<<"PASS: 150s automatic target, smooth X/Z loop, initial hold, wall clearance, learned arrivals at all five stops, manual mode and zero speed"<<std::endl;
+}
 /** @brief Evaluate all comparators and test the live script without any NavigationSystem. */
 int main(int argc,char**argv){
  try{
@@ -81,6 +138,7 @@ int main(int argc,char**argv){
     scene.DestroyEntity(target);scene.OnUpdate(1.f/60);Require(!runtime->GetNeuralDebugSnapshot(snap),"Deleted target left stale diagnostics");
     scene.OnRuntimeStop();
     std::cout<<"PASS: native comparison, metrics, sensors, cancellation, live snapshots and invalid target"<<std::endl;
+    TestAutomaticTarget();
     return 0;
  }catch(const std::exception&e){std::cerr<<e.what()<<std::endl;return 1;}
 }
