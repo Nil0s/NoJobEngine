@@ -1454,6 +1454,59 @@ namespace NoJob
         return entity;
     }
 
+    Entity EditorLayer::CreatePrimitiveEntity(PrimitiveType type)
+    {
+        if (type == PrimitiveType::Cube)
+        {
+            Entity cube = CreateCubeEntity();
+            if (cube)
+            {
+                cube.AddComponent<BoxColliderComponent>();
+                cube.AddComponent<RigidbodyComponent>().Type = RigidbodyType::Static;
+            }
+            return cube;
+        }
+        // Reuse the existing material cloning, undo and selection logic.
+        Entity entity = CreateCubeEntity();
+        if (!entity) return {};
+        const char* name = "Primitive";
+        switch (type)
+        {
+        case PrimitiveType::Sphere: name = "Sphere"; break;
+        case PrimitiveType::Capsule: name = "Capsule"; break;
+        case PrimitiveType::Cylinder: name = "Cylinder"; break;
+        case PrimitiveType::Plane: name = "Plane"; break;
+        case PrimitiveType::Quad: name = "Quad"; break;
+        default: break;
+        }
+        entity.GetComponent<TagComponent>().Tag = name;
+        if (entity.HasComponent<MeshComponent>())
+            entity.GetComponent<MeshComponent>().MeshAsset = Mesh::CreatePrimitive(type);
+        else
+            entity.AddComponent<MeshComponent>(Mesh::CreatePrimitive(type));
+        switch (type)
+        {
+        case PrimitiveType::Sphere: entity.AddComponent<SphereColliderComponent>(); break;
+        case PrimitiveType::Capsule: entity.AddComponent<CapsuleColliderComponent>(); break;
+        case PrimitiveType::Cylinder: entity.AddComponent<BoxColliderComponent>(); break;
+        case PrimitiveType::Plane:
+        {
+            auto& collider = entity.AddComponent<BoxColliderComponent>();
+            collider.Size = {1.0f, 0.02f, 1.0f};
+            break;
+        }
+        case PrimitiveType::Quad:
+        {
+            auto& collider = entity.AddComponent<BoxColliderComponent>();
+            collider.Size = {1.0f, 1.0f, 0.02f};
+            break;
+        }
+        default: break;
+        }
+        entity.AddComponent<RigidbodyComponent>().Type = RigidbodyType::Static;
+        return entity;
+    }
+
     Entity EditorLayer::CreateModelEntity(const std::filesystem::path& p)
     {
         if (!m_Scene || p.empty())
@@ -1894,8 +1947,12 @@ namespace NoJob
 
                 if (ImGui::BeginMenu("3D Object"))
                 {
-                    if (ImGui::MenuItem("Cube"))
-                        CreateCubeEntity();
+                    if (ImGui::MenuItem("Cube")) CreatePrimitiveEntity(PrimitiveType::Cube);
+                    if (ImGui::MenuItem("Sphere")) CreatePrimitiveEntity(PrimitiveType::Sphere);
+                    if (ImGui::MenuItem("Capsule")) CreatePrimitiveEntity(PrimitiveType::Capsule);
+                    if (ImGui::MenuItem("Cylinder")) CreatePrimitiveEntity(PrimitiveType::Cylinder);
+                    if (ImGui::MenuItem("Plane")) CreatePrimitiveEntity(PrimitiveType::Plane);
+                    if (ImGui::MenuItem("Quad")) CreatePrimitiveEntity(PrimitiveType::Quad);
 
                     if (ImGui::MenuItem("Import 3D Model..."))
                     {
@@ -2160,8 +2217,12 @@ namespace NoJob
 
             if (ImGui::BeginMenu("3D Object"))
             {
-                if (ImGui::MenuItem("Cube"))
-                    CreateCubeEntity();
+                if (ImGui::MenuItem("Cube")) CreatePrimitiveEntity(PrimitiveType::Cube);
+                if (ImGui::MenuItem("Sphere")) CreatePrimitiveEntity(PrimitiveType::Sphere);
+                if (ImGui::MenuItem("Capsule")) CreatePrimitiveEntity(PrimitiveType::Capsule);
+                if (ImGui::MenuItem("Cylinder")) CreatePrimitiveEntity(PrimitiveType::Cylinder);
+                if (ImGui::MenuItem("Plane")) CreatePrimitiveEntity(PrimitiveType::Plane);
+                if (ImGui::MenuItem("Quad")) CreatePrimitiveEntity(PrimitiveType::Quad);
                 ImGui::EndMenu();
             }
 

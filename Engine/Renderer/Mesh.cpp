@@ -197,6 +197,101 @@ namespace NoJob
             indices.insert(indices.end(), { b, b+1, b+2, b+2, b+3, b });
         }
 
-        return std::make_shared<Mesh>(vertices, indices);
+        auto mesh = std::make_shared<Mesh>(vertices, indices);
+        mesh->m_IsPrimitive = true;
+        mesh->m_PrimitiveType = PrimitiveType::Cube;
+        return mesh;
+    }
+
+    std::shared_ptr<Mesh> Mesh::CreatePrimitive(PrimitiveType type)
+    {
+        if (type == PrimitiveType::Cube) return CreateCube();
+        constexpr float pi = 3.14159265358979323846f;
+        constexpr int segments = 32;
+        std::vector<MeshVertex> vertices;
+        std::vector<std::uint32_t> indices;
+        auto add = [&](glm::vec3 position, glm::vec3 normal, glm::vec2 uv) {
+            MeshVertex vertex{};
+            vertex.Position = position;
+            vertex.Normal = normal;
+            vertex.TexCoord = uv;
+            vertices.push_back(vertex);
+        };
+        auto grid = [&](int rings, int slices) {
+            for (int y = 0; y < rings; ++y)
+                for (int x = 0; x < slices; ++x)
+                {
+                    const auto a = static_cast<std::uint32_t>(y * (slices + 1) + x);
+                    indices.insert(indices.end(), {a, a + slices + 1, a + 1,
+                                                   a + 1, a + slices + 1, a + slices + 2});
+                }
+        };
+        if (type == PrimitiveType::Plane || type == PrimitiveType::Quad)
+        {
+            const bool horizontal = type == PrimitiveType::Plane;
+            const glm::vec3 normal = horizontal ? glm::vec3(0,1,0) : glm::vec3(0,0,1);
+            add(horizontal ? glm::vec3(-0.5f,0,-0.5f) : glm::vec3(-0.5f,-0.5f,0), normal, {0,0});
+            add(horizontal ? glm::vec3(-0.5f,0, 0.5f) : glm::vec3(-0.5f, 0.5f,0), normal, {0,1});
+            add(horizontal ? glm::vec3( 0.5f,0,-0.5f) : glm::vec3( 0.5f,-0.5f,0), normal, {1,0});
+            add(horizontal ? glm::vec3( 0.5f,0, 0.5f) : glm::vec3( 0.5f, 0.5f,0), normal, {1,1});
+            indices = {0,1,2,2,1,3};
+        }
+        else if (type == PrimitiveType::Sphere || type == PrimitiveType::Capsule)
+        {
+            const int rings = type == PrimitiveType::Sphere ? 24 : 32;
+            for (int y=0; y<=rings; ++y)
+            {
+                const float v = float(y)/float(rings);
+                const float phi = pi*v;
+                const float radius = 0.5f*std::sin(phi);
+                const float sphereY = 0.5f*std::cos(phi);
+                const float offset = type == PrimitiveType::Capsule ? (y < rings/2 ? 0.5f : -0.5f) : 0.0f;
+                for (int x=0; x<=segments; ++x)
+                {
+                    const float u = float(x)/float(segments);
+                    const float theta = 2.0f*pi*u;
+                    const glm::vec3 n(std::cos(theta)*std::sin(phi), std::cos(phi), std::sin(theta)*std::sin(phi));
+                    add({radius*std::cos(theta),sphereY+offset,radius*std::sin(theta)},n,{u,1-v});
+                }
+            }
+            grid(rings,segments);
+            // Sphere parameterization is top-to-bottom: reverse the grid winding.
+            for (std::size_t i=0;i<indices.size();i+=3) std::swap(indices[i+1],indices[i+2]);
+        }
+        else if (type == PrimitiveType::Cylinder)
+        {
+            // Side surface with smooth normals.
+            for (int y=0; y<=1; ++y)
+                for (int x=0; x<=segments; ++x)
+                {
+                    const float u=float(x)/float(segments);
+                    const float a=2.0f*pi*u;
+                    const glm::vec3 n(std::cos(a),0,std::sin(a));
+                    add({0.5f*n.x,y ? 0.5f : -0.5f,0.5f*n.z},n,{u,float(y)});
+                }
+            grid(1,segments);
+            for (int top=0;top<2;++top)
+            {
+                const float y=top ? 0.5f : -0.5f;
+                const glm::vec3 n(0,top ? 1.0f : -1.0f,0);
+                const auto center=static_cast<std::uint32_t>(vertices.size());
+                add({0,y,0},n,{0.5f,0.5f});
+                for (int x=0;x<=segments;++x)
+                {
+                    const float a=2.0f*pi*float(x)/float(segments);
+                    add({0.5f*std::cos(a),y,0.5f*std::sin(a)},n,{0.5f+0.5f*std::cos(a),0.5f+0.5f*std::sin(a)});
+                }
+                for(int x=0;x<segments;++x)
+                {
+                    const auto a=center+1+static_cast<std::uint32_t>(x);
+                    if(top) indices.insert(indices.end(),{center,a+1,a});
+                    else indices.insert(indices.end(),{center,a,a+1});
+                }
+            }
+        }
+        auto mesh=std::make_shared<Mesh>(vertices,indices);
+        mesh->m_IsPrimitive=true;
+        mesh->m_PrimitiveType=type;
+        return mesh;
     }
 }

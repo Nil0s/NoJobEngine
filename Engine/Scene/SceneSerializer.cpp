@@ -398,7 +398,13 @@ namespace NoJob
                         .MeshAsset)
                     .generic_string();
 
-                if (mp.empty())
+                const auto& mesh = e.GetComponent<MeshComponent>().MeshAsset;
+                if (mesh && mesh->IsPrimitive())
+                {
+                    const char* names[] = {"CUBE", "SPHERE", "CAPSULE", "CYLINDER", "PLANE", "QUAD"};
+                    out << "MESH " << names[static_cast<int>(mesh->GetPrimitiveType())] << '\n';
+                }
+                else if (mp.empty())
                 {
                     out << "MESH CUBE\n";
                 }
@@ -1095,6 +1101,15 @@ namespace NoJob
                     current.AddComponent<
                         MeshComponent>(
                             defaultMesh);
+                }
+                else if (mp == "SPHERE" || mp == "CAPSULE" || mp == "CYLINDER" ||
+                         mp == "PLANE" || mp == "QUAD")
+                {
+                    const auto type = mp == "SPHERE" ? PrimitiveType::Sphere :
+                        mp == "CAPSULE" ? PrimitiveType::Capsule :
+                        mp == "CYLINDER" ? PrimitiveType::Cylinder :
+                        mp == "PLANE" ? PrimitiveType::Plane : PrimitiveType::Quad;
+                    current.AddComponent<MeshComponent>(Mesh::CreatePrimitive(type));
                 }
                 else
                 {

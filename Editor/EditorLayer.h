@@ -26,6 +26,7 @@ namespace NoJob
 {
     class Scene;
     class Mesh;
+    enum class PrimitiveType;
     class Material;
 
     class EditorLayer
@@ -142,6 +143,7 @@ namespace NoJob
 
         Entity CreateEmptyEntity();
         Entity CreateCubeEntity();
+        Entity CreatePrimitiveEntity(PrimitiveType type);
 
         Entity CreateModelEntity(
             const std::filesystem::path& modelPath);

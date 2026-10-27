@@ -34,6 +34,8 @@ namespace NoJob
         std::uint32_t MaterialIndex = 0;
     };
 
+    enum class PrimitiveType { Cube, Sphere, Capsule, Cylinder, Plane, Quad };
+
     class Mesh
     {
     public:
@@ -46,6 +48,9 @@ namespace NoJob
         }
 
         static std::shared_ptr<Mesh> CreateCube();
+        static std::shared_ptr<Mesh> CreatePrimitive(PrimitiveType type);
+        PrimitiveType GetPrimitiveType() const { return m_PrimitiveType; }
+        bool IsPrimitive() const { return m_IsPrimitive; }
         static std::shared_ptr<Mesh> LoadOBJ(const std::filesystem::path& path);
         static std::shared_ptr<Mesh> LoadModel(const std::filesystem::path& path);
 
@@ -60,5 +65,7 @@ namespace NoJob
         std::shared_ptr<IndexBuffer> m_IndexBuffer;
         std::vector<Submesh> m_Submeshes;
         bool m_HasSkinning = false;
+        bool m_IsPrimitive = false;
+        PrimitiveType m_PrimitiveType = PrimitiveType::Cube;
     };
 }
