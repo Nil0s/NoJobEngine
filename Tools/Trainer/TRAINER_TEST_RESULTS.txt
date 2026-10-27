@@ -1,0 +1,27 @@
+UpdateCTestConfiguration  from :C:/Users/franr/Documents/GitHub/NoJobEngine/out/build/trainer-release/DartConfiguration.tcl
+Test project C:/Users/franr/Documents/GitHub/NoJobEngine/out/build/trainer-release
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: NoJobTrainerSelfTest
+
+1: Test command: C:\Users\franr\Documents\GitHub\NoJobEngine\out\build\trainer-release\NoJobTrainer.exe "--self-test" "--output-root" "C:/Users/franr/Documents/GitHub/NoJobEngine/out/build/trainer-release/trainer-self-test"
+1: Working Directory: C:/Users/franr/Documents/GitHub/NoJobEngine/out/build/trainer-release
+1: Test timeout computed to be: 10000000
+1/1 Test #1: NoJobTrainerSelfTest .............   Passed    0.29 sec
+
+The following tests passed:
+	NoJobTrainerSelfTest
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.31 sec
+
+PASS: concurrent runs, unique paths, real telemetry, saved policy/history
+PASS: pause, exactly one step, cancellation, partial history retained
+
+Visual check: native window opened; real training observed at episode 3635/9000 with live environment and charts.

@@ -13,18 +13,20 @@ namespace NoJob
 #ifdef _WIN32
         std::filesystem::path ShowSceneDialog(
             bool save,
-            const std::filesystem::path& initialDirectory)
+            const std::filesystem::path& initialDirectory, bool neural = false)
         {
             wchar_t fileName[32768]{};
             OPENFILENAMEW dialog{};
             dialog.lStructSize = sizeof(dialog);
             dialog.lpstrFile = fileName;
             dialog.nMaxFile = static_cast<DWORD>(std::size(fileName));
-            dialog.lpstrFilter =
+            dialog.lpstrFilter = neural ?
+                L"NoJob Neural Policy (*.njn)\0*.njn\0" :
                 L"NoJob Scene (*.nojobscene)\0*.nojobscene\0All Files (*.*)\0*.*\0";
             const std::wstring initial = initialDirectory.wstring();
             dialog.lpstrInitialDir = initial.empty() ? nullptr : initial.c_str();
-            dialog.lpstrDefExt = L"nojobscene";
+            dialog.lpstrDefExt = neural ? L"njn" : L"nojobscene";
+            dialog.lpstrTitle = neural ? L"Select evaluation policy" : nullptr;
             dialog.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST |
                 (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
 
@@ -41,6 +43,17 @@ namespace NoJob
     {
 #ifdef _WIN32
         return ShowSceneDialog(false, initialDirectory);
+#else
+        (void)initialDirectory;
+        return {};
+#endif
+    }
+
+    std::filesystem::path SceneFileDialog::OpenNeuralPolicy(
+        const std::filesystem::path& initialDirectory)
+    {
+#ifdef _WIN32
+        return ShowSceneDialog(false, initialDirectory, true);
 #else
         (void)initialDirectory;
         return {};

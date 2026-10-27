@@ -3082,7 +3082,7 @@ namespace NoJob
         for (auto entity : entities)
         {
             if (!entity.HasComponent<PerceptionComponent>() && !entity.HasComponent<NavAgentComponent>() &&
-                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "PongAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "RLTrackingAgent"))) continue;
+                (!entity.HasComponent<NativeScriptComponent>() || (entity.GetComponent<NativeScriptComponent>().ScriptName != "BTAssetAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "NeuralTrainingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "GenericNeuralAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "PongAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "RLTrackingAgent" && entity.GetComponent<NativeScriptComponent>().ScriptName != "RLObstacleAgent"))) continue;
             if (m_AIDebugOnlyActive && entity.HasComponent<PerceptionComponent>() && !entity.GetComponent<PerceptionComponent>().Enabled) continue;
             agents.push_back(entity);
             if (entity.HasComponent<PerceptionComponent>() && m_IsPlaying)
@@ -3420,7 +3420,8 @@ namespace NoJob
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "BTAssetAgent" ||
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "GenericNeuralAgent" ||
                  agent.GetComponent<NativeScriptComponent>().ScriptName == "PongAgent" ||
-                 agent.GetComponent<NativeScriptComponent>().ScriptName == "RLTrackingAgent")) {
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "RLTrackingAgent" ||
+                 agent.GetComponent<NativeScriptComponent>().ScriptName == "RLObstacleAgent")) {
                 NeuralAgent::Snapshot snap;
                 bool hasNeuralSnapshot = m_IsPlaying && NeuralAgent::Read(m_AIDebugAgent, snap);
                 // Project scripts live in a separate DLL: its header-inline diagnostic map
@@ -3444,9 +3445,12 @@ namespace NoJob
                             }
                         };
                         const bool tracking = agent.GetComponent<NativeScriptComponent>().ScriptName == "RLTrackingAgent";
+                        const bool obstacles = agent.GetComponent<NativeScriptComponent>().ScriptName == "RLObstacleAgent";
+                        if(obstacles && snap.inputs.size()==4) ImGui::TextWrapped("Exterior learned tracking: two independent axis passes. Observations [0,relative X,0,relative Z], Q [-X,hold,+X,-Z,hold,+Z]. The obstacle core policy resumes on re-entry.");
+                        if(obstacles && snap.inputs.size()==8) ImGui::TextWrapped("Observations: [X,Z,dX,dZ,blocked -X,+X,-Z,+Z]. Q/action order: [-X,+X,-Z,+Z]. Raw greedy policy; blocked actions are rejected, never rerouted.");
                         if (tracking) ImGui::TextWrapped("Observations: [X, targetX-X, Z, targetZ-Z]. Q: [-X, hold X, +X, -Z, hold Z, +Z]. Raw Q values are not probabilities; bars saturate outside [-1,1].");
-                        drawValues(tracking ? "Observations (normalized)" : "Inputs",snap.inputs);
-                        drawValues(tracking ? "Q values (X then Z)" : "Predictions",snap.outputs);
+                        drawValues((tracking || obstacles) ? "Observations (normalized)" : "Inputs",snap.inputs);
+                        drawValues(obstacles && snap.inputs.size()==4 ? "Q values (exterior axis passes)" : obstacles ? "Q values (cardinal actions)" : tracking ? "Q values (X then Z)" : "Predictions",snap.outputs);
                         // Animated feed-forward graph. Read-only: no editor-side
                         // mutation of the model or live agent state.
                         static bool showNeuralGraph = true;

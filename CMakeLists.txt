@@ -1,6 +1,30 @@
 cmake_minimum_required(VERSION 3.25)
 project(NoJobEngine VERSION 1.0.0 LANGUAGES C CXX)
 
+# Keep Ninja header dependency parsing independent of the console code page.
+# Detect the installed compiler language; English resources are not always installed.
+if(MSVC AND CMAKE_GENERATOR MATCHES "Ninja")
+    set(_nojob_msvc_launcher cmd /d /c call "${CMAKE_CURRENT_SOURCE_DIR}/Tools/Build/MSVCCompile.cmd")
+    set(_nojob_include_probe "${CMAKE_BINARY_DIR}/CMakeFiles/NoJobShowIncludes")
+    file(MAKE_DIRECTORY "${_nojob_include_probe}")
+    file(WRITE "${_nojob_include_probe}/probe.h" "\n")
+    file(WRITE "${_nojob_include_probe}/probe.c" "#include \"probe.h\"\nint nojob_probe(void) { return 0; }\n")
+    execute_process(
+        COMMAND ${_nojob_msvc_launcher} "${CMAKE_CXX_COMPILER}"
+            /nologo /showIncludes /Z7 /c probe.c /Foprobe.obj
+        WORKING_DIRECTORY "${_nojob_include_probe}"
+        OUTPUT_VARIABLE _nojob_include_output
+        ERROR_VARIABLE _nojob_include_error
+        RESULT_VARIABLE _nojob_include_result
+        ENCODING NONE)
+    if(NOT _nojob_include_result EQUAL 0 OR NOT _nojob_include_output MATCHES "(^|\n)([^:\n]+:[^:\n]+: +)([A-Za-z]:|/)")
+        message(FATAL_ERROR "Cannot detect MSVC header dependency prefix: ${_nojob_include_output} ${_nojob_include_error}")
+    endif()
+    set(CMAKE_CL_SHOWINCLUDES_PREFIX "${CMAKE_MATCH_2}")
+    list(PREPEND CMAKE_C_COMPILER_LAUNCHER ${_nojob_msvc_launcher})
+    list(PREPEND CMAKE_CXX_COMPILER_LAUNCHER ${_nojob_msvc_launcher})
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -143,6 +167,12 @@ file(GLOB_RECURSE NOJOB_ENGINE_SOURCES CONFIGURE_DEPENDS
 # Test translation units define their own main() and must not be part of the engine library.
 list(FILTER NOJOB_ENGINE_SOURCES EXCLUDE REGEX "[/\\]Tests[/\\].*\\.cpp$")
 list(FILTER NOJOB_ENGINE_SOURCES EXCLUDE REGEX "[/\\]NeuralTests\\.cpp$")
+
+# Standalone RL tests and learning tools define main(); exclude them from the engine archive.
+list(REMOVE_ITEM NOJOB_ENGINE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/Engine/AI/Reinforcement/ReinforcementTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Engine/AI/Reinforcement/TrackingLearningProof.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Engine/AI/Reinforcement/TrackingEvaluationTests.cpp")
 
 # SceneSerializer must be compiled into NoJobEngine for both Editor and Runtime.
 set(NOJOB_SCENE_SERIALIZER "${CMAKE_CURRENT_SOURCE_DIR}/Engine/Scene/SceneSerializer.cpp")
@@ -316,4 +346,41 @@ if(NOJOB_BUILD_RL_TESTS)
     target_compile_features(NoJobRLTests PRIVATE cxx_std_20)
     enable_testing()
     add_test(NAME NoJobRLTests COMMAND NoJobRLTests)
+endif()
+
+# Headless bake/navigation regression; uses the unmodified testplane OBJ fixture.
+option(NOJOB_BUILD_NAV_TRACKING_TESTS "Build baked navigation tracking regression" OFF)
+if(NOJOB_BUILD_NAV_TRACKING_TESTS)
+    add_executable(NoJobNavTrackingTests Engine/AI/Navigation/Tests/NavTrackingTests.cpp)
+    target_link_libraries(NoJobNavTrackingTests PRIVATE NoJobEngine)
+    enable_testing()
+    add_test(NAME NoJobNavTrackingTests COMMAND NoJobNavTrackingTests)
+    set_tests_properties(NoJobNavTrackingTests PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
+option(NOJOB_BUILD_OBSTACLE_TESTS "Build learned obstacle avoidance tests and proof" OFF)
+if(NOJOB_BUILD_OBSTACLE_TESTS)
+    add_executable(NoJobObstacleTests Engine/AI/Reinforcement/Tests/ObstacleLearningTests.cpp Assets/Scripts/RLObstacleAgent.cpp)
+    target_link_libraries(NoJobObstacleTests PRIVATE NoJobEngine)
+    add_executable(NoJobObstacleLearningProof Engine/AI/Reinforcement/Tests/ObstacleLearningProof.cpp Engine/AI/Neural/NeuralNetwork.cpp)
+    target_include_directories(NoJobObstacleLearningProof PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_features(NoJobObstacleLearningProof PRIVATE cxx_std_20)
+    enable_testing()
+    add_test(NAME NoJobObstacleTests COMMAND NoJobObstacleTests "${CMAKE_CURRENT_BINARY_DIR}/obstacle_evaluation.csv")
+    set_tests_properties(NoJobObstacleTests PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
+# Standalone native trainer: no scene, renderer or editor runtime dependency.
+option(NOJOB_BUILD_TRAINER "Build the independent visible RL trainer" ON)
+if(NOJOB_BUILD_TRAINER)
+    add_executable(NoJobTrainer WIN32 Tools/Trainer/main.cpp Engine/AI/Neural/NeuralNetwork.cpp)
+    target_include_directories(NoJobTrainer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_features(NoJobTrainer PRIVATE cxx_std_20)
+    target_compile_definitions(NoJobTrainer PRIVATE GLFW_INCLUDE_NONE)
+    target_link_libraries(NoJobTrainer PRIVATE NoJobImGui NoJobGLAD)
+    if(WIN32)
+        target_link_libraries(NoJobTrainer PRIVATE shell32)
+    endif()
+    enable_testing()
+    add_test(NAME NoJobTrainerSelfTest COMMAND NoJobTrainer --self-test --output-root "${CMAKE_CURRENT_BINARY_DIR}/trainer-self-test")
 endif()

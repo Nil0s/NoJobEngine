@@ -18,8 +18,13 @@ namespace NoJob
 
     bool NavigationSystem::Bake(Scene& scene)
     {
+        return Bake(scene, NavMeshGeometryExtractor::Extract(scene));
+    }
+
+    bool NavigationSystem::Bake(Scene& scene, const NavMeshSourceGeometry& source)
+    {
         NavMeshSourceGeometry geometry = NavMeshVoxelizer::Rasterize(
-            scene, NavMeshGeometryExtractor::Extract(scene),
+            scene, source,
             0.35f, 0.75f, 1.8f, m_GenerationSettings.MaxSlopeAngle);
 
         if (geometry.Vertices.empty() ||

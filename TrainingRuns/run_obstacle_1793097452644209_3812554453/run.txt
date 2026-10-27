@@ -1,0 +1,8 @@
+Task: obstacle core 9x9
+Base episodes: 6000
+Refinement episodes: 3000
+Seed: 43
+Hidden units: 64
+Batch: 32
+Learning rate: 0.0005
+Gamma: 0.97

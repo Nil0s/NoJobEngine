@@ -153,11 +153,14 @@ public:
     void SavePolicy(const std::string& path) const { online_.Save(path); }
     /** @brief Load a policy while verifying observation and action dimensions. */
     void LoadPolicy(const std::string& path) {
-        auto loaded=Neural::NeuralNetwork::Load(path);
+        LoadPolicy(Neural::NeuralNetwork::Load(path));
+    }
+    /** @brief Copy validated policy weights and synchronize the target network. */
+    void LoadPolicy(const Neural::NeuralNetwork& loaded) {
         if (loaded.Layers().empty() || loaded.Layers().front().Inputs()!=observations_ ||
             loaded.Layers().back().Outputs()!=static_cast<size_t>(actions_))
             throw std::invalid_argument("Policy dimensions mismatch");
-        online_=std::move(loaded); target_=online_;
+        online_=loaded; target_=online_;
     }
     float Epsilon() const { return epsilon_; }
     float LastLoss() const { return lastLoss_; }

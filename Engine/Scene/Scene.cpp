@@ -500,6 +500,7 @@ namespace NoJob
 
     void Scene::OnRuntimeStop()
     {
+        const bool wasRunning = m_RuntimeRunning;
         m_RuntimeRunning = false;
 
         m_SpatialQuery = nullptr;
@@ -508,7 +509,8 @@ namespace NoJob
         m_NavAgentStates.clear();
         m_PerceptionStates.clear();
 
-        AudioEngine::StopAll();
+        // Destroying a never-started evaluation scene must not stop active game audio.
+        if (wasRunning) AudioEngine::StopAll();
 
         while (
             !m_ScriptInstances.empty())

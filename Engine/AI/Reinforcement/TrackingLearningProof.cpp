@@ -1,36 +1,12 @@
 /** @file TrackingLearningProof.cpp @brief Reproducible native DQN learning and moving-target regression. */
-#include "TrackingPolicy.h"
+#include "TrackingEvaluation.h"
 #include <iostream>
 #include <iomanip>
 
-/** @brief Evaluate held-out X/Z episodes with a target relocation after 40 ticks.
- * @details Both axes use the runtime helper. Random actions share the same arrival
- * hold and bounds. Each phase has an independent success flag and a 40-tick budget.
- */
+/** @brief Use the same evaluation implementation as the editor panel. */
 double Evaluate(const NoJob::Neural::NeuralNetwork& policy, bool random) {
-    std::mt19937 actions(90210);
-    int successes=0;
-    for(unsigned episode=0;episode<500;++episode) {
-        std::mt19937 layout(100000+episode);
-        std::uniform_real_distribution<float> coord(-.9f,.9f);
-        float x=coord(layout),z=coord(layout);
-        for(int phase=0;phase<2;++phase) {
-            const float gx=coord(layout),gz=coord(layout);
-            bool reached=false;
-            for(int tick=0;tick<40;++tick) {
-                auto dx=NoJob::RL::TrackAxis(policy,x,gx);
-                auto dz=NoJob::RL::TrackAxis(policy,z,gz);
-                if(random) {
-                    if(std::abs(gx-x)>=.08f) dx.next=std::clamp(x+(std::uniform_int_distribution<int>(0,2)(actions)-1)*.12f,-1.f,1.f);
-                    if(std::abs(gz-z)>=.08f) dz.next=std::clamp(z+(std::uniform_int_distribution<int>(0,2)(actions)-1)*.12f,-1.f,1.f);
-                }
-                x=dx.next; z=dz.next;
-                reached=reached || (std::abs(gx-x)<.08f && std::abs(gz-z)<.08f);
-            }
-            successes+=reached;
-        }
-    }
-    return successes/1000.;
+    const auto report=NoJob::RL::EvaluateTracking(policy);
+    return report.metrics[random?2:0].SuccessRate();
 }
 
 /** @brief Train from scratch, compare identical held-out layouts, and save only on pass.

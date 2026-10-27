@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.25)
+project(NoJobObstacleProof LANGUAGES CXX)
+get_filename_component(NOJOB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
+add_executable(NoJobObstacleLearningProof ObstacleLearningProof.cpp ../../Neural/NeuralNetwork.cpp)
+target_include_directories(NoJobObstacleLearningProof PRIVATE "${NOJOB_ROOT}")
+target_compile_features(NoJobObstacleLearningProof PRIVATE cxx_std_20)

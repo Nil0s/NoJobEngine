@@ -9,6 +9,7 @@
 #include <exception>
 namespace NoJob {
 void RLTrackingAgent::OnCreate() {
+    navigator_.Reset();
     hasSnapshot_=false; reached_=false; accumulator_=0.f; steps_=0; successes_=0; model_.reset();
     try {
         model_.emplace(Neural::NeuralNetwork::Load(NeuralAssetPath(PolicyName).string()));
@@ -29,7 +30,44 @@ void RLTrackingAgent::OnUpdate(float dt) {
         if(e==GetEntity() || !e.HasComponent<TagComponent>() || !e.HasComponent<TransformComponent>()) continue;
         if(e.GetComponent<TagComponent>().Tag==TargetTag) {target=e;break;}
     }
-    if(!target) {hasSnapshot_=false; SetAIDebugState("RL: target missing");return;}
+    if(!target) {
+        if(HasComponent<NavAgentComponent>()) GetComponent<NavAgentComponent>().HasDestination=false;
+        navigator_.Reset(); reached_=false; hasSnapshot_=false;
+        SetAIDebugState("RL: target missing"); return;
+    }
+    if(UseNavigation) {
+        const glm::vec3 goal(scene->GetWorldTransform(target)[3]);
+        const auto state=navigator_.Update(*scene,GetEntity(),goal,dt);
+        SetAIDebugState(NavTargetTracker::Label(state));
+        const bool arrived=state==NavTargetTracker::State::Arrived;
+        if(arrived && !reached_) ++successes_;
+        reached_=arrived;
+        accumulator_+=dt;
+        if(accumulator_<std::max(.01f,ActionInterval)) return;
+        accumulator_=0.f;
+        try {
+            const glm::vec3 origin(scene->GetWorldTransform(GetEntity())[3]);
+            const float scale=std::max(.01f,WorldScale);
+            const auto x=RL::TrackAxis(*model_,origin.x/scale,goal.x/scale);
+            const auto z=RL::TrackAxis(*model_,origin.z/scale,goal.z/scale);
+            snapshot_.model=PolicyName;
+            snapshot_.status=std::string(NavTargetTracker::Label(state))+"; movement: native NavAgent; Q/advised X="+
+                std::to_string(x.action)+" Z="+std::to_string(z.action)+"; route points="+
+                std::to_string(navigator_.Waypoints())+"; arrivals="+std::to_string(successes_)+
+                "; neural proposals are advisory, not applied movement";
+            snapshot_.inputs=x.observation;
+            snapshot_.inputs.insert(snapshot_.inputs.end(),z.observation.begin(),z.observation.end());
+            snapshot_.outputs=x.q;
+            snapshot_.outputs.insert(snapshot_.outputs.end(),z.q.begin(),z.q.end());
+            snapshot_.distance=std::hypot(goal.x-origin.x,goal.z-origin.z);
+            snapshot_.activations.clear(); hasSnapshot_=true;
+        } catch(const std::exception& e) {
+            hasSnapshot_=false; std::fprintf(stderr,"[RLTrackingAgent] %s\n",e.what());
+        }
+        return;
+    }
+    if(HasComponent<NavAgentComponent>()) GetComponent<NavAgentComponent>().HasDestination=false;
+    navigator_.Reset();
     accumulator_+=dt;
     if(accumulator_<std::max(.01f,ActionInterval)) return;
     accumulator_=0.f;
@@ -70,7 +108,10 @@ void RLTrackingAgent::OnUpdate(float dt) {
         hasSnapshot_=false; SetAIDebugState("RL: inference error");
     }
 }
-void RLTrackingAgent::OnDestroy() {model_.reset();hasSnapshot_=false;}
+void RLTrackingAgent::OnDestroy() {
+    if(HasComponent<NavAgentComponent>()) GetComponent<NavAgentComponent>().HasDestination=false;
+    navigator_.Reset(); model_.reset();hasSnapshot_=false;
+}
 bool RLTrackingAgent::GetNeuralDebugSnapshot(NeuralAgent::Snapshot& out) const {
     if(!hasSnapshot_) return false;
     out=snapshot_;return true;
@@ -80,5 +121,6 @@ NOJOB_REGISTER_SCRIPT(RLTrackingAgent,"AI / Reinforcement Learning",
     NOJOB_FIELD(RLTrackingAgent,TargetTag),
     NOJOB_FIELD(RLTrackingAgent,WorldScale),
     NOJOB_FIELD(RLTrackingAgent,ActionInterval),
-    NOJOB_FIELD(RLTrackingAgent,AutoReset))
+    NOJOB_FIELD(RLTrackingAgent,AutoReset),
+    NOJOB_FIELD(RLTrackingAgent,UseNavigation))
 }

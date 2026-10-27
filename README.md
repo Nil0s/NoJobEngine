@@ -31,11 +31,13 @@ The native Game AI foundation now connects perception and navigation with
 visual Behavior Trees, native C++ gameplay callbacks, per-agent Blackboards
 and live decision inspection. The AI Debugger exposes active tree nodes,
 execution events and Blackboard changes while the simulation runs.
-Native neural-network training and inference are now integrated into the C++ runtime and editor; reinforcement learning remains a future research goal.
+Native supervised learning, reinforcement learning and policy inference are now
+integrated into the C++ runtime and editor, with live training visualization
+and saved-policy evaluation.
 
-> **Current milestone: NoJobEngine V2.0.7 — Code Cleanup & Doxygen Documentation — Complete and Validated**
+> **Current milestone: NoJobEngine V2.1 — Reinforcement Learning — Complete and Validated**
 >
-> **Next milestone: V2.1 — Reinforcement Learning (planned)**
+> **Next milestone: V2.2 — Parallel Neural Training (planned)**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
@@ -63,7 +65,8 @@ engine.
 
 Rather than relying on an external Python training pipeline as the core
 workflow, the engine now provides native C++ training and inference integrated
-with the runtime and editor. Reinforcement learning is a planned next step.
+with the runtime and editor. V2.1 adds native reinforcement learning, visible
+training sessions and runtime inference from saved policies.
 
 This also opens the door to hybrid approaches where deterministic game
 AI and learned behavior can work together in the same agent.
@@ -217,6 +220,48 @@ The generated HTML is a build artifact and need not be committed.
 This maintenance release does not claim a complete architectural rewrite or
 an exhaustive audit of every engine source file.
 
+### Native reinforcement learning & visible training (V2.1)
+
+V2.1 adds **Double DQN training in native C++**, using observations, discrete
+actions and reward signals rather than supervised target examples. Replay
+memory, a target network and epsilon-greedy exploration support episodic
+training and environment resets.
+
+Two demonstrations connect training to gameplay: target tracking with a
+learned axis policy reused on X/Z, and learned cardinal obstacle avoidance
+in a fixed 9x9 arena. The target can be relocated during Play. The
+**AI Debugger** exposes observations, actions, Q values and neural activations.
+
+**Open Training Window** launches an independent trainer with a live 2D view
+of actual environment transitions, reward/loss graphs, pause/resume, single
+step and cancellation. Each run has its own seed, settings and output folder
+under `TrainingRuns/`, containing `run.txt`, `episodes.csv` and a final
+`policy.njn` when training completes. Several trainer windows can run
+independent experiments at the same time.
+
+To evaluate a finished run, choose its file under **Evaluation model** or
+**Browse...**, then press **Evaluate learning**. The benchmark is detected
+from the model dimensions, independently of **Training task**. Comparators
+include the saved policy, an untrained network and random actions; the
+obstacle benchmark also includes native NavMesh built from
+`testplane_100x100.obj`. **Save CSV report** exports the results. To use a
+trained model in gameplay, export it to `Assets/Neural`, assign its asset
+name to the corresponding agent policy field and restart Play.
+
+One evaluated obstacle run reached **94.6% success (473/500)**, compared with
+**20.8% (104/500)** for random actions and **0%** for the untrained network.
+This fixed-arena example used 500 scenarios, seed 500000 and a 64-action
+budget; its model fingerprint was `dc2fffeeb1ac21c4` (FNV-1a 64-bit).
+Different models and seeds can produce different results. Evaluation uses
+separate seeds, but finite start/goal pairs may overlap training.
+
+The obstacle benchmark covers the original arena. Open-floor movement
+outside it combines the obstacle policy with a separate learned tracking
+policy; it is not one policy trained over arbitrary scenes or unseen maps.
+The learned core does not use NavMesh as a training teacher or movement
+fallback. Multiple trainer windows are separate experiments, not coordinated
+workers training one shared model; that remains part of V2.2.
+
 ### 3D model & material import
 
 The asset pipeline imports 3D models through Assimp and can instantiate
@@ -327,6 +372,9 @@ as a single action.
 -   Blackboard Live, change tracking and Timeline filters
 -   Native neural-network editing, training and model inspection
 -   Animated neural-network graph in AI Debugger
+-   Reinforcement Learning panel with automatic saved-policy benchmark selection
+-   Independent visible trainer windows with pause, single step and cancellation
+-   Learning comparisons and CSV report export
 
 ### Asset pipeline
 
@@ -510,6 +558,19 @@ abstraction:
 - Conservative neural math and scene/serialization cleanup
 - Shared case-insensitive editor search utility
 - Validated editor, script, neural AI and Behavior Tree regression workflows
+
+### Native reinforcement learning (V2.1)
+
+- Native Double DQN with replay memory, target network and exploration
+- Observation/action/reward interfaces, episodes and environment resets
+- Learned X/Z target tracking and fixed-arena obstacle avoidance
+- Live observations, actions, Q values and neural diagnostics in AI Debugger
+- Independent trainer processes with real transition visualization and controls
+- Per-run settings, seeds, episode CSV history and final `.njn` policies
+- File-based model selection and automatic benchmark detection
+- Saved-policy comparisons against untrained and random baselines
+- Native NavMesh reference for the fixed-arena obstacle evaluation
+- CSV evaluation reports and trained-policy gameplay integration
 
 ### Physics
 
@@ -1012,12 +1073,24 @@ Completed and validated in the editor.
 - Regression tests passed for editor workflows, PongAgent, neural debugging
   and traditional Behavior Trees.
 
+### ✅ V2.1 — Reinforcement Learning
+
+Completed and validated through the training, evaluation and gameplay workflow,
+including standalone execution.
+
+- Native C++ reward-driven policy training and episodic environments.
+- Runtime tracking and learned fixed-arena obstacle avoidance.
+- Live AI Debugger diagnostics and independent visible training windows.
+- Saved-model selection, automatic benchmark detection and baseline comparisons.
+- CSV training histories and evaluation reports.
+- Editor startup and incremental header-dependency build fix for localized MSVC.
+
 ------------------------------------------------------------------------
 
 ## AI Roadmap
 
-> **Release status:** V2.0.7 is complete and validated. The milestones below
-> are plans and must not be interpreted as implemented features.
+> **Release status:** V2.1 is complete and validated. V2.2 and V2.3 remain
+> planned work; their features must not be interpreted as implemented.
 
 ### V2.0.7 — Code Cleanup & Doxygen Documentation (completed)
 
@@ -1026,12 +1099,13 @@ Completed and validated in the editor.
 - Regression validation in the editor, including native project scripts, neural gameplay and Behavior Trees.
 - No intentional changes to serialized asset formats or public engine APIs.
 
-### V2.1 — Reinforcement Learning (planned)
+### V2.1 — Reinforcement Learning (completed)
 
-- Observations, actions and reward signals for learning agents.
-- Episodes, environment reset and training loops.
-- Native C++ policy training without supervised target examples.
-- Runtime inference from trained policies and editor-side diagnostics.
+- Observations, discrete actions, reward signals, episodes and environment resets.
+- Native C++ Double DQN training without supervised target examples.
+- Runtime inference and live observation/action/Q diagnostics.
+- Visible independent training runs, saved-policy evaluation and CSV reports.
+- Validated training-to-gameplay workflow, including standalone execution.
 
 ### V2.2 — Parallel Neural Training (planned)
 
@@ -1039,7 +1113,8 @@ Completed and validated in the editor.
   the same behavior/policy.
 - Worker execution and a coordinated central trainer.
 - Headless simulation and performance measurements.
-- Exploration of separate-process workers after thread-based execution.
+- Coordinated worker collection for one shared policy; V2.1 already supports
+  separate-process trainers for independent experiments.
 
 ### V2.3 — AI Performance & Optimization (planned)
 
@@ -1094,6 +1169,7 @@ It covers problems across:
 -   native Behavior Trees, visual behavior authoring and live decision tracing;
 -   Blackboard inspection and change tracking;
 -   native neural-network training and inference;
+-   native reinforcement learning, visible training and saved-policy evaluation;
 -   `.njn` model assets, neural editor tooling and live network visualization;
 -   editor-compiled neural project scripts and gameplay integration.
 

@@ -20,6 +20,10 @@ namespace NoJob
     {
     public:
         bool Bake(Scene& scene);
+        /** @brief Bake supplied world-space geometry with the scene's static colliders.
+         * @details Uses the same rasterizer as the editor bake; supports headless regression tests.
+         */
+        bool Bake(Scene& scene, const NavMeshSourceGeometry& source);
 
         void Clear();
 
