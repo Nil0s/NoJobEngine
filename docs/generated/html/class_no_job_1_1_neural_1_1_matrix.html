@@ -26,7 +26,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">NoJobEngine<span id="projectnumber">&#160;2.0.7</span>
+   <div id="projectname">NoJobEngine<span id="projectnumber">&#160;2.1.0</span>
    </div>
   </td>
  </tr>
@@ -113,27 +113,33 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('class_no_job_1
 </div><!--header-->
 <div class="contents">
 
+<p>Row-major matrix storing single-precision neural network values.  
+ <a href="#details">More...</a></p>
+
 <p><code>#include &lt;<a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>&gt;</code></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-pub-methods" class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a6cce63df568460d2fec11332d0ae418e" id="r_a6cce63df568460d2fec11332d0ae418e"><td class="memItemLeft">&#160;</td><td class="memItemRight"><a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> ()=default</td></tr>
-<tr class="memitem:a7e5cde259f85c12d83ae5e2bb29f475d" id="r_a7e5cde259f85c12d83ae5e2bb29f475d"><td class="memItemLeft">&#160;</td><td class="memItemRight"><a class="el" href="#a7e5cde259f85c12d83ae5e2bb29f475d">Matrix</a> (size_t rows, size_t cols, float initial=0)</td></tr>
+<tr class="memitem:a628af81fb52ef59335844a85e5e2ab0a" id="r_a628af81fb52ef59335844a85e5e2ab0a"><td class="memItemLeft">&#160;</td><td class="memItemRight"><a class="el" href="#a628af81fb52ef59335844a85e5e2ab0a">Matrix</a> (size_t rows, size_t cols, float initial=0.0f)</td></tr>
 <tr class="memitem:a06022c7c6d09d4e535a1f46f9a3fc99a" id="r_a06022c7c6d09d4e535a1f46f9a3fc99a"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#a06022c7c6d09d4e535a1f46f9a3fc99a">Rows</a> () const</td></tr>
 <tr class="memitem:a993f351e3dfb2b183d1e55bb4ab80ee2" id="r_a993f351e3dfb2b183d1e55bb4ab80ee2"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#a993f351e3dfb2b183d1e55bb4ab80ee2">Cols</a> () const</td></tr>
-<tr class="memitem:a6abca1c44f58ad31a74788ba4ef9be9f" id="r_a6abca1c44f58ad31a74788ba4ef9be9f"><td class="memItemLeft">float &amp;&#160;</td><td class="memItemRight"><a class="el" href="#a6abca1c44f58ad31a74788ba4ef9be9f">operator()</a> (size_t r, size_t c)</td></tr>
-<tr class="memitem:a16f300775a45704dc28fc45d4fc7e067" id="r_a16f300775a45704dc28fc45d4fc7e067"><td class="memItemLeft">float&#160;</td><td class="memItemRight"><a class="el" href="#a16f300775a45704dc28fc45d4fc7e067">operator()</a> (size_t r, size_t c) const</td></tr>
+<tr class="memitem:a665ae2fec4ffee009f065d371c61303d" id="r_a665ae2fec4ffee009f065d371c61303d"><td class="memItemLeft">float &amp;&#160;</td><td class="memItemRight"><a class="el" href="#a665ae2fec4ffee009f065d371c61303d">operator()</a> (size_t row, size_t col)</td></tr>
+<tr class="memitem:a33764757086f1d06e8d87067d98b0a01" id="r_a33764757086f1d06e8d87067d98b0a01"><td class="memItemLeft">float&#160;</td><td class="memItemRight"><a class="el" href="#a33764757086f1d06e8d87067d98b0a01">operator()</a> (size_t row, size_t col) const</td></tr>
 <tr class="memitem:a1e7005aa7bd55f806b3384ccac1b50fa" id="r_a1e7005aa7bd55f806b3384ccac1b50fa"><td class="memItemLeft">const std::vector&lt; float &gt; &amp;&#160;</td><td class="memItemRight"><a class="el" href="#a1e7005aa7bd55f806b3384ccac1b50fa">Data</a> () const</td></tr>
 <tr class="memitem:acc8e344121a6454a6d1f2760cd21271f" id="r_acc8e344121a6454a6d1f2760cd21271f"><td class="memItemLeft">std::vector&lt; float &gt; &amp;&#160;</td><td class="memItemRight"><a class="el" href="#acc8e344121a6454a6d1f2760cd21271f">Data</a> ()</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-pub-static-methods" class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
 <tr class="memitem:aa9081bac3d7d7dc08e4e9924e036212c" id="r_aa9081bac3d7d7dc08e4e9924e036212c"><td class="memItemLeft">static <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a>&#160;</td><td class="memItemRight"><a class="el" href="#aa9081bac3d7d7dc08e4e9924e036212c">Multiply</a> (const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;a, const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;b)</td></tr>
-<tr class="memitem:aea86a83fa4ef857e85ca9eedb9c471a2" id="r_aea86a83fa4ef857e85ca9eedb9c471a2"><td class="memItemLeft">static <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a>&#160;</td><td class="memItemRight"><a class="el" href="#aea86a83fa4ef857e85ca9eedb9c471a2">Transpose</a> (const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;a)</td></tr>
+<tr class="memdesc:aa9081bac3d7d7dc08e4e9924e036212c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Multiplies two compatible matrices.  <br /></td></tr>
+<tr class="memitem:ab7f6caeffa7e53367cc0b3b8da1f1eef" id="r_ab7f6caeffa7e53367cc0b3b8da1f1eef"><td class="memItemLeft">static <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a>&#160;</td><td class="memItemRight"><a class="el" href="#ab7f6caeffa7e53367cc0b3b8da1f1eef">Transpose</a> (const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;input)</td></tr>
+<tr class="memdesc:ab7f6caeffa7e53367cc0b3b8da1f1eef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns a matrix with its rows and columns exchanged.  <br /></td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
-<div class="textblock">
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00013">13</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<div class="textblock"><p>Row-major matrix storing single-precision neural network values. </p>
+
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00015">15</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 </div><a name="doc-constructors" id="doc-constructors"></a><h2 id="header-doc-constructors" class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a6cce63df568460d2fec11332d0ae418e" name="a6cce63df568460d2fec11332d0ae418e"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6cce63df568460d2fec11332d0ae418e">&#9670;&#160;</a></span>Matrix() <span class="overload">[1/2]</span></h2>
@@ -158,12 +164,12 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="_neural_matrix_8h_source.html#l00020">Multiply()</a>, and <a class="el" href="_neural_matrix_8h_source.html#l00021">Transpose()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="_neural_matrix_8h_source.html#l00036">Multiply()</a>, and <a class="el" href="_neural_matrix_8h_source.html#l00052">Transpose()</a>.</p>
 
 </div>
 </div>
-<a id="a7e5cde259f85c12d83ae5e2bb29f475d" name="a7e5cde259f85c12d83ae5e2bb29f475d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7e5cde259f85c12d83ae5e2bb29f475d">&#9670;&#160;</a></span>Matrix() <span class="overload">[2/2]</span></h2>
+<a id="a628af81fb52ef59335844a85e5e2ab0a" name="a628af81fb52ef59335844a85e5e2ab0a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a628af81fb52ef59335844a85e5e2ab0a">&#9670;&#160;</a></span>Matrix() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -184,7 +190,7 @@ Static Public Member Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">float</td>          <td class="paramname"><span class="paramname"><em>initial</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0</span>&#160;)</td>
+          <td class="paramtype">float</td>          <td class="paramname"><span class="paramname"><em>initial</em></span><span class="paramdefsep"> = </span><span class="paramdefval">0.0f</span>&#160;)</td>
         </tr>
       </table>
   </td>
@@ -193,8 +199,14 @@ Static Public Member Functions</h2></td></tr>
   </tr>
 </table>
 </div><div class="memdoc">
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">std::invalid_argument</td><td>If either dimension is zero. </td></tr>
+  </table>
+  </dd>
+</dl>
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00016">16</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00020">20</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
@@ -222,9 +234,7 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00017">17</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
-
-<p class="reference">References <a class="el" href="_neural_matrix_8h_source.html#l00017">Rows()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00027">27</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
@@ -251,7 +261,7 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00019">19</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00033">33</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
@@ -278,7 +288,7 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00019">19</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00032">32</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
@@ -309,7 +319,9 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00020">20</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p>Multiplies two compatible matrices. </p>
+
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00036">36</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 <p class="reference">References <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix()</a>.</p>
 
@@ -317,8 +329,8 @@ Static Public Member Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a6abca1c44f58ad31a74788ba4ef9be9f" name="a6abca1c44f58ad31a74788ba4ef9be9f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6abca1c44f58ad31a74788ba4ef9be9f">&#9670;&#160;</a></span>operator()() <span class="overload">[1/2]</span></h2>
+<a id="a665ae2fec4ffee009f065d371c61303d" name="a665ae2fec4ffee009f065d371c61303d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a665ae2fec4ffee009f065d371c61303d">&#9670;&#160;</a></span>operator()() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -329,12 +341,12 @@ Static Public Member Functions</h2></td></tr>
         <tr>
           <td class="memname">float &amp; NoJob::Neural::Matrix::operator() </td>
           <td>(</td>
-          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>r</em></span>, </td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>row</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>c</em></span>&#160;)</td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>col</em></span>&#160;)</td>
         </tr>
       </table>
   </td>
@@ -344,12 +356,12 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00018">18</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00029">29</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
-<a id="a16f300775a45704dc28fc45d4fc7e067" name="a16f300775a45704dc28fc45d4fc7e067"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a16f300775a45704dc28fc45d4fc7e067">&#9670;&#160;</a></span>operator()() <span class="overload">[2/2]</span></h2>
+<a id="a33764757086f1d06e8d87067d98b0a01" name="a33764757086f1d06e8d87067d98b0a01"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a33764757086f1d06e8d87067d98b0a01">&#9670;&#160;</a></span>operator()() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -360,12 +372,12 @@ Static Public Member Functions</h2></td></tr>
         <tr>
           <td class="memname">float NoJob::Neural::Matrix::operator() </td>
           <td>(</td>
-          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>r</em></span>, </td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>row</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>c</em></span>&#160;) const</td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>col</em></span>&#160;) const</td>
         </tr>
       </table>
   </td>
@@ -375,7 +387,7 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00018">18</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00030">30</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
@@ -402,14 +414,12 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00017">17</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="_neural_matrix_8h_source.html#l00017">Cols()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00026">26</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 </div>
 </div>
-<a id="aea86a83fa4ef857e85ca9eedb9c471a2" name="aea86a83fa4ef857e85ca9eedb9c471a2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aea86a83fa4ef857e85ca9eedb9c471a2">&#9670;&#160;</a></span>Transpose()</h2>
+<a id="ab7f6caeffa7e53367cc0b3b8da1f1eef" name="ab7f6caeffa7e53367cc0b3b8da1f1eef"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab7f6caeffa7e53367cc0b3b8da1f1eef">&#9670;&#160;</a></span>Transpose()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -420,7 +430,7 @@ Static Public Member Functions</h2></td></tr>
         <tr>
           <td class="memname"><a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> NoJob::Neural::Matrix::Transpose </td>
           <td>(</td>
-          <td class="paramtype">const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;</td>          <td class="paramname"><span class="paramname"><em>a</em></span></td><td>)</td>
+          <td class="paramtype">const <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix</a> &amp;</td>          <td class="paramname"><span class="paramname"><em>input</em></span></td><td>)</td>
           <td></td>
         </tr>
       </table>
@@ -431,7 +441,9 @@ Static Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00021">21</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
+<p>Returns a matrix with its rows and columns exchanged. </p>
+
+<p class="definition">Definition at line <a class="el" href="_neural_matrix_8h_source.html#l00052">52</a> of file <a class="el" href="_neural_matrix_8h_source.html">NeuralMatrix.h</a>.</p>
 
 <p class="reference">References <a class="el" href="#a6cce63df568460d2fec11332d0ae418e">Matrix()</a>.</p>
 

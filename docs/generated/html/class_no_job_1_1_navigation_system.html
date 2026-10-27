@@ -26,7 +26,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">NoJobEngine<span id="projectnumber">&#160;2.0.7</span>
+   <div id="projectname">NoJobEngine<span id="projectnumber">&#160;2.1.0</span>
    </div>
   </td>
  </tr>
@@ -118,6 +118,8 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('class_no_job_1
 <tr class="heading"><td colspan="2"><h2 id="header-pub-methods" class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a0ce6e3f13c0a0f0c379d6a16923d8c3f" id="r_a0ce6e3f13c0a0f0c379d6a16923d8c3f"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a0ce6e3f13c0a0f0c379d6a16923d8c3f">Bake</a> (<a class="el" href="class_no_job_1_1_scene.html">Scene</a> &amp;scene)</td></tr>
+<tr class="memitem:aae9ff2b335235e95969f2be2585ff3cd" id="r_aae9ff2b335235e95969f2be2585ff3cd"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#aae9ff2b335235e95969f2be2585ff3cd">Bake</a> (<a class="el" href="class_no_job_1_1_scene.html">Scene</a> &amp;scene, const <a class="el" href="struct_no_job_1_1_nav_mesh_source_geometry.html">NavMeshSourceGeometry</a> &amp;source)</td></tr>
+<tr class="memdesc:aae9ff2b335235e95969f2be2585ff3cd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Bake supplied world-space geometry with the scene's static colliders.  <br /></td></tr>
 <tr class="memitem:aa396733b01d37d945ad182539cfadfc1" id="r_aa396733b01d37d945ad182539cfadfc1"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aa396733b01d37d945ad182539cfadfc1">Clear</a> ()</td></tr>
 <tr class="memitem:a170557989def3fb5af07edb93c3c520e" id="r_a170557989def3fb5af07edb93c3c520e"><td class="memItemLeft"><a class="el" href="namespace_no_job.html#a7e8864e4091c523df8b7e9d1a06a4921">NavPolygonID</a>&#160;</td><td class="memItemRight"><a class="el" href="#a170557989def3fb5af07edb93c3c520e">FindPolygon</a> (const glm::vec3 &amp;position) const</td></tr>
 <tr class="memitem:a20bf420ff76c214f18a20f41341e5585" id="r_a20bf420ff76c214f18a20f41341e5585"><td class="memItemLeft"><a class="el" href="struct_no_job_1_1_nav_point_path.html">NavPointPath</a>&#160;</td><td class="memItemRight"><a class="el" href="#a20bf420ff76c214f18a20f41341e5585">CalculatePath</a> (const glm::vec3 &amp;startPosition, const glm::vec3 &amp;destination) const</td></tr>
@@ -132,7 +134,7 @@ Public Member Functions</h2></td></tr>
 <p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00019">19</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 </div><a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Member Function Documentation</h2>
 <a id="a0ce6e3f13c0a0f0c379d6a16923d8c3f" name="a0ce6e3f13c0a0f0c379d6a16923d8c3f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0ce6e3f13c0a0f0c379d6a16923d8c3f">&#9670;&#160;</a></span>Bake()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a0ce6e3f13c0a0f0c379d6a16923d8c3f">&#9670;&#160;</a></span>Bake() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -148,9 +150,37 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00019">19</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="_navigation_system_8cpp_source.html#l00051">Clear()</a>, <a class="el" href="_nav_mesh_geometry_extractor_8cpp_source.html#l00019">NoJob::NavMeshGeometryExtractor::Extract()</a>, <a class="el" href="_nav_mesh_generator_8cpp_source.html#l00013">NoJob::NavMeshGenerator::Generate()</a>, <a class="el" href="_nav_mesh_8h_source.html#l00069">NoJob::NavMesh::GetPolygonCount()</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00034">NoJob::NavMeshSourceGeometry::Indices</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00020">NoJob::NavMeshGenerationSettings::MergePolygons</a>, <a class="el" href="_nav_mesh_voxelizer_8cpp_source.html#l00024">NoJob::NavMeshVoxelizer::Rasterize()</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00024">NoJob::NavMeshGenerationSettings::VertexWeldTolerance</a>, and <a class="el" href="_nav_mesh_generator_8h_source.html#l00033">NoJob::NavMeshSourceGeometry::Vertices</a>.</p>
+<p class="reference">References <a class="el" href="_navigation_system_8cpp_source.html#l00019">Bake()</a>, and <a class="el" href="_nav_mesh_geometry_extractor_8cpp_source.html#l00019">NoJob::NavMeshGeometryExtractor::Extract()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00042">main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="_navigation_system_8cpp_source.html#l00019">Bake()</a>, and <a class="el" href="main_8cpp_source.html#l00042">main()</a>.</p>
+
+</div>
+</div>
+<a id="aae9ff2b335235e95969f2be2585ff3cd" name="aae9ff2b335235e95969f2be2585ff3cd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aae9ff2b335235e95969f2be2585ff3cd">&#9670;&#160;</a></span>Bake() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool NoJob::NavigationSystem::Bake </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="class_no_job_1_1_scene.html">Scene</a> &amp;</td>          <td class="paramname"><span class="paramname"><em>scene</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="struct_no_job_1_1_nav_mesh_source_geometry.html">NavMeshSourceGeometry</a> &amp;</td>          <td class="paramname"><span class="paramname"><em>source</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Bake supplied world-space geometry with the scene's static colliders. </p>
+<p>Uses the same rasterizer as the editor bake; supports headless regression tests. </p>
+
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00024">24</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="_navigation_system_8cpp_source.html#l00056">Clear()</a>, <a class="el" href="_nav_mesh_generator_8cpp_source.html#l00013">NoJob::NavMeshGenerator::Generate()</a>, <a class="el" href="_nav_mesh_8h_source.html#l00069">NoJob::NavMesh::GetPolygonCount()</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00034">NoJob::NavMeshSourceGeometry::Indices</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00020">NoJob::NavMeshGenerationSettings::MergePolygons</a>, <a class="el" href="_nav_mesh_voxelizer_8cpp_source.html#l00024">NoJob::NavMeshVoxelizer::Rasterize()</a>, <a class="el" href="_nav_mesh_generator_8h_source.html#l00024">NoJob::NavMeshGenerationSettings::VertexWeldTolerance</a>, and <a class="el" href="_nav_mesh_generator_8h_source.html#l00033">NoJob::NavMeshSourceGeometry::Vertices</a>.</p>
 
 </div>
 </div>
@@ -173,9 +203,9 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00091">91</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00096">96</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="_nav_mesh_funnel_8cpp_source.html#l00015">NoJob::NavMeshFunnel::BuildPath()</a>, <a class="el" href="_nav_mesh_pathfinder_8cpp_source.html#l00035">NoJob::NavMeshPathfinder::FindPath()</a>, <a class="el" href="_navigation_system_8cpp_source.html#l00058">FindPolygon()</a>, <a class="el" href="_nav_mesh_8h_source.html#l00023">NoJob::InvalidNavPolygonID</a>, and <a class="el" href="_nav_mesh_pathfinder_8h_source.html#l00020">NoJob::NavPath::IsValid()</a>.</p>
+<p class="reference">References <a class="el" href="_nav_mesh_funnel_8cpp_source.html#l00015">NoJob::NavMeshFunnel::BuildPath()</a>, <a class="el" href="_nav_mesh_pathfinder_8cpp_source.html#l00035">NoJob::NavMeshPathfinder::FindPath()</a>, <a class="el" href="_navigation_system_8cpp_source.html#l00063">FindPolygon()</a>, <a class="el" href="_nav_mesh_8h_source.html#l00023">NoJob::InvalidNavPolygonID</a>, and <a class="el" href="_nav_mesh_pathfinder_8h_source.html#l00020">NoJob::NavPath::IsValid()</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="_nav_agent_8cpp_source.html#l00037">NoJob::NavAgent::RecalculatePath()</a>, and <a class="el" href="_nav_agent_8cpp_source.html#l00010">NoJob::NavAgent::SetDestination()</a>.</p>
 
@@ -196,9 +226,9 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00051">51</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00056">56</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="_navigation_system_8cpp_source.html#l00019">Bake()</a>, and <a class="el" href="main_8cpp_source.html#l00042">main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="_navigation_system_8cpp_source.html#l00024">Bake()</a>, and <a class="el" href="main_8cpp_source.html#l00042">main()</a>.</p>
 
 </div>
 </div>
@@ -217,11 +247,11 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00058">58</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8cpp_source.html#l00063">63</a> of file <a class="el" href="_navigation_system_8cpp_source.html">NavigationSystem.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="_nav_mesh_8h_source.html#l00023">NoJob::InvalidNavPolygonID</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="_navigation_system_8cpp_source.html#l00091">CalculatePath()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="_navigation_system_8cpp_source.html#l00096">CalculatePath()</a>.</p>
 
 </div>
 </div>
@@ -248,7 +278,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00043">43</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00047">47</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 
 </div>
 </div>
@@ -275,7 +305,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00049">49</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00053">53</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 
 </div>
 </div>
@@ -302,7 +332,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00038">38</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00042">42</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 
 </div>
 </div>
@@ -329,7 +359,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00053">53</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00057">57</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 
 </div>
 </div>
@@ -356,7 +386,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00033">33</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="_navigation_system_8h_source.html#l00037">37</a> of file <a class="el" href="_navigation_system_8h_source.html">NavigationSystem.h</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00042">main()</a>.</p>
 

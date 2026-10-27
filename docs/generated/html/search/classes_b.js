@@ -17,9 +17,10 @@ var searchData=
   ['navpath_14',['NavPath',['../struct_no_job_1_1_nav_path.html',1,'NoJob']]],
   ['navpointpath_15',['NavPointPath',['../struct_no_job_1_1_nav_point_path.html',1,'NoJob']]],
   ['navpolygon_16',['NavPolygon',['../struct_no_job_1_1_nav_polygon.html',1,'NoJob']]],
-  ['navvertex_17',['NavVertex',['../struct_no_job_1_1_nav_vertex.html',1,'NoJob']]],
-  ['neuraleditorpanel_18',['NeuralEditorPanel',['../class_no_job_1_1_neural_editor_panel.html',1,'NoJob']]],
-  ['neuralnetwork_19',['NeuralNetwork',['../class_no_job_1_1_neural_1_1_neural_network.html',1,'NoJob::Neural']]],
-  ['neuraltrainingagent_20',['NeuralTrainingAgent',['../class_no_job_1_1_neural_training_agent.html',1,'NoJob']]],
-  ['node_21',['Node',['../struct_no_job_1_1_b_t_debug_snapshot_1_1_node.html',1,'NoJob::BTDebugSnapshot::Node'],['../struct_no_job_1_1_scene_1_1_b_t_debug_info_1_1_node.html',1,'NoJob::Scene::BTDebugInfo::Node']]]
+  ['navtargettracker_17',['NavTargetTracker',['../class_no_job_1_1_nav_target_tracker.html',1,'NoJob']]],
+  ['navvertex_18',['NavVertex',['../struct_no_job_1_1_nav_vertex.html',1,'NoJob']]],
+  ['neuraleditorpanel_19',['NeuralEditorPanel',['../class_no_job_1_1_neural_editor_panel.html',1,'NoJob']]],
+  ['neuralnetwork_20',['NeuralNetwork',['../class_no_job_1_1_neural_1_1_neural_network.html',1,'NoJob::Neural']]],
+  ['neuraltrainingagent_21',['NeuralTrainingAgent',['../class_no_job_1_1_neural_training_agent.html',1,'NoJob']]],
+  ['node_22',['Node',['../struct_no_job_1_1_b_t_debug_snapshot_1_1_node.html',1,'NoJob::BTDebugSnapshot::Node'],['../struct_no_job_1_1_scene_1_1_b_t_debug_info_1_1_node.html',1,'NoJob::Scene::BTDebugInfo::Node']]]
 ];

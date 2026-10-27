@@ -17,5 +17,6 @@ var dir_8d62b473cb59947c5775a877c708a32e =
     [ "NavMeshPathfinder.cpp", "_nav_mesh_pathfinder_8cpp.html", null ],
     [ "NavMeshPathfinder.h", "_nav_mesh_pathfinder_8h.html", "_nav_mesh_pathfinder_8h" ],
     [ "NavMeshVoxelizer.cpp", "_nav_mesh_voxelizer_8cpp.html", null ],
-    [ "NavMeshVoxelizer.h", "_nav_mesh_voxelizer_8h.html", "_nav_mesh_voxelizer_8h" ]
+    [ "NavMeshVoxelizer.h", "_nav_mesh_voxelizer_8h.html", "_nav_mesh_voxelizer_8h" ],
+    [ "NavTargetTracking.h", "_nav_target_tracking_8h.html", "_nav_target_tracking_8h" ]
 ];

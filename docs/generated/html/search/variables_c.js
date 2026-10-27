@@ -13,6 +13,7 @@ var searchData=
   ['mergeplanaritytolerance_10',['MergePlanarityTolerance',['../struct_no_job_1_1_nav_mesh_generation_settings.html#ac9d58862969eb088a93117bd32e44d53',1,'NoJob::NavMeshGenerationSettings']]],
   ['mergepolygons_11',['MergePolygons',['../struct_no_job_1_1_nav_mesh_generation_settings.html#ad7dddc5e517037a8e9ce859e3ed08337',1,'NoJob::NavMeshGenerationSettings']]],
   ['meshasset_12',['MeshAsset',['../struct_no_job_1_1_mesh_component.html#af7cec3d327ce5f5ec1200d1de2ecddd6',1,'NoJob::MeshComponent']]],
-  ['mindistance_13',['MinDistance',['../struct_no_job_1_1_audio_source_component.html#a0055906d9dc7c5a7a814be4102577745',1,'NoJob::AudioSourceComponent']]],
-  ['model_14',['model',['../struct_no_job_1_1_neural_agent_1_1_snapshot.html#ab95bab2ddf50a971f05ce9ee465168fe',1,'NoJob::NeuralAgent::Snapshot']]]
+  ['metrics_13',['metrics',['../struct_no_job_1_1_r_l_1_1_obstacle_report.html#a65baa845eda80ccaf317cfd4363e8c6f',1,'NoJob::RL::ObstacleReport::metrics'],['../struct_no_job_1_1_r_l_1_1_tracking_report.html#a569d1531e49f511edac226de2ef5182f',1,'NoJob::RL::TrackingReport::metrics']]],
+  ['mindistance_14',['MinDistance',['../struct_no_job_1_1_audio_source_component.html#a0055906d9dc7c5a7a814be4102577745',1,'NoJob::AudioSourceComponent']]],
+  ['model_15',['model',['../struct_no_job_1_1_neural_agent_1_1_snapshot.html#ab95bab2ddf50a971f05ce9ee465168fe',1,'NoJob::NeuralAgent::Snapshot::model'],['../struct_no_job_1_1_r_l_1_1_visible_training_snapshot.html#a8e80c2633b1cc6252b994d5f8fa8709e',1,'NoJob::RL::VisibleTrainingSnapshot::model']]]
 ];

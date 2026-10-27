@@ -19,13 +19,14 @@ var searchData=
   ['navmeshpathfinder_2eh_16',['NavMeshPathfinder.h',['../_nav_mesh_pathfinder_8h.html',1,'']]],
   ['navmeshvoxelizer_2ecpp_17',['NavMeshVoxelizer.cpp',['../_nav_mesh_voxelizer_8cpp.html',1,'']]],
   ['navmeshvoxelizer_2eh_18',['NavMeshVoxelizer.h',['../_nav_mesh_voxelizer_8h.html',1,'']]],
-  ['neuralactivation_2eh_19',['NeuralActivation.h',['../_neural_activation_8h.html',1,'']]],
-  ['neuralagenttraining_2eh_20',['NeuralAgentTraining.h',['../_neural_agent_training_8h.html',1,'']]],
-  ['neuralassetpaths_2eh_21',['NeuralAssetPaths.h',['../_neural_asset_paths_8h.html',1,'']]],
-  ['neuraleditorpanel_2ecpp_22',['NeuralEditorPanel.cpp',['../_neural_editor_panel_8cpp.html',1,'']]],
-  ['neuraleditorpanel_2eh_23',['NeuralEditorPanel.h',['../_neural_editor_panel_8h.html',1,'']]],
-  ['neuralmatrix_2eh_24',['NeuralMatrix.h',['../_neural_matrix_8h.html',1,'']]],
-  ['neuralnetwork_2ecpp_25',['NeuralNetwork.cpp',['../_neural_network_8cpp.html',1,'']]],
-  ['neuralnetwork_2eh_26',['NeuralNetwork.h',['../_neural_network_8h.html',1,'']]],
-  ['neuraltests_2ecpp_27',['NeuralTests.cpp',['../_neural_tests_8cpp.html',1,'']]]
+  ['navtargettracking_2eh_19',['NavTargetTracking.h',['../_nav_target_tracking_8h.html',1,'']]],
+  ['neuralactivation_2eh_20',['NeuralActivation.h',['../_neural_activation_8h.html',1,'']]],
+  ['neuralagenttraining_2eh_21',['NeuralAgentTraining.h',['../_neural_agent_training_8h.html',1,'']]],
+  ['neuralassetpaths_2eh_22',['NeuralAssetPaths.h',['../_neural_asset_paths_8h.html',1,'']]],
+  ['neuraleditorpanel_2ecpp_23',['NeuralEditorPanel.cpp',['../_neural_editor_panel_8cpp.html',1,'']]],
+  ['neuraleditorpanel_2eh_24',['NeuralEditorPanel.h',['../_neural_editor_panel_8h.html',1,'']]],
+  ['neuralmatrix_2eh_25',['NeuralMatrix.h',['../_neural_matrix_8h.html',1,'']]],
+  ['neuralnetwork_2ecpp_26',['NeuralNetwork.cpp',['../_neural_network_8cpp.html',1,'']]],
+  ['neuralnetwork_2eh_27',['NeuralNetwork.h',['../_neural_network_8h.html',1,'']]],
+  ['neuraltests_2ecpp_28',['NeuralTests.cpp',['../_neural_tests_8cpp.html',1,'']]]
 ];

@@ -13,5 +13,7 @@ var searchData=
   ['hasskinning_10',['HasSkinning',['../class_no_job_1_1_mesh.html#ac4b58a87cb0312b06e99570f22460d65',1,'NoJob::Mesh']]],
   ['hdr_11',['HDR',['../struct_no_job_1_1_framebuffer_specification.html#ae9a3a12b8d907b86508074e6e798e86f',1,'NoJob::FramebufferSpecification']]],
   ['height_12',['Height',['../struct_no_job_1_1_window_props.html#a66fe8dbc42049c704798a07c81d529d7',1,'NoJob::WindowProps::Height'],['../struct_no_job_1_1_framebuffer_specification.html#a78e776ebef548573ad045fdddeec1850',1,'NoJob::FramebufferSpecification::Height'],['../struct_no_job_1_1_capsule_collider_component.html#ae5039f854a88f6b0a5bcf6a379a7efc9',1,'NoJob::CapsuleColliderComponent::Height']]],
-  ['history_13',['History',['../struct_no_job_1_1_scene_1_1_a_i_debug_state_info.html#a64be7e92217578e12f8687d8be494044',1,'NoJob::Scene::AIDebugStateInfo']]]
+  ['hidden_13',['hidden',['../struct_no_job_1_1_r_l_1_1_visible_training_config.html#a09c366a5a88c6dd771e2f3921b8083b0',1,'NoJob::RL::VisibleTrainingConfig']]],
+  ['hiddenunits_14',['hiddenUnits',['../struct_no_job_1_1_r_l_1_1_options.html#a9be21abf938db241fe07ed468bf91e0e',1,'NoJob::RL::Options']]],
+  ['history_15',['History',['../struct_no_job_1_1_scene_1_1_a_i_debug_state_info.html#a64be7e92217578e12f8687d8be494044',1,'NoJob::Scene::AIDebugStateInfo']]]
 ];

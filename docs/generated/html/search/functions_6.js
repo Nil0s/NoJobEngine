@@ -89,5 +89,6 @@ var searchData=
   ['getviewportheight_86',['GetViewportHeight',['../class_no_job_1_1_editor_layer.html#adf69ed217580c9fe6458bd9be4bd2484',1,'NoJob::EditorLayer']]],
   ['getviewportwidth_87',['GetViewportWidth',['../class_no_job_1_1_editor_layer.html#ad756e1d210e53acd58549ab9d5e34c69',1,'NoJob::EditorLayer']]],
   ['getviewprojection_88',['GetViewProjection',['../class_no_job_1_1_editor_camera.html#afe9467586f479a3f78651d743a823a14',1,'NoJob::EditorCamera']]],
-  ['getworldtransform_89',['GetWorldTransform',['../class_no_job_1_1_scene.html#a453cedf73b6ebee14a0188b09197b2d1',1,'NoJob::Scene']]]
+  ['getworldtransform_89',['GetWorldTransform',['../class_no_job_1_1_scene.html#a453cedf73b6ebee14a0188b09197b2d1',1,'NoJob::Scene']]],
+  ['goal_90',['Goal',['../class_no_job_1_1_r_l_1_1_obstacle_environment.html#a4527a74ef6940b21119e2bd0d92dfd46',1,'NoJob::RL::ObstacleEnvironment']]]
 ];

@@ -10,10 +10,11 @@ var searchData=
   ['detectionradius_7',['DetectionRadius',['../struct_no_job_1_1_perception_settings.html#ab51efdf3f0691e2234d870414201bdd7',1,'NoJob::PerceptionSettings::DetectionRadius'],['../struct_no_job_1_1_perception_component.html#a19314a3428daa56f8ada3be883337b1e',1,'NoJob::PerceptionComponent::DetectionRadius']]],
   ['diffuseiblstrength_8',['DiffuseIBLStrength',['../struct_no_job_1_1_framebuffer_specification.html#a42ecda104f4446194f6f5b406c1d62a7',1,'NoJob::FramebufferSpecification']]],
   ['direction_9',['Direction',['../struct_no_job_1_1_particle_system_component.html#ae93dce4284548e746a1aa1b3e9849daa',1,'NoJob::ParticleSystemComponent']]],
-  ['distance_10',['Distance',['../struct_no_job_1_1_raycast_hit.html#ada621f2f1099e7642db00a1c2accf65b',1,'NoJob::RaycastHit']]],
-  ['distance_11',['distance',['../struct_no_job_1_1_neural_agent_1_1_snapshot.html#a451f80e581d315becefadac283a637d7',1,'NoJob::NeuralAgent::Snapshot']]],
-  ['dopplerfactor_12',['DopplerFactor',['../struct_no_job_1_1_audio_source_component.html#a04fc8e629f31394bc2e02dbefd98e4ca',1,'NoJob::AudioSourceComponent']]],
-  ['drawcalls_13',['DrawCalls',['../struct_no_job_1_1_renderer_statistics.html#a1fe0d831a0d328b42e4bce936a54ca7b',1,'NoJob::RendererStatistics']]],
-  ['duration_14',['Duration',['../struct_no_job_1_1_particle_system_component.html#a97bd978c00b33776b01a66a5efbb4933',1,'NoJob::ParticleSystemComponent']]],
-  ['durationticks_15',['DurationTicks',['../struct_no_job_1_1_animation_clip.html#a220acc98c864b83a2a5024fa9b61eb22',1,'NoJob::AnimationClip']]]
+  ['directory_10',['directory',['../struct_no_job_1_1_r_l_1_1_visible_training_snapshot.html#ab42b05b26ef197555569b702021e213d',1,'NoJob::RL::VisibleTrainingSnapshot']]],
+  ['distance_11',['Distance',['../struct_no_job_1_1_raycast_hit.html#ada621f2f1099e7642db00a1c2accf65b',1,'NoJob::RaycastHit']]],
+  ['distance_12',['distance',['../struct_no_job_1_1_neural_agent_1_1_snapshot.html#a451f80e581d315becefadac283a637d7',1,'NoJob::NeuralAgent::Snapshot::distance'],['../struct_no_job_1_1_r_l_1_1_obstacle_outcome.html#a9264d76378c7e58464f7a9c239040624',1,'NoJob::RL::ObstacleOutcome::distance'],['../struct_no_job_1_1_r_l_1_1_obstacle_metrics.html#ad5975f254af42615d78777e046aee40c',1,'NoJob::RL::ObstacleMetrics::distance']]],
+  ['dopplerfactor_13',['DopplerFactor',['../struct_no_job_1_1_audio_source_component.html#a04fc8e629f31394bc2e02dbefd98e4ca',1,'NoJob::AudioSourceComponent']]],
+  ['drawcalls_14',['DrawCalls',['../struct_no_job_1_1_renderer_statistics.html#a1fe0d831a0d328b42e4bce936a54ca7b',1,'NoJob::RendererStatistics']]],
+  ['duration_15',['Duration',['../struct_no_job_1_1_particle_system_component.html#a97bd978c00b33776b01a66a5efbb4933',1,'NoJob::ParticleSystemComponent']]],
+  ['durationticks_16',['DurationTicks',['../struct_no_job_1_1_animation_clip.html#a220acc98c864b83a2a5024fa9b61eb22',1,'NoJob::AnimationClip']]]
 ];
