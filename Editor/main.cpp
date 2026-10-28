@@ -1,4 +1,6 @@
 #include "Engine/Core/Window.h"
+#include "Engine/Core/ProjectPaths.h"
+#include "Editor/Distribution/PackageValidation.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Physics/PhysicsSystem.h"
 #include "Engine/Physics/JoltSpatialQuery.h"
@@ -28,6 +30,12 @@
 #include "Editor/Scene/SceneFileDialog.h"
 
 #include <GLFW/glfw3.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
 
 #include <cmath>
 #include <cstdint>
@@ -39,7 +47,7 @@
 #include <vector>
 
 
-int main()
+int main(int argc,char** argv)
 {
     try
     {
@@ -53,7 +61,14 @@ int main()
             }
         } scriptBuildWorkerExitGuard;
 
-        NoJob::Window window({ "NoJobEngine", 1600, 900 });
+        const auto discoveredRoot=NoJob::Paths::FindProjectRoot();
+        if(discoveredRoot.empty())throw std::runtime_error("Project assets not found. Extract the complete Alpha ZIP to a writable folder.");
+        std::filesystem::current_path(discoveredRoot);
+        NoJob::AssetManager::Init(discoveredRoot);
+        if(argc>1&&std::string(argv[1])=="--validate-package")return NoJob::ValidateAlphaPackage(discoveredRoot);
+        const bool smoke=argc>1&&(std::string(argv[1])=="--smoke-test"||std::string(argv[1])=="--smoke-examples");
+        unsigned smokeFrames=0;
+        NoJob::Window window({NoJob::Paths::IsPortable(discoveredRoot)?"NJE - Public Alpha 1":"NJE - NoJobEngine",1600,900});
         NoJob::Renderer::Init();
 
         std::cerr << "[Startup] Creating PBR scene shader...\n";
@@ -355,6 +370,32 @@ int main()
 
 
         NoJob::EditorCamera editorCamera;
+        if(argc>1&&std::string(argv[1])=="--smoke-examples") {
+            std::ofstream report(discoveredRoot/"ExamplesValidation.txt");
+            for(const auto* name:{"RLObstacleLearningDemo","RLTrackingDemo","RLNavigationDemo","NeuralTrainingDemo","NeuralPongTrackingDemo"}) {
+                NoJob::Scene example;
+                const auto path=discoveredRoot/"Assets/Scenes"/(std::string(name)+".nojobscene");
+                if(!NoJob::SceneSerializer::Load(example,path,cubeMesh,cubeMaterial))throw std::runtime_error("Cannot load example: "+std::string(name));
+                for(auto entity:example.GetEntities())if(entity.HasComponent<NoJob::NativeScriptComponent>()) {
+                    const auto& script=entity.GetComponent<NoJob::NativeScriptComponent>();
+                    if(!NoJob::ScriptRegistry::Find(script.ScriptName))throw std::runtime_error("Missing example script: "+script.ScriptName);
+                }
+                example.OnRuntimeStart();for(int frame=0;frame<120;++frame)example.OnUpdate(1.f/60.f);example.OnRuntimeStop();
+                report<<"PASS: "<<name<<" scene load, script factories and Play/Stop\n";
+            }
+        }
+        auto frameExample=[&] {
+            for(auto entity:editorScene.GetEntities())if(entity.HasComponent<NoJob::CameraComponent>()&&entity.GetComponent<NoJob::CameraComponent>().Primary) {
+                const auto world=editorScene.GetWorldTransform(entity);
+                editorCamera.SetPose(glm::vec3(world[3]),-glm::vec3(world[2]));break;
+            }
+        };
+        if(NoJob::Paths::IsPortable(discoveredRoot)) {
+            const auto initial=discoveredRoot/"Assets/Scenes/RLObstacleLearningDemo.nojobscene";
+            if(!NoJob::SceneSerializer::Load(editorScene,initial,cubeMesh,cubeMaterial))throw std::runtime_error("Cannot load the Alpha example scene.");
+            currentScenePath=initial;editor.SetScene(&editorScene);frameExample();
+        }
+
 
 
         // ------------------------------------------------------------
@@ -848,6 +889,7 @@ int main()
                 else
                 {
                     navMeshDebugRenderer.Clear();
+                    frameExample();
 
                     std::cout
                         << "[Navigation] "
@@ -1032,12 +1074,8 @@ int main()
                 editor.
                 ConsumeLoadSceneRequest())
             {
-                const auto selected =
-                    NoJob::SceneFileDialog::Open(
-                        NoJob::AssetManager::
-                        GetProjectRoot()
-                        /
-                        "Assets/Scenes");
+                auto selected=editor.ConsumeExampleScenePath();
+                if(selected.empty())selected=NoJob::SceneFileDialog::Open(NoJob::AssetManager::GetProjectRoot()/"Assets/Scenes");
 
                 if (!selected.empty() &&
                     NoJob::SceneSerializer::Load(
@@ -1354,6 +1392,7 @@ int main()
             editor.EndFrame();
 
             window.SwapBuffers();
+            if(smoke&&++smokeFrames>=120)glfwSetWindowShouldClose(window.GetNativeWindow(),GLFW_TRUE);
         }
 
 
@@ -1397,6 +1436,9 @@ int main()
     catch (const std::exception& e)
     {
         std::cerr << "[Fatal] Unhandled std::exception: " << e.what() << '\n';
+#ifdef _WIN32
+        MessageBoxA(nullptr,e.what(),"NJE startup error",MB_OK|MB_ICONERROR);
+#endif
         NoJob::ProjectScriptBuildSystem::Shutdown();
         return 1;
     }

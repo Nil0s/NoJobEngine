@@ -1,4 +1,5 @@
 #include "Engine/Core/Window.h"
+#include "Engine/Core/ProjectPaths.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Assets/Project.h"
 #include "Engine/Physics/PhysicsSystem.h"
@@ -35,17 +36,10 @@
 
 namespace
 {
-    std::filesystem::path FindProjectRoot()
-    {
-        auto current = std::filesystem::current_path();
-        for (int i = 0; i < 8; ++i)
-        {
-            for (const auto& entry : std::filesystem::directory_iterator(current))
-                if (entry.path().extension() == ".nojobproject") return current;
-            if (!current.has_parent_path() || current.parent_path() == current) break;
-            current = current.parent_path();
-        }
-        throw std::runtime_error("NoJobRuntime: no .nojobproject found.");
+    std::filesystem::path FindProjectRoot() {
+        const auto root=NoJob::Paths::FindProjectRoot();
+        if(root.empty())throw std::runtime_error("NoJobRuntime: extract the complete package beside its Assets and .nojobproject files.");
+        return root;
     }
 
     std::filesystem::path FindProjectFile(const std::filesystem::path& root)
@@ -173,6 +167,8 @@ namespace
 
         for (const auto& name : serializedScripts)
         {
+            if(NoJob::ScriptRegistry::Find(name))continue; // Built-ins are already registered by Scene.
+
             const auto symbol = "NoJobRegister_" + name;
             auto fn = reinterpret_cast<RegisterProjectScriptFn>(
                 GetProcAddress(g_ProjectScriptsModule, symbol.c_str()));
@@ -207,11 +203,14 @@ namespace
 #endif
 }
 
-int main()
+int main(int argc,char**argv)
 {
     try
     {
         const auto projectRoot = FindProjectRoot();
+        std::filesystem::current_path(projectRoot);
+        const bool smoke=argc>1&&std::string(argv[1])=="--smoke-test";
+        unsigned smokeFrames=0;
         NoJob::ProjectConfig project;
         if (!NoJob::Project::Load(project, FindProjectFile(projectRoot)))
             throw std::runtime_error("NoJobRuntime: failed to load project configuration.");
@@ -296,6 +295,7 @@ int main()
             framebuffer->Unbind();
             framebuffer->PresentToDefault(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
             window.SwapBuffers();
+            if(smoke&&++smokeFrames>=120)glfwSetWindowShouldClose(window.GetNativeWindow(),GLFW_TRUE);
         }
 
         physics.Stop();

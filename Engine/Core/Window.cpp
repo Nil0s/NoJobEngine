@@ -1,6 +1,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Platform/OpenGL/OpenGLContext.h"
 #include <GLFW/glfw3.h>
+#include "Engine/Core/ApplicationIcon.h"
 #include <stdexcept>
 
 namespace NoJob {
@@ -24,6 +25,7 @@ Window::Window(const WindowProps& props) {
         throw std::runtime_error("NoJobEngine: window creation failed.");
     }
 
+    ApplyApplicationIcon(m_Window);
     ++s_WindowCount;
     OpenGLContext::Init(m_Window);
     glfwSwapInterval(1);

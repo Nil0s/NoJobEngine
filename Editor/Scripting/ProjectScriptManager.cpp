@@ -70,7 +70,14 @@ namespace NoJob
         return false;
 #else
         std::filesystem::path dll;
-        const auto outputDirectory = projectRoot / "out" / "ProjectScripts";
+        // Never load a Debug DLL into a Release editor (or the reverse).
+#ifdef _DEBUG
+        const auto developmentDirectory=projectRoot/"out"/"ProjectScripts"/"Debug";
+#else
+        const auto developmentDirectory=projectRoot/"out"/"ProjectScripts"/"Release";
+#endif
+        const auto packagedDirectory=projectRoot/"RuntimeData"/"ProjectScripts";
+        const auto outputDirectory=std::filesystem::is_directory(packagedDirectory)?packagedDirectory:developmentDirectory;
         std::error_code ec;
         std::filesystem::file_time_type newestTime{};
 

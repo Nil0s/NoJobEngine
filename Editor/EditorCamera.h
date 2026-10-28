@@ -26,6 +26,8 @@ namespace NoJob
             bool viewportHovered);
 
         void SetViewportSize(float width, float height);
+        /** @brief Frame a loaded example using its primary camera's world-space pose. */
+        void SetPose(const glm::vec3& position,const glm::vec3& forward);
 
         const glm::mat4& GetViewMatrix() const { return m_ViewMatrix; }
         const glm::mat4& GetProjectionMatrix() const { return m_ProjectionMatrix; }

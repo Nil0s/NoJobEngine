@@ -61,6 +61,8 @@ namespace NoJob
         bool ConsumeSaveSceneRequest();
         bool ConsumeSaveSceneAsRequest();
         bool ConsumeLoadSceneRequest();
+        /** @brief Consume a curated example selection; empty requests open the normal scene dialog. */
+        std::filesystem::path ConsumeExampleScenePath() { auto path=m_ExampleScenePath;m_ExampleScenePath.clear();return path; }
 
         bool ConsumeGraphicsTestSceneRequest();
 
@@ -237,6 +239,7 @@ namespace NoJob
         bool m_SaveSceneRequested = false;
         bool m_SaveSceneAsRequested = false;
         bool m_LoadSceneRequested = false;
+        std::filesystem::path m_ExampleScenePath;
 
         bool m_GraphicsTestSceneRequested = false;
 

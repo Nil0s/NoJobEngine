@@ -4,6 +4,7 @@
  * @ingroup BehaviorTree
  */
 #pragma once
+#include "Engine/Core/ProjectPaths.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -15,22 +16,8 @@ namespace NoJob {
 namespace BTPathsDetail {
 namespace fs = std::filesystem;
 
-inline fs::path FindProjectRoot() {
-    // The editor may run from out/build/x64-Debug. Never choose that build
-    // folder merely because it contains an old Assets/AI/Default.njbt.
-    std::error_code ec;
-    fs::path base = fs::current_path(ec);
-    if (ec) return {};
-    for (;;) {
-        if (fs::is_regular_file(base / "CMakeLists.txt", ec) &&
-            fs::is_directory(base / "Engine", ec) &&
-            fs::is_directory(base / "Editor", ec))
-            return base;
-        if (base == base.root_path() || base == base.parent_path()) break;
-        base = base.parent_path();
-    }
-    return {};
-}
+inline fs::path FindProjectRoot() { return NoJob::Paths::FindProjectRoot(); }
+
 inline bool IsTreeFile(const fs::directory_entry& entry) {
     std::error_code ec;
     if (!entry.is_regular_file(ec)) return false;

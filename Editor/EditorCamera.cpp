@@ -8,6 +8,15 @@
 
 namespace NoJob
 {
+    void EditorCamera::SetPose(const glm::vec3& position,const glm::vec3& forward) {
+        if(glm::length(forward)<.0001f)return;
+        const auto direction=glm::normalize(forward);
+        m_Position=position;
+        m_Pitch=glm::degrees(std::asin(glm::clamp(direction.y,-1.f,1.f)));
+        m_Yaw=glm::degrees(std::atan2(direction.z,direction.x));
+        m_WasLooking=false;RecalculateView();
+    }
+
     EditorCamera::EditorCamera(
         float fovDegrees,
         float aspectRatio,

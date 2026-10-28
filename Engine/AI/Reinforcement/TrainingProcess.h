@@ -23,9 +23,9 @@ inline bool LaunchTrainingWindow(const std::filesystem::path& root,std::string& 
 #ifdef _WIN32
     wchar_t module[32768]{};GetModuleFileNameW(nullptr,module,32768);
     const std::vector<std::filesystem::path> candidates={
-        root/"out/build/trainer-release/NoJobTrainer.exe",std::filesystem::path(module).parent_path()/"NoJobTrainer.exe",root/"out/build/x64-Debug/NoJobTrainer.exe"};
+        std::filesystem::path(module).parent_path()/"NJETrainer.exe",root/"NJETrainer.exe",std::filesystem::path(module).parent_path()/"NoJobTrainer.exe",root/"NoJobTrainer.exe",root/"out/build/trainer-release/NoJobTrainer.exe",root/"out/build/x64-Debug/NoJobTrainer.exe"};
     std::filesystem::path executable;for(const auto&p:candidates)if(std::filesystem::is_regular_file(p)){executable=p;break;}
-    if(executable.empty()){error="NoJobTrainer.exe is missing. Build the NoJobTrainer target first.";return false;}
+    if(executable.empty()){error="The trainer executable is missing. Keep NJETrainer.exe beside the editor or build the NoJobTrainer target.";return false;}
     std::wstring command=QuoteTrainingArgument(executable.wstring())+L" --project "+QuoteTrainingArgument(root.wstring())+(task==0?L" --task tracking":L" --task obstacle");
     STARTUPINFOW startup{};startup.cb=sizeof(startup);startup.dwFlags=STARTF_USESHOWWINDOW;startup.wShowWindow=SW_SHOWNORMAL;
     PROCESS_INFORMATION process{};

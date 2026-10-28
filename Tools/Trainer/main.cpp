@@ -7,6 +7,8 @@
 #include "Engine/AI/Neural/NeuralAssetPaths.h"
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+#include "Engine/Core/ApplicationIcon.h"
+#include "Engine/Core/ProjectPaths.h"
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -76,11 +78,12 @@ void DrawArena(const VisibleTrainingSnapshot& state){
 int Window(const std::filesystem::path& project,bool obstacles){
     if(!glfwInit())throw std::runtime_error("GLFW initialization failed");
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR,3);glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR,3);glfwWindowHint(GLFW_OPENGL_PROFILE,GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow*window=glfwCreateWindow(1120,780,"NoJob RL Trainer - independent window",nullptr,nullptr);
+    GLFWwindow*window=glfwCreateWindow(1120,780,"NJE RL Trainer - independent window",nullptr,nullptr);
     if(!window){glfwTerminate();throw std::runtime_error("Cannot create training window");}
     #ifdef _WIN32
-    glfwSetWindowTitle(window,("NoJob RL Trainer - process "+std::to_string(GetCurrentProcessId())).c_str());
+    glfwSetWindowTitle(window,("NJE RL Trainer - process "+std::to_string(GetCurrentProcessId())).c_str());
 #endif
+    ApplyApplicationIcon(window);
     glfwMakeContextCurrent(window);glfwSwapInterval(1);
     if(!gladLoadGL(reinterpret_cast<GLADloadfunc>(glfwGetProcAddress)))throw std::runtime_error("OpenGL loader failed");
     IMGUI_CHECKVERSION();ImGui::CreateContext();ImGui::GetIO().IniFilename=nullptr;ImGui::StyleColorsDark();ImGui::GetStyle().FrameRounding=4.f;
@@ -93,7 +96,7 @@ int Window(const std::filesystem::path& project,bool obstacles){
         glfwPollEvents();ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
         const auto*viewport=ImGui::GetMainViewport();ImGui::SetNextWindowPos(viewport->WorkPos);ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::Begin("RL Trainer",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoSavedSettings);
-        ImGui::TextUnformatted("NoJob RL Trainer");ImGui::SameLine();ImGui::TextDisabled("Independent process - visible RL training");
+        ImGui::TextUnformatted("NJE RL Trainer");ImGui::SameLine();ImGui::TextDisabled("Independent process - visible RL training");
         if(ImGui::Button("Open another training window")){std::string error;if(!LaunchTrainingWindow(project,error,task))feedback=error;}
         ImGui::SameLine();ImGui::TextDisabled("Each run keeps its own model and history.");
         const bool busy=run.Running();ImGui::BeginDisabled(busy);
@@ -104,7 +107,7 @@ int Window(const std::filesystem::path& project,bool obstacles){
         ImGui::SetNextItemWidth(140);ImGui::InputFloat("Learning rate",&config.rate,0,0,"%.6f");ImGui::SameLine();ImGui::SetNextItemWidth(130);ImGui::SliderFloat("Gamma",&config.gamma,0,1);ImGui::SameLine();ImGui::BeginDisabled(!config.obstacles);ImGui::Checkbox("Refine stalled cases (+3000 episodes)",&config.refinement);ImGui::EndDisabled();
         if(ImGui::Button("Start training")){try{config.name=name;config.seed=static_cast<uint32_t>(seed);run.Start(project/"TrainingRuns",config);
 #ifdef _WIN32
-                glfwSetWindowTitle(window,("NoJob RL Trainer - "+config.name+" - process "+std::to_string(GetCurrentProcessId())).c_str());
+                glfwSetWindowTitle(window,("NJE RL Trainer - "+config.name+" - process "+std::to_string(GetCurrentProcessId())).c_str());
 #endif
                 feedback.clear();asset[0]=0;}catch(const std::exception&e){feedback=e.what();}}
         ImGui::EndDisabled();ImGui::SameLine();ImGui::BeginDisabled(!busy);
@@ -157,20 +160,14 @@ int Window(const std::filesystem::path& project,bool obstacles){
 }
 /** @brief Parse native arguments and dispatch graphics-free tests or the interactive window. */
 int Run(const std::vector<std::wstring>& args){
-    auto project=std::filesystem::current_path();
-#ifdef _WIN32
-    wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
-    for(auto parent=std::filesystem::path(executable).parent_path();!parent.empty();parent=parent.parent_path()){
-        if(std::filesystem::is_directory(parent/"Engine")&&std::filesystem::is_directory(parent/"Editor")&&std::filesystem::is_regular_file(parent/"CMakeLists.txt")){project=parent;break;}
-        if(parent==parent.root_path())break;
-    }
-#endif
+    auto project=Paths::FindProjectRoot();
+    if(project.empty())project=std::filesystem::current_path();
     auto output=project/"TrainingRuns/SelfTest";bool self=false,obstacles=true;
     for(size_t i=1;i<args.size();++i){if(args[i]==L"--project"&&i+1<args.size())project=args[++i];else if(args[i]==L"--output-root"&&i+1<args.size())output=args[++i];else if(args[i]==L"--self-test")self=true;else if(args[i]==L"--task"&&i+1<args.size())obstacles=args[++i]!=L"tracking";}
     if(self)return SelfTest(output);
     try{return Window(project,obstacles);}catch(const std::exception&e){
 #ifdef _WIN32
-        MessageBoxA(nullptr,e.what(),"NoJob Trainer",MB_OK|MB_ICONERROR);
+        MessageBoxA(nullptr,e.what(),"NJE Trainer",MB_OK|MB_ICONERROR);
 #endif
         return 1;
     }

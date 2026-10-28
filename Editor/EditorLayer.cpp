@@ -1,3 +1,4 @@
+#include "Engine/Core/ProjectPaths.h"
 #include "Engine/AI/BehaviorTree/BTAsset.h"
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
 #include "Engine/AI/BehaviorTree/BTGameplay.h"
@@ -284,6 +285,10 @@ namespace NoJob
 
         bool BuildStandalone()
         {
+            if(!Paths::HasSourceTools(AssetManager::GetProjectRoot())) {
+                ScriptLog("[Build] Standalone builds require the source checkout and Visual Studio C++ tools.");return false;
+            }
+
             if (s_StandaloneBuildRunning.exchange(true))
             {
                 ScriptLog("[Build] Standalone build is already running.");
@@ -328,6 +333,10 @@ namespace NoJob
 
         bool CompileProjectScripts()
         {
+            if(!Paths::HasSourceTools(AssetManager::GetProjectRoot())) {
+                ScriptLog("[Scripts] Compilation requires the source checkout and Visual Studio C++ tools.");return false;
+            }
+
             if (ProjectScriptBuildSystem::IsRunning())
             {
                 ScriptLog("[Scripts] Compilation is already running.");
@@ -342,74 +351,9 @@ namespace NoJob
         }
 #endif
 
-        std::filesystem::path FindNoJobProjectRoot()
-        {
-            auto containsProject = [](const std::filesystem::path& directory)
-                {
-                    std::error_code ec;
-                    if (!std::filesystem::exists(directory, ec))
-                        return false;
-
-                    bool hasProjectFile = false;
-                    for (const auto& entry :
-                        std::filesystem::directory_iterator(
-                            directory,
-                            std::filesystem::directory_options::skip_permission_denied,
-                            ec))
-                    {
-                        if (ec) break;
-                        if (entry.is_regular_file() &&
-                            entry.path().extension() == ".nojobproject")
-                        {
-                            hasProjectFile = true;
-                            break;
-                        }
-                    }
-
-                    return hasProjectFile &&
-                        std::filesystem::exists(directory / "CMakeLists.txt", ec);
-                };
-
-            auto walkUp = [&](std::filesystem::path start)
-                -> std::filesystem::path
-                {
-                    std::error_code ec;
-                    start = std::filesystem::absolute(start, ec).lexically_normal();
-
-                    while (!start.empty())
-                    {
-                        if (containsProject(start))
-                            return start;
-
-                        const auto parent = start.parent_path();
-                        if (parent == start)
-                            break;
-                        start = parent;
-                    }
-                    return {};
-                };
-
-            // First try the process working directory.
-            if (auto root = walkUp(std::filesystem::current_path()); !root.empty())
-                return root;
-
-#ifdef _WIN32
-            // Then try the executable location. This makes the editor portable
-            // when launched from out/build/... instead of the repository root.
-            std::wstring executable(MAX_PATH, L'\0');
-            const DWORD length = GetModuleFileNameW(
-                nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-            if (length > 0)
-            {
-                executable.resize(length);
-                if (auto root =
-                    walkUp(std::filesystem::path(executable).parent_path());
-                    !root.empty())
-                    return root;
-            }
-#endif
-
-            return std::filesystem::current_path();
+        std::filesystem::path FindNoJobProjectRoot() {
+            const auto root=Paths::FindProjectRoot();
+            return root.empty()?std::filesystem::current_path():root;
         }
 
         ImVec2 ProjectColliderPoint(
@@ -1171,7 +1115,7 @@ namespace NoJob
 
     void EditorLayer::Init(GLFWwindow* window, Scene* scene)
     {
-        s_BuildSettings = BuildSettings::Load(AssetManager::GetProjectRoot());
+        s_BuildSettings = BuildSettings::Load(FindNoJobProjectRoot());
         std::snprintf(s_BuildNameBuffer, sizeof(s_BuildNameBuffer), "%s", s_BuildSettings.BuildName.c_str());
 #ifdef _WIN32
         ProjectScriptManager::SetLogger(ScriptLog);
@@ -1216,6 +1160,10 @@ namespace NoJob
 
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 460");
+#ifdef _WIN32
+        // Ready-to-run examples must not depend on a manual Reload Scripts step.
+        ProjectScriptManager::Load(AssetManager::GetProjectRoot());
+#endif
     }
 
     void EditorLayer::Shutdown()
@@ -1852,7 +1800,26 @@ namespace NoJob
                 ImGui::Separator();
                 if (ImGui::MenuItem("Import 3D Model...")) { auto s = OpenModelFileDialog();if (!s.empty())try { CreateModelEntity(AssetManager::ImportModel(s)); } catch (...) { ScriptLog("[Import] 3D model import failed."); } }
                 ImGui::Separator();
-                ImGui::MenuItem("Exit");
+                if(ImGui::MenuItem("Exit")) if(auto* window=glfwGetCurrentContext())glfwSetWindowShouldClose(window,GLFW_TRUE);
+                ImGui::EndMenu();
+            }
+
+            if(ImGui::BeginMenu("Examples")) {
+                ImGui::BeginDisabled(m_IsPlaying);
+                const std::pair<const char*,const char*> examples[]={
+                    {"RL obstacle avoidance + automatic target","RLObstacleLearningDemo"},
+                    {"RL target tracking (X/Z)","RLTrackingDemo"},
+                    {"Navigation tracking (bake required)","RLNavigationDemo"},
+                    {"Supervised target tracking","NeuralTrainingDemo"},
+                    {"Neural paddle tracking","NeuralPongTrackingDemo"}};
+                for(const auto& example:examples) {
+                    const auto path=AssetManager::GetProjectRoot()/"Assets"/"Scenes"/(std::string(example.second)+".nojobscene");
+                    if(ImGui::MenuItem(example.first,nullptr,false,std::filesystem::is_regular_file(path))) {
+                        m_ExampleScenePath=path;m_LoadSceneRequested=true;
+                    }
+                }
+                ImGui::EndDisabled();
+                ImGui::Separator();ImGui::TextDisabled("Open an example, then press Play. AI tools are in the AI menu.");
                 ImGui::EndMenu();
             }
 
@@ -1908,11 +1875,11 @@ namespace NoJob
             if (ImGui::BeginMenu("Build"))
             {
 #ifdef _WIN32
-                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning());
+                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning() || !Paths::HasSourceTools(AssetManager::GetProjectRoot()));
                 if (ImGui::MenuItem("Compile Scripts", "Ctrl+Shift+B"))
                     CompileProjectScripts();
                 ImGui::EndDisabled();
-                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning());
+                ImGui::BeginDisabled(ProjectScriptBuildSystem::IsRunning() || m_IsPlaying);
                 if (ImGui::MenuItem("Reload Scripts"))
                     ProjectScriptManager::Load(AssetManager::GetProjectRoot());
                 ImGui::EndDisabled();
@@ -1920,7 +1887,7 @@ namespace NoJob
                     ImGui::TextDisabled("Compiling scripts...");
                 ImGui::Separator();
                 ImGui::BeginDisabled(
-                    ProjectScriptBuildSystem::IsRunning() || s_StandaloneBuildRunning.load());
+                    ProjectScriptBuildSystem::IsRunning() || s_StandaloneBuildRunning.load() || !Paths::HasSourceTools(AssetManager::GetProjectRoot()));
                 if (ImGui::MenuItem("Build Settings...")) s_ShowBuildSettings = true;
                 if (ImGui::MenuItem("Build Project")) BuildStandalone();
                 ImGui::EndDisabled();
@@ -1937,6 +1904,10 @@ namespace NoJob
 #else
                 ImGui::TextDisabled("Script compilation is currently implemented for Windows.");
 #endif
+                if(!Paths::HasSourceTools(AssetManager::GetProjectRoot())) {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Source checkout and Visual Studio C++ tools are required for builds.");
+                }
                 ImGui::EndMenu();
             }
 

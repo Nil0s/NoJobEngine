@@ -1,4 +1,4 @@
-# NoJobEngine
+# NJE — NoJobEngine
 
 <p align="center">
   <img src="docs/images/NJE_logo.png" alt="NoJobEngine logo" width="300">
@@ -35,12 +35,101 @@ Native supervised learning, reinforcement learning and policy inference are now
 integrated into the C++ runtime and editor, with live training visualization
 and saved-policy evaluation.
 
-> **Current milestone: NoJobEngine V2.1 — Reinforcement Learning — Complete and Validated**
+> **Current milestone: NJE Public Alpha 1 — portable Windows distribution candidate, based on completed V2.1**
 >
-> **Next milestone: V2.2 — Parallel Neural Training (planned)**
+> **Next focus: Alpha feedback, distribution, documentation, usability and stability**
 
 **C++20 · OpenGL 4.6 · Dear ImGui · Jolt Physics · Assimp · miniaudio ·
 CMake**
+
+------------------------------------------------------------------------
+
+## NJE Public Alpha 1 — Windows x64
+
+NJE is the public-facing name of NoJobEngine. Existing project formats and C++
+identifiers retain their original names for compatibility.
+
+The Alpha distribution candidate packages the editor, independent RL trainer,
+standalone demonstration and five curated AI scenes. Its executables use the
+NoJobEngine logo as their application icon. Running the supplied examples and
+training the supplied environments does **not** require Visual Studio, CMake
+or Python. The required Microsoft C++ runtime DLLs are included beside the apps.
+
+### Quick start
+
+1. Extract the **entire ZIP** into a writable local folder. Keep the executables,
+   `Assets`, `RuntimeData`, `Resources` and project descriptor together.
+2. Open **NJE.exe**. The obstacle-learning example opens automatically,
+   with its camera framed and its precompiled project scripts already loaded.
+3. Press **Play**. The blue agent follows the orange target around the fixed
+   obstacles. The target waits eight seconds initially, then moves automatically
+   and pauses at its waypoints. Select `RLTarget` and disable `AutoMove` in its
+   script fields to control it manually.
+4. Open **AI → AI Debugger**, select `RLAgentCube` and expand the neural inspector
+   to inspect observations, action values and activations.
+5. Use **Examples** to switch to X/Z tracking, navigation tracking, supervised
+   tracking or neural paddle tracking while stopped. The navigation example
+   requires a NavMesh bake through **AI → Navigation**, using the included
+   `testplane_100x100.obj`.
+6. Open **AI → Reinforcement Learning → Open Training Window** to train a policy
+   in a separate process. Choose a completed model with **Evaluation model** or
+   **Browse...**, then use **Evaluate learning** and **Save CSV report**.
+
+**NJETrainer.exe** also runs directly from the extracted folder.
+**NJERuntime.exe** runs the standalone obstacle demonstration.
+Each app locates its project beside the executable, including after the folder
+has been moved or launched from an unrelated working directory.
+
+### Contents and requirements
+
+- Windows 10/11 x64 with a graphics driver supporting **OpenGL 4.6** for the
+  editor/runtime. The independent trainer uses OpenGL 3.3.
+- Five example scenes, four saved neural models, the original test plane and
+  the example project scripts. The package contains curated demonstration
+  assets rather than the source checkout's entire imported-asset collection.
+- Training histories are written to `TrainingRuns/`; evaluation reports go to
+  `Reports/RL/`. Editor layout and generated asset metadata stay in the extracted
+  folder, which must remain writable.
+- `PackageManifest.json` records file sizes and SHA-256 hashes.
+  `DependencyAudit.json` records the executable/DLL import checks.
+- Existing licensing terms remain in **LICENSE**, with upstream notices and
+  license texts supplied in **THIRD_PARTY_NOTICES.md** and **Licenses/**.
+
+The Alpha can run its precompiled examples and native training without developer
+tools. Compiling custom C++ scripts or building new standalone projects requires
+the source checkout and Visual Studio C++ tools; those build controls are
+disabled when running the binary-only package. Trainer windows run independent
+experiments. Obstacle learning remains a fixed-arena demonstration, with a
+separate learned tracking policy for open-floor movement outside the core.
+
+### Diagnostics and validation scope
+
+For a diagnostic without opening a graphics window, run
+`NJE.exe --validate-package` from the extracted folder. It writes
+`PackageValidation.txt`, checking required files, the shipped models, project
+script loading and a short live RL/automatic-target simulation. The trainer's
+`--self-test --output-root <folder>` command checks independent training jobs
+and their controls without creating a graphics window.
+
+Relocation, restricted child-process PATH and graphics smoke checks are run on
+the development PC. A fresh PC/VM without Visual Studio and a wider range of
+graphics drivers still require external Alpha testing. No installation on such
+a clean machine is claimed by the local package checks.
+
+### Reproduce a package from source
+
+Use a Visual Studio C++ developer terminal and configure a Release build:
+
+```sh
+cmake -S . -B out/build/alpha-release -DCMAKE_BUILD_TYPE=Release -DNOJOB_DISTRIBUTION=ON -DNOJOB_HOT_RELOAD_GENERATION=alpha1 -DASSIMP_INSTALL_PDB=OFF -DGENERATE_DEBUG_SYMBOLS=OFF -DINTERPROCEDURAL_OPTIMIZATION=OFF -DUSE_AVX=OFF -DUSE_AVX2=OFF -DUSE_AVX512=OFF -DUSE_F16C=OFF -DUSE_FMADD=OFF -DUSE_LZCNT=OFF -DUSE_TZCNT=OFF -DUSE_SSE4_1=OFF -DUSE_SSE4_2=OFF
+cmake --build out/build/alpha-release --config Release --target NoJobEditor NoJobRuntime NoJobTrainer NoJobProjectScripts
+python Tools/Distribution/PackageAlpha.py --build-dir out/build/alpha-release --output dist/NJE_Alpha1_Windows_x64 --redist-dir "<Visual Studio x64 Microsoft.VC14x.CRT directory>"
+```
+
+The packaging command preserves an existing nonempty output directory rather
+than replacing it. It selects the Release project DLL, copies app-local runtime
+DLLs and upstream licenses, checks imported DLL dependencies and creates a ZIP
+plus a SHA-256 checksum. Windows application icons are embedded at build time.
 
 ------------------------------------------------------------------------
 
@@ -1089,8 +1178,9 @@ including standalone execution.
 
 ## AI Roadmap
 
-> **Release status:** V2.1 is complete and validated. V2.2 and V2.3 remain
-> planned work; their features must not be interpreted as implemented.
+> **Release status:** V2.1 is complete. The immediate priority is preparing and
+> testing the first public Alpha: distribution, documentation, usability and
+> access for other developers. V2.2 and V2.3 remain longer-term technical plans.
 
 ### V2.0.7 — Code Cleanup & Doxygen Documentation (completed)
 
@@ -1106,6 +1196,14 @@ including standalone execution.
 - Runtime inference and live observation/action/Q diagnostics.
 - Visible independent training runs, saved-policy evaluation and CSV reports.
 - Validated training-to-gameplay workflow, including standalone execution.
+
+### Public Alpha 1 — Distribution and accessibility (current priority)
+
+- Portable Release executables with the NoJobEngine application icon.
+- Automatic project discovery, precompiled-script loading and a curated Examples menu.
+- Included trainer, models, scene assets and app-local runtime dependencies.
+- README quick start, package diagnostics, dependency inventory and integrity manifest.
+- External first-use feedback, fresh-machine checks and graphics-driver coverage.
 
 ### V2.2 — Parallel Neural Training (planned)
 
