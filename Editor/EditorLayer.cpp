@@ -1,3 +1,4 @@
+#include "Editor/Distribution/UpdateService.h"
 #include "Engine/Core/ProjectPaths.h"
 #include "Engine/AI/BehaviorTree/BTAsset.h"
 #include "Engine/AI/BehaviorTree/BTAssetPaths.h"
@@ -1139,7 +1140,7 @@ namespace NoJob
         // Keep the editor layout in the repository root instead of out/build.
         // Deleting the CMake build directory will therefore not erase it.
         static std::string imguiIniPath =
-            (AssetManager::GetProjectRoot() / "NoJobEngineLayout.ini").string();
+            (Paths::IsInstalledApplication()?Paths::SettingsDirectory()/"NJELayout.ini":AssetManager::GetProjectRoot()/"NoJobEngineLayout.ini").string();
         io.IniFilename = imguiIniPath.c_str();
 
         // A window-position-only ini is not enough: we need an actual docking
@@ -1240,6 +1241,9 @@ namespace NoJob
 
     void EditorLayer::Draw()
     {
+        Updates::SetBusy(m_IsPlaying||s_NeuralEditorPanel.IsRunning()||s_ReinforcementPanel.IsRunning()||ProjectScriptBuildSystem::IsRunning()||s_StandaloneBuildRunning.load());
+        if(Updates::IsInstalling()){Updates::Draw();return;}
+
 #ifdef _WIN32
         if (ProjectScriptBuildSystem::ConsumeReloadPending())
         {
@@ -1303,6 +1307,7 @@ namespace NoJob
 
         if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
             ClearMultiSelection();
+        Updates::Draw();
     }
 
     void EditorLayer::EndFrame()
@@ -1993,6 +1998,7 @@ namespace NoJob
 
                 ImGui::EndMenu();
             }
+            if(ImGui::BeginMenu("Help")){Updates::DrawMenu();ImGui::EndMenu();}
             if (ImGui::BeginMenu("AI"))
             {
                 ImGui::MenuItem("Behavior Tree Editor", nullptr, &s_ShowBTAssetEditor);

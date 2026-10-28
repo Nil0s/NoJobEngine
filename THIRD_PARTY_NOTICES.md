@@ -167,3 +167,13 @@ Before publishing a source or binary release of NoJobEngine:
 This notice documents the dependencies identified in NoJobEngine's CMake build
 configuration as audited in October 2026. It is not legal advice and does not
 replace the authoritative license text distributed by each upstream project.
+
+## WinSparkle (installed Alpha updater)
+
+The installer-enabled Windows editor uses WinSparkle 0.9.4 from
+https://github.com/vslavik/winsparkle/releases/tag/v0.9.4 . The binary SDK archive
+SHA-256 is `6037df37fc263bd1650a1c4949681a9d40ffe991d01f35892a406cb5d103c976`.
+Upstream COPYING, COPYING.expat and AUTHORS are included under
+`Licenses/WinSparkle/` in distributions containing the updater DLL. Preserve
+these notices when distributing that component. No private update-signing key
+belongs in a source or binary distribution.

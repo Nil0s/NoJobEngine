@@ -1,8 +1,9 @@
 #include <winver.h>
+#include "Version.h"
 101 ICON "NoJobEngine.ico"
 1 VERSIONINFO
- FILEVERSION 2,1,0,1
- PRODUCTVERSION 2,1,0,1
+ FILEVERSION NJE_VERSION_TUPLE
+ PRODUCTVERSION NJE_VERSION_TUPLE
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x2L
  FILEOS 0x40004L
@@ -14,9 +15,9 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "Francisco Ramon Asensi Domingo\0"
    VALUE "FileDescription", "NJE Public Alpha 1\0"
-   VALUE "FileVersion", "2.1.0.1\0"
+   VALUE "FileVersion", NJE_VERSION_STRING "\0"
    VALUE "ProductName", "NJE - NoJobEngine\0"
-   VALUE "ProductVersion", "V2.1 - Public Alpha 1\0"
+   VALUE "ProductVersion", NJE_VERSION_STRING " - Alpha\0"
    VALUE "LegalCopyright", "Copyright 2026 Francisco Ramon Asensi Domingo\0"
   END
  END

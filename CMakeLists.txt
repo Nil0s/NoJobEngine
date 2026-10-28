@@ -423,3 +423,15 @@ foreach(app BTSequenceTests BTSelectorTests BTBlackboardTests BTNativeTests BTAs
         target_sources(${app} PRIVATE Engine/Core/ProjectPaths.cpp)
     endif()
 endforeach()
+
+# WinSparkle is optional for development; installer builds use the pinned x64 SDK.
+target_sources(NoJobEditor PRIVATE Editor/Distribution/UpdateService.cpp)
+set(NJE_WINSPARKLE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/out/tooling/WinSparkle-0.9.4" CACHE PATH "WinSparkle 0.9.4 SDK directory")
+if(WIN32 AND EXISTS "${NJE_WINSPARKLE_ROOT}/include/winsparkle.h")
+    target_compile_definitions(NoJobEditor PRIVATE NJE_WITH_WINSPARKLE=1)
+    target_include_directories(NoJobEditor PRIVATE "${NJE_WINSPARKLE_ROOT}/include")
+    target_link_directories(NoJobEditor PRIVATE "${NJE_WINSPARKLE_ROOT}/x64/Release")
+    target_link_libraries(NoJobEditor PRIVATE "${NJE_WINSPARKLE_ROOT}/x64/Release/WinSparkle.lib")
+    add_custom_command(TARGET NoJobEditor POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${NJE_WINSPARKLE_ROOT}/x64/Release/WinSparkle.dll" "$<TARGET_FILE_DIR:NoJobEditor>/WinSparkle.dll")
+endif()

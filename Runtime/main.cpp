@@ -37,7 +37,7 @@
 namespace
 {
     std::filesystem::path FindProjectRoot() {
-        const auto root=NoJob::Paths::FindProjectRoot();
+        const auto root=NoJob::Paths::InitializeProjectWorkspace();
         if(root.empty())throw std::runtime_error("NoJobRuntime: extract the complete package beside its Assets and .nojobproject files.");
         return root;
     }
@@ -63,7 +63,7 @@ namespace
     std::filesystem::path FindNewestProjectScriptsDLL(
         const std::filesystem::path& projectRoot)
     {
-        const auto packagedDirectory = projectRoot / "RuntimeData" / "ProjectScripts";
+        const auto packagedDirectory = (NoJob::Paths::IsInstalledApplication()?NoJob::Paths::ExecutableDirectory():projectRoot) / "RuntimeData" / "ProjectScripts";
         const auto developmentDirectory = projectRoot / "out" / "ProjectScripts";
         const auto directory = std::filesystem::exists(packagedDirectory)
             ? packagedDirectory : developmentDirectory;

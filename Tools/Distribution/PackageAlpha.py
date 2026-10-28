@@ -80,6 +80,9 @@ def package(build,output,crt):
         for file in candidates:
             relative=file.relative_to(source).as_posix().replace('/','__')
             copy(file,'Licenses/'+name+'/'+relative+'.txt')
+    sdk=Path(cache.get('NJE_WINSPARKLE_ROOT') or ROOT/'out/tooling/WinSparkle-0.9.4')
+    if (build/'WinSparkle.dll').exists():
+        for name in ['COPYING','COPYING.expat','AUTHORS']:copy(sdk/name,'Licenses/WinSparkle/'+name+'.txt')
     # Verify every imported non-system DLL is in the package; pull Assimp/shared dependencies when needed.
     available={p.name.lower():p for p in build.rglob('*.dll')}
     pending=list(output.glob('*.exe'))+list((output/'RuntimeData').rglob('*.dll'));audited={}
@@ -103,7 +106,7 @@ def package(build,output,crt):
     entries=[]
     for file in sorted(output.rglob('*')):
         if file.is_file():entries.append({'path':file.relative_to(output).as_posix(),'bytes':file.stat().st_size,'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
-    (output/'PackageManifest.json').write_text(json.dumps({'product':'NJE (NoJobEngine)','version':'2.1 / Public Alpha 1','platform':'Windows x64','scenes':SCENES,'files':entries},indent=2))
+    (output/'PackageManifest.json').write_text(json.dumps({'product':'NJE (NoJobEngine)','version':'2.1 / Public Alpha 1','build_version':'2.1.0.2','platform':'Windows x64','scenes':SCENES,'files':entries},indent=2))
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for file in sorted(output.rglob('*')):
             if file.is_file():z.write(file,output.name+'/'+file.relative_to(output).as_posix())

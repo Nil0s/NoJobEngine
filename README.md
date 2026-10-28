@@ -35,7 +35,7 @@ Native supervised learning, reinforcement learning and policy inference are now
 integrated into the C++ runtime and editor, with live training visualization
 and saved-policy evaluation.
 
-> **Current milestone: NJE Public Alpha 1 — portable Windows distribution candidate, based on completed V2.1**
+> **Current milestone: NJE Public Alpha 1 — Windows installer and signed update candidate, based on completed V2.1**
 >
 > **Next focus: Alpha feedback, distribution, documentation, usability and stability**
 
@@ -43,6 +43,36 @@ and saved-policy evaluation.
 CMake**
 
 ------------------------------------------------------------------------
+
+## Installed edition and signed Alpha updates
+
+Run **NJE_Setup_2.1.0.2.exe** for per-user installation with the NJE icon.
+Application files live in `%LOCALAPPDATA%/Programs/NJE`; editable samples,
+models and training histories live in `%LOCALAPPDATA%/NJE/Projects/Default`.
+Preferences live in `%LOCALAPPDATA%/NJE/Settings`. Updates and uninstall retain
+user data. Missing samples are copied on startup without replacing existing files.
+
+Use **Help > Check for updates**. Automatic checks run at most every 24 hours
+and can be disabled. Installation requires saving the scene, stopping Play and
+jobs, and closing other NJE trainer/runtime windows. WinSparkle validates EdDSA
+signatures. Windows Authenticode certification is not included.
+
+The channel `https://nil0s.github.io/NJE-Releases/alpha.xml` works only after the
+owner publishes the release and enables GitHub Pages. The separate public
+**Nil0s/NJE-Releases** repository contains the distribution site. These tools do
+not upload anything. Publish the new installer before replacing the feed.
+
+To rebuild, run `python Tools/Distribution/FetchUpdaterSDK.py`, configure the
+Release distribution and prepare it with `PackageAlpha.py`. See
+`BuildInstaller.py --help` for compiler and key arguments. Increment
+`Resources/Version.h` for each release. Installer and app versions must match.
+Keep the same AppId and private signing key; back up the key privately.
+
+Diagnostics accept `NJE_USER_HOME` and `NJE_DISABLE_UPDATES=1`. Installer tests
+use a variant without registry entries or shortcuts because the test environment
+denies registry writes. The production installer still requires an interactive
+Windows installation check and clean-machine testing. Hosted update installation
+cannot be tested before the owner publishes the release and feed.
 
 ## NJE Public Alpha 1 — Windows x64
 

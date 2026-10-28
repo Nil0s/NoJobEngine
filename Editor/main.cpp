@@ -1,6 +1,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Core/ProjectPaths.h"
 #include "Editor/Distribution/PackageValidation.h"
+#include "Editor/Distribution/UpdateService.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Physics/PhysicsSystem.h"
 #include "Engine/Physics/JoltSpatialQuery.h"
@@ -61,7 +62,7 @@ int main(int argc,char** argv)
             }
         } scriptBuildWorkerExitGuard;
 
-        const auto discoveredRoot=NoJob::Paths::FindProjectRoot();
+        const auto discoveredRoot=NoJob::Paths::InitializeProjectWorkspace();
         if(discoveredRoot.empty())throw std::runtime_error("Project assets not found. Extract the complete Alpha ZIP to a writable folder.");
         std::filesystem::current_path(discoveredRoot);
         NoJob::AssetManager::Init(discoveredRoot);
@@ -390,7 +391,7 @@ int main(int argc,char** argv)
                 editorCamera.SetPose(glm::vec3(world[3]),-glm::vec3(world[2]));break;
             }
         };
-        if(NoJob::Paths::IsPortable(discoveredRoot)) {
+        if(NoJob::Paths::IsPortable(discoveredRoot)||NoJob::Paths::IsInstalledApplication()) {
             const auto initial=discoveredRoot/"Assets/Scenes/RLObstacleLearningDemo.nojobscene";
             if(!NoJob::SceneSerializer::Load(editorScene,initial,cubeMesh,cubeMaterial))throw std::runtime_error("Cannot load the Alpha example scene.");
             currentScenePath=initial;editor.SetScene(&editorScene);frameExample();
@@ -530,6 +531,10 @@ int main(int argc,char** argv)
 
         double lastTime = glfwGetTime();
 
+        NoJob::Updates::Initialize([&] {
+            return !isPlaying&&!currentScenePath.empty()&&NoJob::SceneSerializer::Save(editorScene,currentScenePath);
+        });
+        struct UpdateExitGuard { ~UpdateExitGuard(){NoJob::Updates::Shutdown();} } updateExitGuard;
         while (!window.ShouldClose())
         {
             const double currentTime =
@@ -543,6 +548,7 @@ int main(int argc,char** argv)
             lastTime = currentTime;
 
             window.PollEvents();
+            if(NoJob::Updates::QuitRequested())glfwSetWindowShouldClose(window.GetNativeWindow(),GLFW_TRUE);
 
 
             // --------------------------------------------------------

@@ -10,13 +10,14 @@
 namespace NoJob {
 /** @brief Validate package files, inference and live project-script behavior; write a local diagnostic. */
 inline int ValidateAlphaPackage(const std::filesystem::path& root) {
+    const auto application=Paths::IsInstalledApplication()?Paths::ExecutableDirectory():root;
     std::ofstream report(root/"PackageValidation.txt");
     auto require=[](bool ok,const char* message){if(!ok)throw std::runtime_error(message);};
     try {
         require(bool(report),"Cannot write diagnostics; extract to a writable folder.");
-        for(const auto* file:{"Assets/Models/testplane_100x100.obj","Assets/Scenes/RLObstacleLearningDemo.nojobscene","Resources/NoJobEngine.ico"})
+        for(const auto* file:{"Assets/Models/testplane_100x100.obj","Assets/Scenes/RLObstacleLearningDemo.nojobscene"})
             require(std::filesystem::is_regular_file(root/file),"A required package file is missing.");
-        require(std::filesystem::is_regular_file(root/"NJETrainer.exe")||std::filesystem::is_regular_file(root/"NoJobTrainer.exe"),"The trainer executable is missing.");
+        require(std::filesystem::is_regular_file(application/"NJETrainer.exe")||std::filesystem::is_regular_file(application/"NoJobTrainer.exe"),"The trainer executable is missing.");
         for(const auto* name:{"RLObstaclePolicy","RLTrackingPolicy","NeuralFollowerDemo","PongBrainDemo"}) {
             const auto model=Neural::NeuralNetwork::Load(NeuralAssetPath(name).string());
             require(!model.Layers().empty(),"Empty shipped model.");

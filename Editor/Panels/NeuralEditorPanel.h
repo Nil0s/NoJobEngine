@@ -20,6 +20,8 @@ public:
     NeuralEditorPanel(const NeuralEditorPanel&) = delete;
     NeuralEditorPanel& operator=(const NeuralEditorPanel&) = delete;
     bool IsOpen() const { return open_; }
+    /** @brief Report active worker jobs without touching their mutable state. */
+    bool IsRunning() const { return running_.load(); }
     void SetOpen(bool open) { open_ = open; }
     void Draw();
 private:

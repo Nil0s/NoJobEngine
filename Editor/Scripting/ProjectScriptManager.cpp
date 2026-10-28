@@ -1,3 +1,4 @@
+#include "Engine/Core/ProjectPaths.h"
 #include "Editor/Scripting/ProjectScriptManager.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Scene/ScriptRegistry.h"
@@ -76,7 +77,8 @@ namespace NoJob
 #else
         const auto developmentDirectory=projectRoot/"out"/"ProjectScripts"/"Release";
 #endif
-        const auto packagedDirectory=projectRoot/"RuntimeData"/"ProjectScripts";
+        const auto application=Paths::IsInstalledApplication()?Paths::ExecutableDirectory():projectRoot;
+        const auto packagedDirectory=application/"RuntimeData"/"ProjectScripts";
         const auto outputDirectory=std::filesystem::is_directory(packagedDirectory)?packagedDirectory:developmentDirectory;
         std::error_code ec;
         std::filesystem::file_time_type newestTime{};
@@ -121,7 +123,7 @@ namespace NoJob
         }
 
         using RegisterProjectScriptFn = void(*)(void(*)(ScriptDefinition));
-        const auto scripts = AssetManager::GetAssetsDirectory() / "Scripts";
+        const auto scripts = Paths::IsInstalledApplication()?application/"Assets"/"Scripts":AssetManager::GetAssetsDirectory()/"Scripts";
         if (std::filesystem::exists(scripts, ec))
         {
             for (const auto& entry : std::filesystem::directory_iterator(scripts, ec))

@@ -160,7 +160,7 @@ int Window(const std::filesystem::path& project,bool obstacles){
 }
 /** @brief Parse native arguments and dispatch graphics-free tests or the interactive window. */
 int Run(const std::vector<std::wstring>& args){
-    auto project=Paths::FindProjectRoot();
+    auto project=Paths::InitializeProjectWorkspace();
     if(project.empty())project=std::filesystem::current_path();
     auto output=project/"TrainingRuns/SelfTest";bool self=false,obstacles=true;
     for(size_t i=1;i<args.size();++i){if(args[i]==L"--project"&&i+1<args.size())project=args[++i];else if(args[i]==L"--output-root"&&i+1<args.size())output=args[++i];else if(args[i]==L"--self-test")self=true;else if(args[i]==L"--task"&&i+1<args.size())obstacles=args[++i]!=L"tracking";}

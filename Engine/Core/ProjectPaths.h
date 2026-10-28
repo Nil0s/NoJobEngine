@@ -35,8 +35,21 @@ inline std::filesystem::path FindProjectRootFrom(const std::filesystem::path& wo
 }
 /** @brief Return the current executable's directory on Windows. */
 std::filesystem::path ExecutableDirectory();
+/** @brief Detect an installer-managed application beside the current executable. */
+bool IsInstalledApplication();
+/** @brief Return per-user application data; NJE_USER_HOME is an explicit test override. */
+std::filesystem::path UserDataDirectory();
+/** @brief Copy missing sample files without replacing any existing user content. */
+std::filesystem::path EnsureWorkspaceFrom(const std::filesystem::path& application,const std::filesystem::path& userData);
+/** @brief Prepare the installed user's workspace or return the portable/source project. */
+std::filesystem::path InitializeProjectWorkspace();
+/** @brief Keep installed preferences outside the application and its templates. */
+std::filesystem::path SettingsDirectory();
+/** @brief Check running installed trainer/runtime instances before an update. */
+bool OtherInstalledAppsRunning();
 /** @brief Locate a project even after moving the entire Alpha package. */
 inline std::filesystem::path FindProjectRoot() {
+    if(IsInstalledApplication())return UserDataDirectory()/"Projects"/"Default";
     std::error_code ec;const auto cwd=std::filesystem::current_path(ec);
     return FindProjectRootFrom(ec?std::filesystem::path{}:cwd,ExecutableDirectory());
 }
