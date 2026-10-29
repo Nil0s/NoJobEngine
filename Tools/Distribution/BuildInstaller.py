@@ -37,7 +37,7 @@ def build(args):
     repository=out/'publication'/'repository';docs=repository/'docs';docs.mkdir(parents=True,exist_ok=True)
     release=out/'publication'/'release-assets';release.mkdir(exist_ok=True)
     shutil.copy2(installer,release/name);shutil.copy2(installer.with_suffix('.exe.sha256'),release/(name+'.sha256'))
-    tag='v'+alpha+'-alpha';site=f'https://{args.owner.lower()}.github.io/{args.repository}'
+    tag='alpha-'+alpha;site=f'https://{args.owner.lower()}.github.io/{args.repository}'
     download=f'https://github.com/{args.owner}/{args.repository}/releases/download/{tag}/{name}'
     rss=ET.Element('rss',{'version':'2.0'});channel=ET.SubElement(rss,'channel')
     for key,value in [('title','NJE Alpha updates'),('link',site+'/'),('description','Signed NJE Alpha releases'),('language','en')]:ET.SubElement(channel,key).text=value
