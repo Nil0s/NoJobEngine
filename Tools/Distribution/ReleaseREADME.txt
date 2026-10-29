@@ -24,6 +24,7 @@ scene runs.
 | **Learning evaluation** | Held-out scenarios, comparison with random actions and CSV reports |
 | **AI Debugger** | Observations, selected actions, Q-values and neural activations |
 | **Navigation and behavior** | NavMesh navigation, visual Behavior Trees and agent Blackboards |
+| **Standalone export** | Build Project packages saved scenes with the bundled Release runtime and compiled scripts; no Visual Studio is needed |
 | **Live examples** | X/Z target tracking, obstacle avoidance and supervised neural demos |
 
 ## Alpha {alpha} — install and try it
@@ -37,6 +38,13 @@ scene runs.
 
 > **Requirements:** Windows 10/11 x64 and a graphics driver supporting OpenGL 4.6.
 > Running the supplied examples does not require Visual Studio, CMake or Python.
+
+## Export a standalone game
+
+Save your scene, open **Build → Build Settings**, add the saved scenes and choose
+the startup scene. Set a Build Name, then select **Build Project**. Find the result
+with **Build → Open Last Build Folder**. Repeated exports preserve previous output
+in numbered folders. Compiling new C++ scripts still requires developer tools.
 
 ## Your work stays with you
 

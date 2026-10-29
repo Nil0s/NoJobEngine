@@ -230,6 +230,7 @@ int main(int argc,char**argv)
 
         NoJob::Scene scene;
         const auto startScene = projectRoot / project.StartScene;
+        std::cout << "[Runtime] Project: " << projectRoot.string() << "\n[Runtime] Start scene: " << project.StartScene.generic_string() << '\n';
         if (!NoJob::SceneSerializer::Load(scene, startScene, defaultMesh, defaultMaterial))
             throw std::runtime_error("NoJobRuntime: failed to load Start Scene: " + startScene.string());
 

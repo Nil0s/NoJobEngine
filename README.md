@@ -130,9 +130,16 @@ has been moved or launched from an unrelated working directory.
   license texts supplied in **THIRD_PARTY_NOTICES.md** and **Licenses/**.
 
 The Alpha can run its precompiled examples and native training without developer
-tools. Compiling custom C++ scripts or building new standalone projects requires
-the source checkout and Visual Studio C++ tools; those build controls are
-disabled when running the binary-only package. Trainer windows run independent
+tools. Use **Build → Build Settings** to add saved scenes, choose a startup scene and
+set a Build Name. **Build Project** exports a standalone game using the bundled
+Release runtime, runtime assets, neural policies and existing compiled scripts.
+No Visual Studio or CMake is required for this Alpha export. Output is written
+to `Builds/<Build Name>` inside your editable project. Repeated builds receive a
+numbered folder and preserve previous output. Use **Build → Open Last Build Folder**
+to locate the executable. Save scene edits before exporting.
+
+Compiling custom C++ scripts still requires the source checkout and Visual Studio
+C++ tools. Exporting does not compile newly authored scripts. Trainer windows run independent
 experiments. Obstacle learning remains a fixed-arena demonstration, with a
 separate learned tracking policy for open-floor movement outside the core.
 

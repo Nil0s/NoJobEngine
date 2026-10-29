@@ -3,7 +3,7 @@
 #define NJE_VERSION_MAJOR 2
 #define NJE_VERSION_MINOR 1
 #define NJE_VERSION_PATCH 0
-#define NJE_VERSION_BUILD 3
+#define NJE_VERSION_BUILD 5
 /** @brief Public Alpha label; the numeric build remains monotonic for existing updater installs. */
 #define NJE_ALPHA_VERSION "0.1"
 #define NJE_PUBLIC_VERSION "Alpha " NJE_ALPHA_VERSION

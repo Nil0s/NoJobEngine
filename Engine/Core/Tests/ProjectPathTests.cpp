@@ -13,6 +13,10 @@ int main(int argc,char**argv) {
     require(FindProjectRootFrom(empty,portable)==portable);
     require(FindProjectRootFrom(source,portable)==portable);
     require(FindProjectRootFrom(source,empty)==source);
+    const auto exported=base/"Exported game";
+    fs::create_directories(exported/"Assets");std::ofstream(exported/"Game.nojobproject")<<"test";
+    std::ofstream(exported/"NJE.runtime")<<"NJE_RUNTIME 1";
+    require(FindProjectRootFrom(source,exported)==exported);
     require(!IsProject(empty));
     require(FindProjectRootFrom({},{}).empty());
     require(!HasSourceTools(portable));

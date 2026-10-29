@@ -286,8 +286,16 @@ namespace NoJob
 
         bool BuildStandalone()
         {
-            if(!Paths::HasSourceTools(AssetManager::GetProjectRoot())) {
-                ScriptLog("[Build] Standalone builds require the source checkout and Visual Studio C++ tools.");return false;
+            std::string settingsError;
+            if (!s_BuildSettings.IsValid(settingsError)) {
+                ScriptLog("[Build] " + settingsError);
+                s_ShowBuildSettings = true;
+                return false;
+            }
+            const bool sourceBuild = Paths::HasSourceTools(AssetManager::GetProjectRoot());
+            if (!sourceBuild && !StandaloneBuilder::HasPrecompiledRuntime(Paths::ExecutableDirectory())) {
+                ScriptLog("[Build] The bundled runtime is missing. Reinstall the complete NJE Alpha package.");
+                return false;
             }
 
             if (s_StandaloneBuildRunning.exchange(true))
@@ -297,8 +305,8 @@ namespace NoJob
             }
 
             const auto root = AssetManager::GetProjectRoot();
-            const auto cmake = FindCMakeExecutable();
-            if (cmake.empty())
+            const auto cmake = sourceBuild ? FindCMakeExecutable() : std::filesystem::path{};
+            if (sourceBuild && cmake.empty())
             {
                 ScriptLog("[Build] CMake was not found.");
                 s_StandaloneBuildRunning = false;
@@ -312,6 +320,7 @@ namespace NoJob
             const BuildSettings settings = s_BuildSettings;
             s_StandaloneBuildThread = std::thread([root, cmake, settings]()
                 {
+                    try {
                     const auto result = StandaloneBuilder::Build(
                         root,
                         cmake,
@@ -324,9 +333,16 @@ namespace NoJob
                             return RunProcessToScriptConsole(executable, arguments, prefix);
                         });
 
-                    s_StandaloneBuildSucceeded = result.Succeeded;
                     if (result.Succeeded)
                         s_LastStandaloneBuildDirectory = result.OutputDirectory;
+                    s_StandaloneBuildSucceeded = result.Succeeded;
+                    } catch (const std::exception& exception) {
+                        ScriptLog(std::string("[Build] ") + exception.what());
+                        s_StandaloneBuildSucceeded = false;
+                    } catch (...) {
+                        ScriptLog("[Build] Unexpected standalone export failure.");
+                        s_StandaloneBuildSucceeded = false;
+                    }
                     s_StandaloneBuildRunning = false;
                 });
             return true;
@@ -1117,6 +1133,13 @@ namespace NoJob
     void EditorLayer::Init(GLFWwindow* window, Scene* scene)
     {
         s_BuildSettings = BuildSettings::Load(FindNoJobProjectRoot());
+        bool repairedBuildScenes = false;
+        for (auto& scenePath : s_BuildSettings.Scenes) {
+            std::string error;
+            const auto resolved = StandaloneBuilder::ResolveProjectScene(FindNoJobProjectRoot(), Paths::ExecutableDirectory(), scenePath, error);
+            if (!resolved.empty() && resolved != scenePath) { scenePath = resolved; repairedBuildScenes = true; }
+        }
+        if (repairedBuildScenes) s_BuildSettings.Save(FindNoJobProjectRoot());
         std::snprintf(s_BuildNameBuffer, sizeof(s_BuildNameBuffer), "%s", s_BuildSettings.BuildName.c_str());
 #ifdef _WIN32
         ProjectScriptManager::SetLogger(ScriptLog);
@@ -1884,8 +1907,34 @@ namespace NoJob
                 ImGui::SeparatorText("Scenes in Build"); int remove = -1;
                 for (size_t i = 0;i < s_BuildSettings.Scenes.size();++i) { ImGui::PushID((int)i); bool startup = i == s_BuildSettings.StartupSceneIndex; if (ImGui::RadioButton("##startup", startup))s_BuildSettings.StartupSceneIndex = i; ImGui::SameLine(); ImGui::TextUnformatted(s_BuildSettings.Scenes[i].generic_string().c_str()); ImGui::SameLine(); if (ImGui::SmallButton("Remove"))remove = (int)i; ImGui::PopID(); }
                 if (remove >= 0) { s_BuildSettings.Scenes.erase(s_BuildSettings.Scenes.begin() + remove); if (s_BuildSettings.Scenes.empty())s_BuildSettings.StartupSceneIndex = 0; else if (s_BuildSettings.StartupSceneIndex >= s_BuildSettings.Scenes.size())s_BuildSettings.StartupSceneIndex = s_BuildSettings.Scenes.size() - 1; }
-                if (ImGui::Button("Add Scene...")) { auto selected = SceneFileDialog::Open(AssetManager::GetProjectRoot() / "Assets/Scenes"); if (!selected.empty()) { std::error_code ec;auto rel = std::filesystem::relative(selected, AssetManager::GetProjectRoot(), ec);if (!ec && std::find(s_BuildSettings.Scenes.begin(), s_BuildSettings.Scenes.end(), rel) == s_BuildSettings.Scenes.end())s_BuildSettings.Scenes.push_back(rel); } }
+                if (ImGui::Button("Add Scene...")) ImGui::OpenPopup("Choose Project Scene");
+                if (ImGui::BeginPopup("Choose Project Scene")) {
+                    ImGui::TextUnformatted("Saved scenes in this editable project");
+                    ImGui::Separator();
+                    std::vector<std::filesystem::path> scenes;
+                    std::error_code error;
+                    const auto root = AssetManager::GetProjectRoot();
+                    for (std::filesystem::recursive_directory_iterator it(root / "Assets", error), end;
+                        !error && it != end; it.increment(error)) {
+                        if (!it->is_symlink() && it->is_regular_file() && it->path().extension() == ".nojobscene")
+                            scenes.push_back(it->path().lexically_relative(root));
+                    }
+                    std::sort(scenes.begin(), scenes.end());
+                    if (scenes.empty()) ImGui::TextDisabled("Save a scene inside Assets before adding it to the build.");
+                    for (const auto& scenePath : scenes) {
+                        const bool added = std::find(s_BuildSettings.Scenes.begin(), s_BuildSettings.Scenes.end(), scenePath) != s_BuildSettings.Scenes.end();
+                        if (ImGui::Selectable(scenePath.generic_string().c_str(), added, added ? ImGuiSelectableFlags_Disabled : 0))
+                            s_BuildSettings.Scenes.push_back(scenePath);
+                    }
+                    ImGui::EndPopup();
+                }
+                const bool sourceBuild = Paths::HasSourceTools(AssetManager::GetProjectRoot());
+                if (!sourceBuild) s_BuildSettings.Configuration = L"Release";
+                ImGui::TextUnformatted("Save your scene, add it below, and select the startup scene.");
+                if (!sourceBuild) ImGui::TextUnformatted("Exports with the bundled Release runtime and existing compiled scripts.");
+                ImGui::BeginDisabled(!sourceBuild);
                 ImGui::SeparatorText("Configuration"); bool debug = s_BuildSettings.Configuration == L"Debug"; if (ImGui::RadioButton("Debug", debug))s_BuildSettings.Configuration = L"Debug"; ImGui::SameLine(); if (ImGui::RadioButton("Release", !debug))s_BuildSettings.Configuration = L"Release";
+                ImGui::EndDisabled();
                 ImGui::Separator();
                 if (ImGui::Button("Save Settings")) { s_BuildSettings.Save(AssetManager::GetProjectRoot());ScriptLog("[Build] Build Settings saved."); } ImGui::SameLine();
                 if (ImGui::Button("Build")) { std::string error;if (!s_BuildSettings.IsValid(error))ScriptLog("[Build] " + error);else { s_BuildSettings.Save(AssetManager::GetProjectRoot());s_ShowBuildSettings = false;ImGui::CloseCurrentPopup();BuildStandalone(); } } ImGui::SameLine();
@@ -1908,7 +1957,7 @@ namespace NoJob
                     ImGui::TextDisabled("Compiling scripts...");
                 ImGui::Separator();
                 ImGui::BeginDisabled(
-                    ProjectScriptBuildSystem::IsRunning() || s_StandaloneBuildRunning.load() || !Paths::HasSourceTools(AssetManager::GetProjectRoot()));
+                    m_IsPlaying || ProjectScriptBuildSystem::IsRunning() || s_StandaloneBuildRunning.load());
                 if (ImGui::MenuItem("Build Settings...")) s_ShowBuildSettings = true;
                 if (ImGui::MenuItem("Build Project")) BuildStandalone();
                 ImGui::EndDisabled();
@@ -1916,8 +1965,11 @@ namespace NoJob
                     ImGui::TextDisabled("Building standalone...");
                 if (s_StandaloneBuildSucceeded.load() &&
                     !s_LastStandaloneBuildDirectory.empty())
-                    ImGui::TextDisabled("Last build: %s",
-                        s_LastStandaloneBuildDirectory.string().c_str());
+                {
+                    ImGui::TextDisabled("Last build: %s", s_LastStandaloneBuildDirectory.string().c_str());
+                    if (ImGui::MenuItem("Open Last Build Folder"))
+                        ShellExecuteW(nullptr, L"open", s_LastStandaloneBuildDirectory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
                 ImGui::Separator();
                 ImGui::TextDisabled(ProjectScriptManager::IsLoaded()
                     ? "ProjectScripts.dll loaded"
@@ -1927,7 +1979,8 @@ namespace NoJob
 #endif
                 if(!Paths::HasSourceTools(AssetManager::GetProjectRoot())) {
                     ImGui::Separator();
-                    ImGui::TextDisabled("Source checkout and Visual Studio C++ tools are required for builds.");
+                    ImGui::TextDisabled("Build Project exports using the bundled Release runtime.");
+                    ImGui::TextDisabled("Compiling new C++ scripts requires the source checkout and Visual Studio.");
                 }
                 ImGui::EndMenu();
             }

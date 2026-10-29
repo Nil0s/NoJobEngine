@@ -242,6 +242,7 @@ add_executable(NoJobEditor
     Editor/main.cpp
     Editor/EditorLayer.cpp
     Editor/Build/StandaloneBuilder.cpp
+    Editor/Build/PrecompiledExport.cpp
     Editor/Build/BuildSettings.cpp
     Editor/Scripting/VisualStudioIntegration.cpp
     Editor/Scripting/ProjectScriptManager.cpp

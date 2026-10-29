@@ -29,7 +29,9 @@ inline std::filesystem::path WalkUp(std::filesystem::path directory) {
 inline std::filesystem::path FindProjectRootFrom(const std::filesystem::path& working,
                                                const std::filesystem::path& executableDirectory) {
     const auto besideExecutable=WalkUp(executableDirectory);
-    if(!besideExecutable.empty()&&IsPortable(besideExecutable))return besideExecutable;
+    std::error_code markerError;
+    if(!besideExecutable.empty()&&(IsPortable(besideExecutable)||
+        std::filesystem::is_regular_file(besideExecutable/"NJE.runtime",markerError)))return besideExecutable;
     if(const auto fromWorking=WalkUp(working);!fromWorking.empty())return fromWorking;
     return besideExecutable;
 }

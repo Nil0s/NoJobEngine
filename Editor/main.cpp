@@ -1,6 +1,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Core/ProjectPaths.h"
 #include "Editor/Distribution/PackageValidation.h"
+#include "Editor/Build/ExportValidation.h"
 #include "Editor/Distribution/UpdateService.h"
 #include "Engine/Asset/AssetManager.h"
 #include "Engine/Physics/PhysicsSystem.h"
@@ -70,6 +71,7 @@ int main(int argc,char** argv)
         std::filesystem::current_path(discoveredRoot);
         NoJob::AssetManager::Init(discoveredRoot);
         if(argc>1&&std::string(argv[1])=="--validate-package")return NoJob::ValidateAlphaPackage(discoveredRoot);
+        if(argc>1&&std::string(argv[1])=="--validate-export")return NoJob::ValidateAlphaExport(discoveredRoot);
         const bool smoke=argc>1&&(std::string(argv[1])=="--smoke-test"||std::string(argv[1])=="--smoke-examples"||std::string(argv[1])=="--smoke-scene-workflow");
         unsigned smokeFrames=0;
         NoJob::Window window({NoJob::Paths::IsPortable(discoveredRoot)?"NJE " NJE_PUBLIC_VERSION:"NJE - NoJobEngine",1600,900});
