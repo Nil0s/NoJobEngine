@@ -9,8 +9,8 @@ def application_version():
 def alpha_version():
     """Read the public Alpha label independently from the monotonic update build."""
     return re.search(r'#define NJE_ALPHA_VERSION "([^"]+)"',(ROOT/'Resources/Version.h').read_text()).group(1)
-SCENES=['RLObstacleLearningDemo','RLTrackingDemo','RLNavigationDemo','NeuralTrainingDemo','NeuralPongTrackingDemo']
-SCRIPTS=['RLObstacleAgent','RLTrackingAgent','RLTargetPatrol','PongAgent']
+SCENES=['BehaviorTreeDemo','RLObstacleLearningDemo','RLTrackingDemo','RLNavigationDemo','NeuralTrainingDemo','NeuralPongTrackingDemo']
+SCRIPTS=['BTDemoNavigation','RLObstacleAgent','RLTrackingAgent','RLTargetPatrol','PongAgent']
 MODELS=['RLObstaclePolicy','RLTrackingPolicy','NeuralFollowerDemo','PongBrainDemo']
 def cache_values(build):
     values={}
@@ -64,6 +64,7 @@ def package(build,output,crt):
     if not dlls:raise FileNotFoundError('Release project-script DLL is missing.')
     copy(max(dlls,key=lambda p:p.stat().st_mtime),'RuntimeData/ProjectScripts/NoJobProjectScripts_alpha1.dll')
     for scene in SCENES:asset('Assets/Scenes/'+scene+'.nojobscene')
+    for suffix in ['.njbt','.njbt.layout']:asset('Assets/AI/BehaviorTreeDemo'+suffix)
     for name in MODELS:asset('Assets/Neural/'+name+'.njn')
     for name in SCRIPTS:
         for suffix in ['.cpp','.h']:asset('Assets/Scripts/'+name+suffix)

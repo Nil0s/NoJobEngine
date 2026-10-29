@@ -81,7 +81,7 @@ NJE is the public-facing name of NoJobEngine. Existing project formats and C++
 identifiers retain their original names for compatibility.
 
 The Alpha distribution candidate packages the editor, independent RL trainer,
-standalone demonstration and five curated AI scenes. Its executables use the
+standalone demonstration and six curated AI scenes. Its executables use the
 NoJobEngine logo as their application icon. Running the supplied examples and
 training the supplied environments does **not** require Visual Studio, CMake
 or Python. The required Microsoft C++ runtime DLLs are included beside the apps.
@@ -118,7 +118,7 @@ has been moved or launched from an unrelated working directory.
 
 - Windows 10/11 x64 with a graphics driver supporting **OpenGL 4.6** for the
   editor/runtime. The independent trainer uses OpenGL 3.3.
-- Five example scenes, four saved neural models, the original test plane and
+- Six example scenes, four saved neural models, the original test plane and
   the example project scripts. The package contains curated demonstration
   assets rather than the source checkout's entire imported-asset collection.
 - Training histories are written to `TrainingRuns/`; evaluation reports go to
@@ -1341,3 +1341,18 @@ terms.
 Third-party components remain subject to their respective licenses and
 copyrights. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the
 current dependency inventory and redistribution notes.
+
+## Behaviour Tree example
+
+Open **Examples → Behaviour Tree: patrol and chase**, then press **Play**.
+The blue **BTAgent** patrols while the orange **BTTarget** is out of sight,
+then pursues it when it enters its five-unit perception radius. The target moves
+on its own; disable its `AutoMove` field before Play to position it manually.
+Move it out of range to see patrol resume.
+
+Open **AI → AI Debugger** and select **BTAgent** to inspect active nodes and
+blackboard values. Open **AI → Behavior Tree Editor** and choose
+**BehaviorTreeDemo** to view the supplied Selector, CanSeeTarget decorator,
+ChaseTarget and Patrol nodes. This example uses native Behaviour Tree rules,
+not a learned policy. Its navigation bakes automatically on Play from the
+original `testplane_100x100.obj`, including in exported games.

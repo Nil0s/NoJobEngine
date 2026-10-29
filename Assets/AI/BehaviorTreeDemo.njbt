@@ -1,0 +1,5 @@
+NJOB_BT 2
+NODE 1 0 Selector - - 0.5
+NODE 2 1 Decorator CanSeeTarget TargetPosition 0.5
+NODE 3 2 Action ChaseTarget - 0.5
+NODE 4 1 Action Patrol - 0.5

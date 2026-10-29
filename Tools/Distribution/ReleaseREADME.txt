@@ -94,3 +94,18 @@ notices are included with the application.
 <div align="center">
   <sub>Created by Francisco Ramon Asensi Domingo · NJE — NoJobEngine</sub>
 </div>
+
+## Behaviour Tree example
+
+Open **Examples → Behaviour Tree: patrol and chase**, then press **Play**.
+The blue **BTAgent** patrols while the orange **BTTarget** is out of sight,
+then pursues it when it enters its five-unit perception radius. The target moves
+on its own; disable its `AutoMove` field before Play to position it manually.
+Move it out of range to see patrol resume.
+
+Open **AI → AI Debugger** and select **BTAgent** to inspect active nodes and
+blackboard values. Open **AI → Behavior Tree Editor** and choose
+**BehaviorTreeDemo** to view the supplied Selector, CanSeeTarget decorator,
+ChaseTarget and Patrol nodes. This example uses native Behaviour Tree rules,
+not a learned policy. Its navigation bakes automatically on Play from the
+original `testplane_100x100.obj`, including in exported games.

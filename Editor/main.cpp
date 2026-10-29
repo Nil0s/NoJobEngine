@@ -229,15 +229,77 @@ int main(int argc,char** argv)
         NoJob::EditorCamera editorCamera;
         if(argc>1&&std::string(argv[1])=="--smoke-examples") {
             std::ofstream report(discoveredRoot/"ExamplesValidation.txt");
-            for(const auto* name:{"RLObstacleLearningDemo","RLTrackingDemo","RLNavigationDemo","NeuralTrainingDemo","NeuralPongTrackingDemo"}) {
+            for(const auto* name:{"BehaviorTreeDemo","RLObstacleLearningDemo","RLTrackingDemo","RLNavigationDemo","NeuralTrainingDemo","NeuralPongTrackingDemo"}) {
                 NoJob::Scene example;
                 const auto path=discoveredRoot/"Assets/Scenes"/(std::string(name)+".nojobscene");
                 if(!NoJob::SceneSerializer::Load(example,path,cubeMesh,cubeMaterial))throw std::runtime_error("Cannot load example: "+std::string(name));
                 for(auto entity:example.GetEntities())if(entity.HasComponent<NoJob::NativeScriptComponent>()) {
                     const auto& script=entity.GetComponent<NoJob::NativeScriptComponent>();
-                    if(!NoJob::ScriptRegistry::Find(script.ScriptName))throw std::runtime_error("Missing example script: "+script.ScriptName);
+                    if(script.ScriptName!="BTAssetAgent" && !NoJob::ScriptRegistry::Find(script.ScriptName))throw std::runtime_error("Missing example script: "+script.ScriptName);
                 }
-                example.OnRuntimeStart();for(int frame=0;frame<120;++frame)example.OnUpdate(1.f/60.f);example.OnRuntimeStop();
+                if(std::string(name)=="BehaviorTreeDemo") {
+                    // Exercise the shipped asset and real navigation, not a simulated tree.
+                    NoJob::Entity agent, target;
+                    for(auto entity:example.GetEntities()) {
+                        const auto& tag=entity.GetComponent<NoJob::TagComponent>().Tag;
+                        if(tag=="BTAgent") agent=entity;
+                        if(tag=="BTTarget") target=entity;
+                    }
+                    if(!agent || !target) throw std::runtime_error("BT demo entities missing");
+                    target.GetComponent<NoJob::NativeScriptComponent>().Fields["AutoMove"]=NoJob::ScriptFieldValue::MakeBool(false);
+                    auto& goal=target.GetComponent<NoJob::TransformComponent>().Position;
+                    goal={25.f,.75f,25.f};
+                    example.OnRuntimeStart();
+                    if(!example.GetNavigationSystem() || !example.GetNavigationSystem()->HasNavMesh())
+                        throw std::runtime_error("BT demo navigation missing");
+                    auto position=[&] {return agent.GetComponent<NoJob::TransformComponent>().Position;};
+                    auto tick=[&](int frames) {for(int i=0;i<frames;++i)example.OnUpdate(1.f/60.f);};
+                    auto active=[&](const std::string& label) {
+                        const auto debug=example.GetBehaviorTreeDebug(agent.GetHandle());
+                        if(debug) for(const auto& node:debug->Nodes)
+                            if(node.Label.find(label)!=std::string::npos && node.Active)return true;
+                        return false;
+                    };
+                    const auto origin=position();tick(60);
+                    if(!active("Patrol") || glm::length(position()-origin)<.5f)
+                        throw std::runtime_error("BT demo failed to patrol");
+                    report<<"PASS: BT patrol active and actual navigation movement\n";
+                    goal=position()+glm::vec3(2.f,0.f,0.f);tick(8);
+                    const auto debug=example.GetBehaviorTreeDebug(agent.GetHandle());
+                    if(!active("ChaseTarget") || !debug || !debug->TargetHandle || *debug->TargetHandle!=target.GetHandle())
+                        throw std::runtime_error("BT demo failed to acquire and chase target");
+                    report<<"PASS: perception preempts patrol, chase active, debugger target present\n";
+                    goal=position()+glm::vec3(0.f,0.f,3.f);tick(8);
+                    const auto moved=example.GetBehaviorTreeDebug(agent.GetHandle());
+                    if(!moved || !moved->TargetPosition || glm::length(*moved->TargetPosition-goal)>.1f)
+                        throw std::runtime_error("BT target blackboard position stale");
+                    report<<"PASS: moving target refreshes blackboard destination\n";
+                    goal={25.f,.75f,25.f};tick(60);
+                    if(!active("Patrol")) throw std::runtime_error("BT demo failed to resume patrol");
+                    report<<"PASS: target outside perception returns to patrol\n";
+                    example.OnRuntimeStop();
+                    if(example.GetNavigationSystem()) throw std::runtime_error("BT demo retained owned navigation after Stop");
+                    example.OnRuntimeStart();tick(10);example.OnRuntimeStop();
+                    report<<"PASS: Stop releases owned navigation; second Play succeeds\n";
+                    NoJob::NavigationSystem editorNavigation;
+                    example.SetNavigationSystem(&editorNavigation);
+                    target.GetComponent<NoJob::NativeScriptComponent>().Fields["AutoMove"]=NoJob::ScriptFieldValue::MakeBool(true);
+                    goal={6.4f,.75f,0.f};const auto initialGoal=goal;
+                    example.OnRuntimeStart();
+                    bool sawAutomaticChase=false;
+                    for(int frame=0;frame<600;++frame) {
+                        tick(1);sawAutomaticChase=sawAutomaticChase || active("ChaseTarget");
+                    }
+                    if(!sawAutomaticChase || glm::length(goal-initialGoal)<1.f)
+                        throw std::runtime_error("BT demo automatic target/chase failed");
+                    example.OnRuntimeStop();
+                    if(example.GetNavigationSystem()!=&editorNavigation)
+                        throw std::runtime_error("BT demo released host-owned navigation");
+                    example.SetNavigationSystem(nullptr);
+                    report<<"PASS: automatic target and chase; host-owned editor navigation survives Stop\n";
+                } else {
+                    example.OnRuntimeStart();for(int frame=0;frame<120;++frame)example.OnUpdate(1.f/60.f);example.OnRuntimeStop();
+                }
                 report<<"PASS: "<<name<<" scene load, script factories and Play/Stop\n";
             }
         }
@@ -1340,7 +1402,8 @@ int main(int argc,char** argv)
     {
         std::cerr << "[Fatal] Unhandled std::exception: " << e.what() << '\n';
 #ifdef _WIN32
-        MessageBoxA(nullptr,e.what(),"NJE startup error",MB_OK|MB_ICONERROR);
+        if(argc<=1 || std::string(argv[1]).rfind("--smoke-",0)!=0)
+            MessageBoxA(nullptr,e.what(),"NJE startup error",MB_OK|MB_ICONERROR);
 #endif
         NoJob::ProjectScriptBuildSystem::Shutdown();
         return 1;

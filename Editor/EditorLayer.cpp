@@ -1851,6 +1851,7 @@ namespace NoJob
             if(ImGui::BeginMenu("Examples")) {
                 ImGui::BeginDisabled(m_IsPlaying);
                 const std::pair<const char*,const char*> examples[]={
+                    {"Behaviour Tree: patrol and chase","BehaviorTreeDemo"},
                     {"RL obstacle avoidance + automatic target","RLObstacleLearningDemo"},
                     {"RL target tracking (X/Z)","RLTrackingDemo"},
                     {"Navigation tracking (bake required)","RLNavigationDemo"},
