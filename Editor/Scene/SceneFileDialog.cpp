@@ -38,6 +38,26 @@ namespace NoJob
 #endif
     }
 
+    SceneSaveChoice SceneFileDialog::ConfirmSceneReplacement()
+    {
+#ifdef _WIN32
+        const auto answer = MessageBoxW(GetActiveWindow(),
+            L"Save changes to the current scene before continuing?\n\nYes: Save    No: Discard    Cancel: Keep editing",
+            L"NJE - Unsaved scene", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON3);
+        if (answer == IDYES) return SceneSaveChoice::Save;
+        if (answer == IDNO) return SceneSaveChoice::Discard;
+#endif
+        return SceneSaveChoice::Cancel;
+    }
+
+    void SceneFileDialog::ShowSaveError()
+    {
+#ifdef _WIN32
+        MessageBoxW(GetActiveWindow(), L"The scene could not be saved. Choose a writable location and try again.\nYour current scene remains open.",
+            L"NJE - Save failed", MB_OK | MB_ICONERROR);
+#endif
+    }
+
     std::filesystem::path SceneFileDialog::Open(
         const std::filesystem::path& initialDirectory)
     {

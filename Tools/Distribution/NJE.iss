@@ -7,11 +7,14 @@
 #ifndef AppVersion
   #define AppVersion GetFileVersion(AddBackslash(StageDir) + "NJE.exe")
 #endif
+#ifndef AlphaVersion
+  #define AlphaVersion "0.1"
+#endif
 [Setup]
 AppId={{B447E46F-5D2A-4F4D-BD08-171D68A665D2}
 AppName=NJE
 AppVersion={#AppVersion}
-AppVerName=NJE Alpha {#AppVersion}
+AppVerName=NJE Alpha {#AlphaVersion}
 AppPublisher=Francisco Ramon Asensi Domingo
 AppPublisherURL=https://github.com/Nil0s/NJE-Releases
 AppUpdatesURL=https://nil0s.github.io/NJE-Releases/
@@ -37,10 +40,10 @@ OutputDir={#OutputDir}
 OutputBaseFilename=NJE_TestSetup_{#AppVersion}
 CreateUninstallRegKey=no
 #else
-OutputBaseFilename=NJE_Setup_{#AppVersion}
+OutputBaseFilename=NJE_Alpha_{#AlphaVersion}_Setup
 #endif
 VersionInfoVersion={#AppVersion}
-VersionInfoProductName=NJE
+VersionInfoProductName=NJE Alpha {#AlphaVersion}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
@@ -48,6 +51,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Excludes: "NJE.alpha,NoJobEngine.alpha,PackageValidation.txt,ExamplesValidation.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
 [INI]
+Filename: "{app}\InstalledVersion.ini"; Section: "NJE"; Key: "PublicVersion"; String: "Alpha {#AlphaVersion}"
 Filename: "{app}\InstalledVersion.ini"; Section: "NJE"; Key: "Version"; String: "{#AppVersion}"
 #ifndef NJETestMode
 [Icons]

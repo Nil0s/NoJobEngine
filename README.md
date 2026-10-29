@@ -35,7 +35,7 @@ Native supervised learning, reinforcement learning and policy inference are now
 integrated into the C++ runtime and editor, with live training visualization
 and saved-policy evaluation.
 
-> **Current milestone: NJE Public Alpha 1 — Windows installer and signed update candidate, based on completed V2.1**
+> **Current milestone: NJE Alpha 0.1 — Windows installer and signed update candidate, based on completed V2.1**
 >
 > **Next focus: Alpha feedback, distribution, documentation, usability and stability**
 
@@ -46,7 +46,7 @@ CMake**
 
 ## Installed edition and signed Alpha updates
 
-Run **NJE_Setup_2.1.0.2.exe** for per-user installation with the NJE icon.
+Run **NJE_Alpha_0.1_Setup.exe** for per-user installation with the NJE icon.
 Application files live in `%LOCALAPPDATA%/Programs/NJE`; editable samples,
 models and training histories live in `%LOCALAPPDATA%/NJE/Projects/Default`.
 Preferences live in `%LOCALAPPDATA%/NJE/Settings`. Updates and uninstall retain
@@ -65,7 +65,8 @@ not upload anything. Publish the new installer before replacing the feed.
 To rebuild, run `python Tools/Distribution/FetchUpdaterSDK.py`, configure the
 Release distribution and prepare it with `PackageAlpha.py`. See
 `BuildInstaller.py --help` for compiler and key arguments. Increment
-`Resources/Version.h` for each release. Installer and app versions must match.
+`Resources/Version.h` for each release. The public `NJE_ALPHA_VERSION` is independent of the monotonic
+internal build used by the updater; keep both values consistent in the package.
 Keep the same AppId and private signing key; back up the key privately.
 
 Diagnostics accept `NJE_USER_HOME` and `NJE_DISABLE_UPDATES=1`. Installer tests
@@ -74,7 +75,7 @@ denies registry writes. The production installer still requires an interactive
 Windows installation check and clean-machine testing. Hosted update installation
 cannot be tested before the owner publishes the release and feed.
 
-## NJE Public Alpha 1 — Windows x64
+## NJE Alpha 0.1 — Windows x64
 
 NJE is the public-facing name of NoJobEngine. Existing project formats and C++
 identifiers retain their original names for compatibility.
@@ -89,9 +90,12 @@ or Python. The required Microsoft C++ runtime DLLs are included beside the apps.
 
 1. Extract the **entire ZIP** into a writable local folder. Keep the executables,
    `Assets`, `RuntimeData`, `Resources` and project descriptor together.
-2. Open **NJE.exe**. The obstacle-learning example opens automatically,
-   with its camera framed and its precompiled project scripts already loaded.
-3. Press **Play**. The blue agent follows the orange target around the fixed
+2. Open **NJE.exe**. A new untitled scene opens with **Main Camera**,
+   **Directional Light** and **Point Light**, plus the editor-only grid and gizmos.
+   Use **File → New Scene / Ctrl+N** for the same clean template. Save prompts
+   for a filename the first time; New/Open offer Save, Discard or Cancel for edits.
+   Grid and gizmos can be toggled in **View** and are restored for each new scene.
+3. Choose **Examples → RL obstacle avoidance + automatic target**, then press **Play**. The blue agent follows the orange target around the fixed
    obstacles. The target waits eight seconds initially, then moves automatically
    and pauses at its waypoints. Select `RLTarget` and disable `AutoMove` in its
    script fields to control it manually.
@@ -140,6 +144,9 @@ For a diagnostic without opening a graphics window, run
 script loading and a short live RL/automatic-target simulation. The trainer's
 `--self-test --output-root <folder>` command checks independent training jobs
 and their controls without creating a graphics window.
+`NJE.exe --smoke-scene-workflow` checks the empty template, edit/save/new/open
+round trip and example availability, then renders 120 editor frames. Its results
+are written to `Reports/Editor/SceneWorkflowValidation.txt`.
 
 Relocation, restricted child-process PATH and graphics smoke checks are run on
 the development PC. A fresh PC/VM without Visual Studio and a wider range of

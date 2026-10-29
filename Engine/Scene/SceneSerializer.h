@@ -6,6 +6,7 @@
 #pragma once
 #include <filesystem>
 #include <memory>
+#include <iosfwd>
 
 namespace NoJob
 {
@@ -16,6 +17,8 @@ namespace NoJob
     class SceneSerializer
     {
     public:
+        /** @brief Write the scene format to a stream for saving and unsaved-change comparisons. */
+        static bool Serialize(const Scene& scene, std::ostream& out);
         static bool Save(const Scene& scene, const std::filesystem::path& path);
         static bool Load(
             Scene& scene,

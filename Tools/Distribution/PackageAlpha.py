@@ -1,7 +1,14 @@
 """Build a curated, relocatable Windows Alpha ZIP from a completed Release build."""
 from pathlib import Path
-import argparse,hashlib,json,os,shutil,struct,zipfile
+import argparse,hashlib,json,os,shutil,struct,zipfile,re
 ROOT=Path(__file__).resolve().parents[2]
+def application_version():
+    """Read the same numeric version used by executable resources and update checks."""
+    text=(ROOT/'Resources/Version.h').read_text(encoding='utf-8')
+    return '.'.join(re.search(r'#define NJE_VERSION_'+part+r' (\d+)',text).group(1) for part in ['MAJOR','MINOR','PATCH','BUILD'])
+def alpha_version():
+    """Read the public Alpha label independently from the monotonic update build."""
+    return re.search(r'#define NJE_ALPHA_VERSION "([^"]+)"',(ROOT/'Resources/Version.h').read_text()).group(1)
 SCENES=['RLObstacleLearningDemo','RLTrackingDemo','RLNavigationDemo','NeuralTrainingDemo','NeuralPongTrackingDemo']
 SCRIPTS=['RLObstacleAgent','RLTrackingAgent','RLTargetPatrol','PongAgent']
 MODELS=['RLObstaclePolicy','RLTrackingPolicy','NeuralFollowerDemo','PongBrainDemo']
@@ -62,8 +69,8 @@ def package(build,output,crt):
         for suffix in ['.cpp','.h']:asset('Assets/Scripts/'+name+suffix)
     asset('Assets/Models/testplane_100x100.obj')
     for name in ['README.md','LICENSE','THIRD_PARTY_NOTICES.md','Resources/NoJobEngine.ico','docs/images/NJE_logo.png']:copy(ROOT/name,name)
-    (output/'NJE.nojobproject').write_text('NOJOB_PROJECT 1\n"NJE Alpha 1"\n"Assets"\n"Assets/Scenes/RLObstacleLearningDemo.nojobscene"\n')
-    (output/'NJE.alpha').write_text('NOJOB_PUBLIC_ALPHA 1\nV2.1 / Public Alpha 1\n')
+    (output/'NJE.nojobproject').write_text('NOJOB_PROJECT 1\n"NJE Alpha '+alpha_version()+'"\n"Assets"\n"Assets/Scenes/RLObstacleLearningDemo.nojobscene"\n')
+    (output/'NJE.alpha').write_text('NOJOB_PUBLIC_ALPHA 1\nAlpha '+alpha_version()+'\n')
     # App-local Microsoft C++ runtime is included; no developer tool installation is needed to launch.
     if not crt.is_dir():raise FileNotFoundError('Supply the x64 Microsoft.VC14*.CRT redist directory.')
     for file in crt.glob('*.dll'):copy(file,file.name)
@@ -106,7 +113,7 @@ def package(build,output,crt):
     entries=[]
     for file in sorted(output.rglob('*')):
         if file.is_file():entries.append({'path':file.relative_to(output).as_posix(),'bytes':file.stat().st_size,'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
-    (output/'PackageManifest.json').write_text(json.dumps({'product':'NJE (NoJobEngine)','version':'2.1 / Public Alpha 1','build_version':'2.1.0.2','platform':'Windows x64','scenes':SCENES,'files':entries},indent=2))
+    (output/'PackageManifest.json').write_text(json.dumps({'product':'NJE (NoJobEngine)','version':'Alpha '+alpha_version(),'build_version':application_version(),'platform':'Windows x64','scenes':SCENES,'files':entries},indent=2))
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for file in sorted(output.rglob('*')):
             if file.is_file():z.write(file,output.name+'/'+file.relative_to(output).as_posix())

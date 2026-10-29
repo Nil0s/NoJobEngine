@@ -45,6 +45,13 @@ namespace NoJob
         if (!out)
             return false;
 
+        if (!Serialize(scene, out)) return false;
+        out.flush();
+        return out.good();
+    }
+
+    bool SceneSerializer::Serialize(const Scene& scene, std::ostream& out)
+    {
         out << "NOJOB_SCENE 1\n";
         out << std::setprecision(9);
 
@@ -493,7 +500,7 @@ namespace NoJob
             out << "END\n";
         }
 
-        return true;
+        return out.good();
     }
 
     bool SceneSerializer::Load(

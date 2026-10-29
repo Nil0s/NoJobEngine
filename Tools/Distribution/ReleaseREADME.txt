@@ -3,7 +3,7 @@
   <h1>NJE — NoJobEngine</h1>
   <p><strong>A native C++ engine for building, training and inspecting game AI.</strong></p>
   <p>
-    <img alt="Stage: Public Alpha" src="https://img.shields.io/badge/stage-Public_Alpha-60a5fa?style=flat-square">
+    <img alt="Stage: Public Alpha" src="https://img.shields.io/badge/stage-Alpha_{alpha}-60a5fa?style=flat-square">
     <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows_x64-38bdf8?style=flat-square">
     <img alt="Language: C++20" src="https://img.shields.io/badge/C%2B%2B-20-a78bfa?style=flat-square">
   </p>
@@ -26,13 +26,14 @@ scene runs.
 | **Navigation and behavior** | NavMesh navigation, visual Behavior Trees and agent Blackboards |
 | **Live examples** | X/Z target tracking, obstacle avoidance and supervised neural demos |
 
-## Install and try it
+## Alpha {alpha} — install and try it
 
 1. Open [Releases](https://github.com/{owner}/{repository}/releases) and download **{installer}** from the Alpha release assets.
 2. Run the installer. It installs for your Windows account; administrator access is not required.
-3. Launch **NJE** from the Start Menu and press **Play**. The orange target moves automatically while the agent follows it.
-4. Open **AI → AI Debugger** to inspect the agent. Use **Examples** to explore the other scenes.
-5. Open **AI → Reinforcement Learning → Open Training Window** to start an independent training run.
+3. Launch **NJE** from the Start Menu. An untitled scene opens with a primary camera, two lights and a visible editor grid. Use **File → New Scene** (`Ctrl+N`) to start another scene; the first save asks for a filename.
+4. Choose **Examples → RL obstacle avoidance + automatic target**, then press **Play** to see the orange target move while the agent follows it.
+5. Open **AI → AI Debugger** to inspect the agent. Use **Examples** to explore the other scenes.
+6. Open **AI → Reinforcement Learning → Open Training Window** to start an independent training run.
 
 > **Requirements:** Windows 10/11 x64 and a graphics driver supporting OpenGL 4.6.
 > Running the supplied examples does not require Visual Studio, CMake or Python.

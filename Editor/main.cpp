@@ -29,6 +29,9 @@
 #include "Editor/EditorLayer.h"
 #include "Editor/Scripting/ProjectScriptBuildSystem.h"
 #include "Editor/Scene/SceneFileDialog.h"
+#include "Editor/Scene/DefaultScene.h"
+#include "Resources/Version.h"
+#include <sstream>
 
 #include <GLFW/glfw3.h>
 #ifdef _WIN32
@@ -67,9 +70,9 @@ int main(int argc,char** argv)
         std::filesystem::current_path(discoveredRoot);
         NoJob::AssetManager::Init(discoveredRoot);
         if(argc>1&&std::string(argv[1])=="--validate-package")return NoJob::ValidateAlphaPackage(discoveredRoot);
-        const bool smoke=argc>1&&(std::string(argv[1])=="--smoke-test"||std::string(argv[1])=="--smoke-examples");
+        const bool smoke=argc>1&&(std::string(argv[1])=="--smoke-test"||std::string(argv[1])=="--smoke-examples"||std::string(argv[1])=="--smoke-scene-workflow");
         unsigned smokeFrames=0;
-        NoJob::Window window({NoJob::Paths::IsPortable(discoveredRoot)?"NJE - Public Alpha 1":"NJE - NoJobEngine",1600,900});
+        NoJob::Window window({NoJob::Paths::IsPortable(discoveredRoot)?"NJE " NJE_PUBLIC_VERSION:"NJE - NoJobEngine",1600,900});
         NoJob::Renderer::Init();
 
         std::cerr << "[Startup] Creating PBR scene shader...\n";
@@ -107,158 +110,9 @@ int main(int argc,char** argv)
         bool isPlaying = false;
         bool isPaused = false;
 
-        std::filesystem::path currentScenePath =
-            NoJob::AssetManager::GetProjectRoot()
-            / "Assets/Scenes/CurrentScene.nojobscene";
-
-
-        // ------------------------------------------------------------
-        // Default cube
-        // ------------------------------------------------------------
-
-        NoJob::Entity cube =
-            editorScene.CreateEntity("Cube");
-
-        cube.AddComponent<NoJob::MeshComponent>(
-            cubeMesh);
-
-        cube.AddComponent<
-            NoJob::MeshRendererComponent>(
-                cubeMaterial);
-
-        cube.GetComponent<
-            NoJob::TransformComponent>().Position =
-        { 0.0f, 2.0f, 0.0f };
-
-        cube.AddComponent<
-            NoJob::RigidbodyComponent>();
-
-        cube.AddComponent<
-            NoJob::BoxColliderComponent>();
-
-
-        // ------------------------------------------------------------
-        // Ground
-        // ------------------------------------------------------------
-
-        auto groundMaterial =
-            std::make_shared<NoJob::Material>(
-                shader,
-                glm::vec4(
-                    0.28f,
-                    0.32f,
-                    0.38f,
-                    1.0f));
-
-        groundMaterial->SetTexture(
-            checkerTexture);
-
-        NoJob::Entity ground =
-            editorScene.CreateEntity("Ground");
-
-        ground.AddComponent<
-            NoJob::MeshComponent>(
-                cubeMesh);
-
-        ground.AddComponent<
-            NoJob::MeshRendererComponent>(
-                groundMaterial);
-
-        auto& groundTransform =
-            ground.GetComponent<
-            NoJob::TransformComponent>();
-
-        groundTransform.Position =
-        { 0.0f, -1.5f, 0.0f };
-
-        groundTransform.Scale =
-        { 6.0f, 0.5f, 6.0f };
-
-        NoJob::RigidbodyComponent groundBody;
-
-        groundBody.Type =
-            NoJob::RigidbodyType::Static;
-
-        groundBody.UseGravity = false;
-
-        ground.AddComponent<
-            NoJob::RigidbodyComponent>(
-                groundBody);
-
-        ground.AddComponent<
-            NoJob::BoxColliderComponent>();
-
-
-        // ------------------------------------------------------------
-        // Main camera
-        // ------------------------------------------------------------
-
-        NoJob::Entity mainCamera =
-            editorScene.CreateEntity(
-                "Main Camera");
-
-        auto& cameraTransform =
-            mainCamera.GetComponent<
-            NoJob::TransformComponent>();
-
-        cameraTransform.Position =
-        { 0.0f, 2.5f, 7.0f };
-
-        cameraTransform.Rotation =
-        {
-            glm::radians(-10.0f),
-            0.0f,
-            0.0f
-        };
-
-        mainCamera.AddComponent<
-            NoJob::CameraComponent>();
-
-
-        // ------------------------------------------------------------
-        // Lights
-        // ------------------------------------------------------------
-
-        NoJob::Entity sun =
-            editorScene.CreateEntity("Sun");
-
-        auto& sunTransform =
-            sun.GetComponent<
-            NoJob::TransformComponent>();
-
-        sunTransform.Rotation =
-        {
-            glm::radians(-50.0f),
-            glm::radians(-30.0f),
-            0.0f
-        };
-
-        NoJob::DirectionalLightComponent
-            sunLight;
-
-        sunLight.Intensity = 1.1f;
-
-        sun.AddComponent<
-            NoJob::DirectionalLightComponent>(
-                sunLight);
-
-        NoJob::Entity fillLight =
-            editorScene.CreateEntity(
-                "Point Light");
-
-        fillLight.GetComponent<
-            NoJob::TransformComponent>().Position =
-        { 2.5f, 2.5f, 2.0f };
-
-        NoJob::PointLightComponent
-            pointLight;
-
-        pointLight.Intensity = 0.75f;
-        pointLight.Range = 8.0f;
-
-        fillLight.AddComponent<
-            NoJob::PointLightComponent>(
-                pointLight);
+        // A new document has no path until its first successful Save As.
+        std::filesystem::path currentScenePath;
+        NoJob::CreateDefaultEditorScene(editorScene);
 
 
         // ------------------------------------------------------------
@@ -355,7 +209,7 @@ int main(int argc,char** argv)
         editor.SetGraphicsSettings(
             framebufferSpecification);
 
-        editor.SetSelectedEntity(cube);
+
 
         editor.SetDefaultCubeAssets(
             cubeMesh,
@@ -391,11 +245,45 @@ int main(int argc,char** argv)
                 editorCamera.SetPose(glm::vec3(world[3]),-glm::vec3(world[2]));break;
             }
         };
-        if(NoJob::Paths::IsPortable(discoveredRoot)||NoJob::Paths::IsInstalledApplication()) {
-            const auto initial=discoveredRoot/"Assets/Scenes/RLObstacleLearningDemo.nojobscene";
-            if(!NoJob::SceneSerializer::Load(editorScene,initial,cubeMesh,cubeMaterial))throw std::runtime_error("Cannot load the Alpha example scene.");
-            currentScenePath=initial;editor.SetScene(&editorScene);frameExample();
-        }
+        auto frameNewScene = [&] {
+            editorCamera.SetPose({8.0f, 6.0f, 10.0f}, {-8.0f, -6.0f, -10.0f});
+        };
+        frameNewScene();
+        auto updateSceneTitle = [&] {
+            const auto title = std::string("NJE " NJE_PUBLIC_VERSION " - ") + (currentScenePath.empty() ? "Untitled" : currentScenePath.filename().string());
+            glfwSetWindowTitle(window.GetNativeWindow(), title.c_str());
+        };
+        updateSceneTitle();
+        auto sceneContent = [&] {
+            std::ostringstream out;
+            if (!NoJob::SceneSerializer::Serialize(editorScene, out))
+                throw std::runtime_error("Cannot inspect scene changes.");
+            return out.str();
+        };
+        std::string savedSceneContent = sceneContent();
+        auto saveScene = [&](bool saveAs) {
+            auto selected = currentScenePath;
+            if (saveAs || selected.empty())
+                selected = NoJob::SceneFileDialog::SaveAs(discoveredRoot / "Assets/Scenes");
+            if (selected.empty()) return false;
+            std::error_code error;
+            std::filesystem::create_directories(selected.parent_path(), error);
+            if (error || !NoJob::SceneSerializer::Save(editorScene, selected)) {
+                NoJob::SceneFileDialog::ShowSaveError();
+                return false;
+            }
+            currentScenePath = selected;
+            updateSceneTitle();
+            savedSceneContent = sceneContent();
+            std::cout << "[Scene] Saved " << selected.string() << '\n';
+            return true;
+        };
+        auto canReplaceScene = [&] {
+            if (sceneContent() == savedSceneContent) return true;
+            const auto answer = NoJob::SceneFileDialog::ConfirmSceneReplacement();
+            if (answer == NoJob::SceneSaveChoice::Cancel) return false;
+            return answer == NoJob::SceneSaveChoice::Discard || saveScene(false);
+        };
 
 
 
@@ -410,6 +298,53 @@ int main(int argc,char** argv)
             navMeshDebugRenderer;
         // ------------------------------------------------------------
 
+
+        if (argc > 1 && std::string(argv[1]) == "--smoke-scene-workflow") {
+            const auto reportDirectory = discoveredRoot / "Reports/Editor";
+            std::filesystem::create_directories(reportDirectory);
+            std::ofstream report(reportDirectory / "SceneWorkflowValidation.txt");
+            auto require = [&](bool value, const char* text) {
+                if (!value) throw std::runtime_error(text);
+                report << "PASS: " << text << '\n';
+            };
+            auto checkTemplate = [&] {
+                unsigned cameras = 0, lights = 0;
+                require(editorScene.GetEntities().size() == 3, "New scene contains exactly three entities");
+                for (auto entity : editorScene.GetEntities()) {
+                    if (entity.HasComponent<NoJob::CameraComponent>())
+                        cameras += entity.GetComponent<NoJob::CameraComponent>().Primary ? 1 : 0;
+                    lights += entity.HasComponent<NoJob::DirectionalLightComponent>() ? 1 : 0;
+                    lights += entity.HasComponent<NoJob::PointLightComponent>() ? 1 : 0;
+                    require(!entity.HasComponent<NoJob::MeshComponent>() && !entity.HasComponent<NoJob::NativeScriptComponent>(),
+                        "Template contains no meshes or gameplay scripts");
+                }
+                require(cameras == 1 && lights == 2, "One primary camera and two lights");
+            };
+            checkTemplate();
+            require(currentScenePath.empty() && editor.IsGridVisible(), "Startup is untitled with grid enabled");
+            const auto emptyContent = sceneContent();
+            auto userCube = editorScene.CreateEntity("User cube");
+            userCube.AddComponent<NoJob::MeshComponent>(cubeMesh);
+            userCube.AddComponent<NoJob::MeshRendererComponent>(cubeMaterial);
+            require(sceneContent() != savedSceneContent, "Scene edits differ from the clean baseline");
+            const auto saved = reportDirectory / "SceneWorkflowSaved.nojobscene";
+            require(NoJob::SceneSerializer::Save(editorScene, saved), "Edited scene saves successfully");
+            NoJob::CreateDefaultEditorScene(editorScene);
+            editor.ResetSceneDocument(&editorScene);
+            editor.ResetSceneOverlays();
+            checkTemplate();
+            require(sceneContent() == emptyContent && !editor.GetSelectedEntity(), "New restores the same template and clears selection");
+            require(NoJob::SceneSerializer::Load(editorScene, saved, cubeMesh, cubeMaterial), "Saved scene reopens after New");
+            require(editorScene.GetEntities().size() == 4, "Saved user geometry is preserved");
+            NoJob::Scene example;
+            require(NoJob::SceneSerializer::Load(example, discoveredRoot / "Assets/Scenes/RLObstacleLearningDemo.nojobscene", cubeMesh, cubeMaterial),
+                "Bundled obstacle example remains available");
+            NoJob::CreateDefaultEditorScene(editorScene);
+            editor.ResetSceneDocument(&editorScene);
+            savedSceneContent = sceneContent();
+            require(savedSceneContent == emptyContent, "Repeated New produces a clean document");
+            report << "PASS: scene workflow diagnostic completed; editor-only grid is not serialized.\n";
+        }
 
         // ------------------------------------------------------------
         // Editor-only grid
@@ -448,7 +383,7 @@ int main(int argc,char** argv)
                     dx / length *
                     lineHalfWidth;
 
-                const float y = -1.0f;
+                const float y = 0.0f;
 
                 const float quad[] =
                 {
@@ -532,7 +467,7 @@ int main(int argc,char** argv)
         double lastTime = glfwGetTime();
 
         NoJob::Updates::Initialize([&] {
-            return !isPlaying&&!currentScenePath.empty()&&NoJob::SceneSerializer::Save(editorScene,currentScenePath);
+            return !isPlaying && saveScene(false);
         });
         struct UpdateExitGuard { ~UpdateExitGuard(){NoJob::Updates::Shutdown();} } updateExitGuard;
         while (!window.ShouldClose())
@@ -717,7 +652,7 @@ int main(int argc,char** argv)
             // Editor grid
             // --------------------------------------------------------
 
-            if (!isPlaying)
+            if (!isPlaying && editor.IsGridVisible())
             {
                 shader->Bind();
 
@@ -1009,67 +944,22 @@ int main(int argc,char** argv)
             }
 
 
-            // --------------------------------------------------------
-            // Save Scene
-            // --------------------------------------------------------
-
-            if (!isPlaying &&
-                editor.
-                ConsumeSaveSceneRequest())
-            {
-                std::filesystem::
-                    create_directories(
-                        currentScenePath.
-                        parent_path());
-
-                if (NoJob::SceneSerializer::Save(
-                    editorScene,
-                    currentScenePath))
-                {
-                    std::cout
-                        << "[Scene] Saved "
-                        << currentScenePath.string()
-                        << "\n";
-                }
+            // New documents use the same camera/lights template as startup.
+            if (!isPlaying && editor.ConsumeNewSceneRequest() && canReplaceScene()) {
+                NoJob::CreateDefaultEditorScene(editorScene);
+                currentScenePath.clear();
+                updateSceneTitle();
+                savedSceneContent = sceneContent();
+                activeScene = &editorScene;
+                editor.ResetSceneDocument(activeScene);
+                editor.ResetSceneOverlays();
+                navigationSystem.Clear();
+                navMeshDebugRenderer.Clear();
+                frameNewScene();
+                std::cout << "[Scene] New untitled scene created.\n";
             }
-
-
-            // --------------------------------------------------------
-            // Save Scene As
-            // --------------------------------------------------------
-
-            if (!isPlaying &&
-                editor.
-                ConsumeSaveSceneAsRequest())
-            {
-                const auto selected =
-                    NoJob::SceneFileDialog::SaveAs(
-                        NoJob::AssetManager::
-                        GetProjectRoot()
-                        /
-                        "Assets/Scenes");
-
-                if (!selected.empty())
-                {
-                    std::filesystem::
-                        create_directories(
-                            selected.parent_path());
-
-                    if (NoJob::SceneSerializer::Save(
-                        editorScene,
-                        selected))
-                    {
-                        currentScenePath =
-                            selected;
-
-                        std::cout
-                            << "[Scene] Saved As "
-                            << currentScenePath.
-                            string()
-                            << "\n";
-                    }
-                }
-            }
+            if (!isPlaying && editor.ConsumeSaveSceneRequest()) saveScene(false);
+            if (!isPlaying && editor.ConsumeSaveSceneAsRequest()) saveScene(true);
 
 
             // --------------------------------------------------------
@@ -1083,21 +973,24 @@ int main(int argc,char** argv)
                 auto selected=editor.ConsumeExampleScenePath();
                 if(selected.empty())selected=NoJob::SceneFileDialog::Open(NoJob::AssetManager::GetProjectRoot()/"Assets/Scenes");
 
-                if (!selected.empty() &&
+                NoJob::Scene loadedScene;
+                if (!selected.empty() && canReplaceScene() &&
                     NoJob::SceneSerializer::Load(
-                        editorScene,
+                        loadedScene,
                         selected,
                         cubeMesh,
                         cubeMaterial))
                 {
-                    currentScenePath =
-                        selected;
+                    editorScene.RestoreFrom(loadedScene);
+                    currentScenePath = selected;
+                    updateSceneTitle();
 
                     activeScene =
                         &editorScene;
 
-                    editor.SetScene(
-                        activeScene);
+                    editor.ResetSceneDocument(activeScene);
+                    savedSceneContent = sceneContent();
+                    frameExample();
 
                     // The baked NavMesh belonged to
                     // the previous scene.
@@ -1118,8 +1011,11 @@ int main(int argc,char** argv)
 
             if (!isPlaying &&
                 editor.
-                ConsumeGraphicsTestSceneRequest())
+                ConsumeGraphicsTestSceneRequest() && canReplaceScene())
             {
+                currentScenePath.clear();
+                updateSceneTitle();
+                editor.ResetSceneDocument(&editorScene);
                 // This replaces the scene, therefore
                 // any previously baked NavMesh is stale.
                 navigationSystem.Clear();
@@ -1429,7 +1325,6 @@ int main(int argc,char** argv)
         gridIB.reset();
         gridVB.reset();
 
-        groundMaterial.reset();
         cubeMaterial.reset();
         cubeMesh.reset();
         shader.reset();

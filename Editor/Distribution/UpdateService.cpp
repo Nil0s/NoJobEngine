@@ -56,7 +56,7 @@ void Initialize(std::function<bool()> saveScene) {
     preferences=Paths::SettingsDirectory()/"Updates.ini";
     std::ifstream in(preferences);std::string key;long long value;
     while(in>>key>>value){if(key=="automatic")automatic=value!=0;else if(key=="last_check")lastCheck=value;}
-    win_sparkle_set_app_details(L"NJE",L"NJE",NJE_WIDEN(NJE_VERSION_STRING));
+    win_sparkle_set_app_details(L"NJE",L"NJE",NJE_WIDEN(NJE_ALPHA_VERSION));
     win_sparkle_set_app_build_version(NJE_WIDEN(NJE_VERSION_STRING));
     win_sparkle_set_appcast_url(FeedURL);win_sparkle_set_eddsa_public_key(PublicKey);
     win_sparkle_set_lang("en");
@@ -81,7 +81,7 @@ void SetBusy(bool value){busy=value;}
 bool IsInstalling(){return locked.load();}
 bool QuitRequested(){return quit.load();}
 void DrawMenu() {
-    ImGui::TextDisabled("NJE " NJE_VERSION_STRING " / Alpha");
+    ImGui::TextDisabled("NJE " NJE_PUBLIC_VERSION);
     ImGui::BeginDisabled(!initialized||locked.load());
     if(ImGui::MenuItem("Check for updates")) {
 #ifdef NJE_WITH_WINSPARKLE

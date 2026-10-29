@@ -1283,6 +1283,14 @@ namespace NoJob
             DeleteSelectedEntity();
 
         const ImGuiIO& io = ImGui::GetIO();
+        if (!m_IsPlaying && !io.WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) && io.KeyCtrl) {
+            if (ImGui::IsKeyPressed(ImGuiKey_N, false)) m_NewSceneRequested = true;
+            if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+                if (io.KeyShift) m_SaveSceneAsRequested = true;
+                else m_SaveSceneRequested = true;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_O, false)) m_LoadSceneRequested = true;
+        }
 
         if (!io.WantTextInput && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z))
         {
@@ -1793,11 +1801,14 @@ namespace NoJob
         {
             if (ImGui::BeginMenu("File"))
             {
-                if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+                if (ImGui::MenuItem("New Scene", "Ctrl+N", false, !m_IsPlaying))
+                    m_NewSceneRequested = true;
+                ImGui::Separator();
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, !m_IsPlaying))
                     m_SaveSceneRequested = true;
-                if (ImGui::MenuItem("Save Scene As..."))
+                if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S", false, !m_IsPlaying))
                     m_SaveSceneAsRequested = true;
-                if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
+                if (ImGui::MenuItem("Open Scene...", "Ctrl+O", false, !m_IsPlaying))
                     m_LoadSceneRequested = true;
                 ImGui::Separator();
                 if (ImGui::MenuItem("Load Graphics Test Scene"))
@@ -1809,6 +1820,11 @@ namespace NoJob
                 ImGui::EndMenu();
             }
 
+            if (ImGui::BeginMenu("View")) {
+                ImGui::MenuItem("Show Grid", nullptr, &m_ShowGrid);
+                ImGui::MenuItem("Show Gizmos", nullptr, &m_ShowGizmos);
+                ImGui::EndMenu();
+            }
             if(ImGui::BeginMenu("Examples")) {
                 ImGui::BeginDisabled(m_IsPlaying);
                 const std::pair<const char*,const char*> examples[]={
@@ -2060,6 +2076,27 @@ namespace NoJob
         m_Scene = scene;
         m_SelectedEntity = {};
         m_AIDebugAgent = 0;
+    }
+
+    void EditorLayer::ResetSceneDocument(Scene* scene)
+    {
+        SetScene(scene);
+        m_MultiSelection.clear();
+        m_UndoHistory.clear();
+        m_RedoHistory.clear();
+        m_TransformEditSnapshot.reset();
+        m_ScriptFieldEditSnapshot.reset();
+        m_GizmoWasUsing = false;
+        m_RenameSelectedRequested = false;
+        m_HierarchySearch[0] = 0;
+        m_SelectedMaterialSlot = 0;
+    }
+
+    bool EditorLayer::ConsumeNewSceneRequest()
+    {
+        const bool requested = m_NewSceneRequested;
+        m_NewSceneRequested = false;
+        return requested;
     }
 
     bool EditorLayer::ConsumePlayRequest()
@@ -2437,7 +2474,7 @@ namespace NoJob
 
         // Gizmos are editor overlays, never part of the game framebuffer.
         // In Play, draw only AI perception debugging (when enabled).
-        if (m_Scene && m_SelectedEntity)
+        if (m_Scene && m_ShowGizmos)
         {
             DrawSceneColliderGizmos(
                 *m_Scene,

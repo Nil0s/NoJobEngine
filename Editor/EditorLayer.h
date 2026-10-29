@@ -46,6 +46,14 @@ namespace NoJob
         }
 
         void SetScene(Scene* scene);
+        /** @brief Bind a replaced document and discard selection, edit snapshots and undo history. */
+        void ResetSceneDocument(Scene* scene);
+        /** @brief Whether the editor-only world grid should be rendered. */
+        bool IsGridVisible() const { return m_ShowGrid; }
+        /** @brief Restore the standard editor overlays when creating a new scene. */
+        void ResetSceneOverlays() { m_ShowGrid = true; m_ShowGizmos = true; }
+        /** @brief Request creation of a new document; the owner handles save confirmation. */
+        bool ConsumeNewSceneRequest();
 
         void SetViewportTexture(std::uint32_t textureID);
 
@@ -236,6 +244,9 @@ namespace NoJob
         // Scene requests
         // ------------------------------------------------------------
 
+        bool m_NewSceneRequested = false;
+        bool m_ShowGrid = true;
+        bool m_ShowGizmos = true;
         bool m_SaveSceneRequested = false;
         bool m_SaveSceneAsRequested = false;
         bool m_LoadSceneRequested = false;
